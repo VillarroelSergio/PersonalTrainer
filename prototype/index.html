@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tu camino — prototipo de entrenador híbrido</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__brand">
+    <span class="topbar__logo" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 12h2m12 0h2M8 8v8m8-8v8M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </span>
+    <span class="topbar__title">Tu camino</span>
+  </div>
+  <div class="topbar__status">
+    <button type="button" class="status-pill status-pill--sync" id="syncStatus" aria-live="polite">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="syncStatusText">Sin conexión · pendiente de sincronizar (simulado)</span>
+    </button>
+    <button type="button" class="icon-btn" id="themeToggle" aria-label="Cambiar a modo claro" aria-pressed="false">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v2m0 14v2m9-9h-2M5 12H3m14.5-6.5l-1.4 1.4M7.9 16.1l-1.4 1.4m0-11l1.4 1.4M16.1 16.1l1.4 1.4M12 8a4 4 0 100 8 4 4 0 000-8z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="mainContent">
+
+  <!-- VISTA: INICIO -->
+  <section class="view" data-view="home" aria-labelledby="homeTitle">
+    <h1 id="homeTitle" class="view-title">Tu camino</h1>
+
+    <div class="card card--week" aria-label="Estado de la semana">
+      <div class="card__row">
+        <div>
+          <p class="eyebrow">Esta semana</p>
+          <p class="stat-big"><span id="weekDone">2</span> de <span id="weekTotal">5</span> sesiones</p>
+          <p class="muted">Bloque de hipertrofia · semana 3 de 8 · <span id="weekMinutes">82</span> min activos</p>
+        </div>
+        <div class="streak" aria-label="Constancia: 4 semanas seguidas con dos o más sesiones">
+          <span class="streak__num">4</span>
+          <span class="streak__label">semanas de constancia</span>
+        </div>
+      </div>
+      <div class="progressbar" role="img" aria-label="Semana 3 de 8 del bloque de hipertrofia">
+        <div class="progressbar__fill" style="width:37.5%"></div>
+      </div>
+    </div>
+
+    <h2 class="section-title">Hoy puedes</h2>
+    <div class="option-grid">
+      <button type="button" class="option-card option-card--primary" id="btnStartPlanned" aria-describedby="optPlannedDesc">
+        <span class="option-card__tag">Sesión prevista</span>
+        <span class="option-card__title">Pull · fuerza</span>
+        <span class="option-card__meta" id="optPlannedDesc">5 ejercicios · ~50 min</span>
+      </button>
+      <button type="button" class="option-card" id="btnStartAdapted" aria-describedby="optAdaptedDesc">
+        <span class="option-card__tag">Versión adaptada</span>
+        <span class="option-card__title">Ajustar según cómo llegas</span>
+        <span class="option-card__meta" id="optAdaptedDesc">Check-in de 20 segundos</span>
+      </button>
+      <button type="button" class="option-card" id="btnStartRecovery" aria-describedby="optRecoveryDesc">
+        <span class="option-card__tag">Recuperación</span>
+        <span class="option-card__title">Movilidad suave</span>
+        <span class="option-card__meta" id="optRecoveryDesc">10–15 min, sin carga</span>
+      </button>
+    </div>
+
+    <h2 class="section-title">Evolución breve</h2>
+    <p class="card card--flat" id="evolutionSummary">Tu fuerza en tracción sube con constancia y tu carga semanal se mantiene estable; la carrera suave de esta semana ayudó a recuperar sin restar piernas.</p>
+
+    <h2 class="section-title">Actividad reciente</h2>
+    <div class="activity-list" id="recentActivity"></div>
+
+    <h2 class="section-title">Logro cercano</h2>
+    <div class="card card--achievement">
+      <span class="achievement-icon" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.6 5.9 6.4.6-4.8 4.3 1.4 6.3L12 16l-5.6 3.1 1.4-6.3-4.8-4.3 6.4-.6L12 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      </span>
+      <div>
+        <p class="achievement-title">A una sesión de tu racha de 3 semanas seguidas</p>
+        <p class="muted">Logro privado, solo lo ves tú.</p>
+      </div>
+    </div>
+
+    <div class="quick-nav">
+      <button type="button" class="link-btn" data-nav="plan">Ver plan semanal →</button>
+      <button type="button" class="link-btn" data-nav="history">Ver historial →</button>
+    </div>
+  </section>
+
+  <!-- VISTA: PLAN SEMANAL -->
+  <section class="view" data-view="plan" aria-labelledby="planTitle">
+    <div class="view-header">
+      <button type="button" class="back-btn" data-nav="home" aria-label="Volver a Tu camino">←</button>
+      <h1 id="planTitle" class="view-title">Plan · Bloque de hipertrofia</h1>
+    </div>
+    <p class="muted" style="margin-top:-10px;margin-bottom:16px">Objetivo del plan: Ganar músculo</p>
+
+    <div class="tabs" role="tablist" aria-label="Vista del plan">
+      <button type="button" class="tab" id="tabWeek" role="tab" aria-selected="true" aria-controls="panelWeek">Calendario semanal</button>
+      <button type="button" class="tab" id="tabPhases" role="tab" aria-selected="false" aria-controls="panelPhases">Línea de fases</button>
+    </div>
+
+    <div id="planWarning" class="alert alert--warning" hidden role="alert"></div>
+
+    <div id="panelWeek" role="tabpanel" aria-labelledby="tabWeek">
+      <div class="week-list" id="weekList"></div>
+    </div>
+
+    <div id="panelPhases" role="tabpanel" aria-labelledby="tabPhases" hidden>
+      <ol class="phase-timeline" id="phaseTimeline"></ol>
+    </div>
+  </section>
+
+  <!-- VISTA: DETALLE DE SESIÓN DE DÍA (resumen ligero, no interactivo) -->
+  <section class="view" data-view="daySummary" aria-labelledby="daySummaryTitle">
+    <div class="view-header">
+      <button type="button" class="back-btn" data-nav="plan" aria-label="Volver al plan">←</button>
+      <h1 id="daySummaryTitle" class="view-title">Sesión</h1>
+    </div>
+    <div class="card" id="daySummaryCard"></div>
+  </section>
+
+  <!-- VISTA: SESIÓN DE FUERZA — LISTA -->
+  <section class="view" data-view="session" aria-labelledby="sessionTitle">
+    <div class="view-header">
+      <button type="button" class="back-btn" data-nav="home" aria-label="Volver a Tu camino">←</button>
+      <h1 id="sessionTitle" class="view-title">Pull</h1>
+    </div>
+
+    <div class="badge-row" id="sessionBadges"></div>
+
+    <div class="card card--flat">
+      <div class="session-progress">
+        <div class="progressbar progressbar--accent" role="img" aria-label="Progreso de la sesión">
+          <div class="progressbar__fill" id="sessionProgressFill" style="width:0%"></div>
+        </div>
+        <p class="muted" id="sessionProgressText">0 de 5 ejercicios completados</p>
+      </div>
+    </div>
+
+    <ul class="exercise-list" id="exerciseList" aria-label="Ejercicios de la sesión Pull"></ul>
+
+    <button type="button" class="primary-btn primary-btn--block" id="btnFinishSession">Terminar sesión</button>
+  </section>
+
+  <!-- VISTA: TARJETA DE EJERCICIO -->
+  <section class="view" data-view="exercise" aria-labelledby="exerciseTitle">
+    <div class="view-header">
+      <button type="button" class="back-btn" data-nav="session" aria-label="Volver a la lista de ejercicios">←</button>
+      <h1 id="exerciseTitle" class="view-title">Ejercicio</h1>
+    </div>
+
+    <div class="exercise-card">
+      <div class="exercise-thumb" id="exerciseThumb" aria-hidden="true"></div>
+      <div>
+        <p class="exercise-variant" id="exerciseVariant">Variante</p>
+        <p class="muted" id="exerciseObjective">Objetivo</p>
+        <p class="muted" id="exerciseLast">Último resultado</p>
+      </div>
+    </div>
+
+    <div class="secondary-actions">
+      <button type="button" class="chip-btn" id="btnChangeVariant">Cambiar variante</button>
+      <button type="button" class="chip-btn" id="btnGuide">Ver guía</button>
+      <a href="#" class="chip-btn" id="btnVideo" target="_blank" rel="noopener">Ver vídeo ↗</a>
+    </div>
+
+    <h2 class="section-title">Series</h2>
+    <div class="set-mode-toggle">
+      <button type="button" class="toggle-btn is-active" id="modeConfirm" aria-pressed="true">Confirmar una a una</button>
+      <button type="button" class="toggle-btn" id="modeEditAll" aria-pressed="false">Editar todas</button>
+    </div>
+
+    <table class="set-table" id="setTable">
+      <caption class="sr-only">Series de este ejercicio: peso, repeticiones y estado</caption>
+      <thead>
+        <tr><th scope="col">Serie</th><th scope="col">Peso (kg)</th><th scope="col">Reps</th><th scope="col">Estado</th></tr>
+      </thead>
+      <tbody id="setTableBody"></tbody>
+    </table>
+
+    <div class="difficulty-picker">
+      <p class="field-label" id="difficultyLabel">¿Cómo sintió el ejercicio?</p>
+      <div role="group" aria-labelledby="difficultyLabel" class="segmented" id="difficultyGroup">
+        <button type="button" class="segmented__btn" data-difficulty="facil">Fácil</button>
+        <button type="button" class="segmented__btn" data-difficulty="adecuada">Adecuada</button>
+        <button type="button" class="segmented__btn" data-difficulty="dura">Demasiado dura</button>
+      </div>
+    </div>
+
+    <div class="rest-timer card card--flat">
+      <div class="rest-timer__header">
+        <p class="field-label" id="restLabel">Descanso recomendado</p>
+        <label class="rest-edit">
+          <span class="sr-only">Editar segundos de descanso</span>
+          <input type="number" id="restSeconds" min="15" max="300" step="5" value="90" aria-labelledby="restLabel">
+          <span aria-hidden="true">s</span>
+        </label>
+      </div>
+      <div class="rest-timer__display" id="restDisplay" aria-live="polite">90s</div>
+      <div class="rest-timer__actions">
+        <button type="button" class="primary-btn" id="btnStartRest">Iniciar descanso</button>
+        <button type="button" class="ghost-btn" id="btnCancelRest" hidden>Cancelar</button>
+      </div>
+    </div>
+
+    <button type="button" class="primary-btn primary-btn--block" id="btnBackToList">Volver a la lista</button>
+  </section>
+
+  <!-- VISTA: CHECK-IN -->
+  <section class="view" data-view="checkin" aria-labelledby="checkinTitle">
+    <div class="view-header">
+      <button type="button" class="back-btn" data-nav="home" aria-label="Volver a Tu camino">←</button>
+      <h1 id="checkinTitle" class="view-title">Check-in rápido</h1>
+    </div>
+    <p class="muted">Unos segundos para ajustar la sesión de hoy a cómo llegas. Nada se aplica sin que lo confirmes.</p>
+
+    <form id="checkinForm">
+      <fieldset class="field-group">
+        <legend class="field-label">Energía</legend>
+        <div class="segmented segmented--wide" data-group="energia">
+          <button type="button" class="segmented__btn" data-value="baja">Baja</button>
+          <button type="button" class="segmented__btn" data-value="normal">Normal</button>
+          <button type="button" class="segmented__btn" data-value="alta">Alta</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="field-group">
+        <legend class="field-label">Motivación</legend>
+        <div class="segmented segmented--wide" data-group="motivacion">
+          <button type="button" class="segmented__btn" data-value="baja">Baja</button>
+          <button type="button" class="segmented__btn" data-value="normal">Normal</button>
+          <button type="button" class="segmented__btn" data-value="alta">Alta</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="field-group">
+        <legend class="field-label">Tiempo disponible</legend>
+        <div class="segmented segmented--wide" data-group="tiempo">
+          <button type="button" class="segmented__btn" data-value="20">20 min</button>
+          <button type="button" class="segmented__btn" data-value="40">40 min</button>
+          <button type="button" class="segmented__btn" data-value="60">60 min</button>
+          <button type="button" class="segmented__btn" data-value="90">90+ min</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="field-group">
+        <legend class="field-label">Molestias</legend>
+        <div class="segmented segmented--wide" data-group="molestias">
+          <button type="button" class="segmented__btn" data-value="ninguna">Ninguna</button>
+          <button type="button" class="segmented__btn" data-value="leve">Leve</button>
+          <button type="button" class="segmented__btn" data-value="moderada">Moderada</button>
+          <button type="button" class="segmented__btn" data-value="importante">Importante</button>
+        </div>
+      </fieldset>
+
+      <div id="bodyMapSection" hidden>
+        <p class="field-label">¿Dónde notas la molestia?</p>
+        <p class="muted small">Esto es una señal que tú declaras, no un diagnóstico. Toca una zona amplia del cuerpo.</p>
+
+        <div class="tabs tabs--small" role="tablist" aria-label="Vista del mapa corporal">
+          <button type="button" class="tab" id="bodyTabFront" role="tab" aria-selected="true" aria-controls="bodyFront">Frontal</button>
+          <button type="button" class="tab" id="bodyTabBack" role="tab" aria-selected="false" aria-controls="bodyBack">Trasera</button>
+        </div>
+
+        <div class="bodymap" id="bodyFront" role="tabpanel" aria-labelledby="bodyTabFront">
+          <svg viewBox="0 0 120 220" class="bodymap__svg" aria-hidden="true">
+            <ellipse cx="60" cy="20" rx="16" ry="18"/>
+            <rect x="30" y="40" width="60" height="70" rx="14"/>
+            <rect x="8" y="45" width="20" height="60" rx="9"/>
+            <rect x="92" y="45" width="20" height="60" rx="9"/>
+            <rect x="34" y="112" width="22" height="80" rx="10"/>
+            <rect x="64" y="112" width="22" height="80" rx="10"/>
+          </svg>
+          <button type="button" class="zone-btn" style="top:8%;left:44%" data-zone="cabeza-cuello" data-lado="none">Cabeza / cuello</button>
+          <button type="button" class="zone-btn" style="top:20%;left:14%" data-zone="hombro" data-lado="izquierdo">Hombro izq.</button>
+          <button type="button" class="zone-btn" style="top:20%;left:74%" data-zone="hombro" data-lado="derecho">Hombro der.</button>
+          <button type="button" class="zone-btn" style="top:32%;left:44%" data-zone="pecho-torso" data-lado="none">Pecho / torso</button>
+          <button type="button" class="zone-btn" style="top:40%;left:12%" data-zone="brazo" data-lado="izquierdo">Brazo izq.</button>
+          <button type="button" class="zone-btn" style="top:40%;left:76%" data-zone="brazo" data-lado="derecho">Brazo der.</button>
+          <button type="button" class="zone-btn" style="top:52%;left:44%" data-zone="cadera" data-lado="none">Cadera</button>
+          <button type="button" class="zone-btn" style="top:68%;left:30%" data-zone="pierna" data-lado="izquierdo">Pierna izq.</button>
+          <button type="button" class="zone-btn" style="top:68%;left:60%" data-zone="pierna" data-lado="derecho">Pierna der.</button>
+          <button type="button" class="zone-btn" style="top:86%;left:30%" data-zone="rodilla-tobillo" data-lado="izquierdo">Rodilla/tobillo izq.</button>
+          <button type="button" class="zone-btn" style="top:86%;left:60%" data-zone="rodilla-tobillo" data-lado="derecho">Rodilla/tobillo der.</button>
+        </div>
+
+        <div class="bodymap" id="bodyBack" role="tabpanel" aria-labelledby="bodyTabBack" hidden>
+          <svg viewBox="0 0 120 220" class="bodymap__svg" aria-hidden="true">
+            <ellipse cx="60" cy="20" rx="16" ry="18"/>
+            <rect x="30" y="40" width="60" height="70" rx="14"/>
+            <rect x="8" y="45" width="20" height="60" rx="9"/>
+            <rect x="92" y="45" width="20" height="60" rx="9"/>
+            <rect x="34" y="112" width="22" height="80" rx="10"/>
+            <rect x="64" y="112" width="22" height="80" rx="10"/>
+          </svg>
+          <button type="button" class="zone-btn" style="top:20%;left:14%" data-zone="hombro" data-lado="izquierdo">Hombro izq.</button>
+          <button type="button" class="zone-btn" style="top:20%;left:74%" data-zone="hombro" data-lado="derecho">Hombro der.</button>
+          <button type="button" class="zone-btn" style="top:34%;left:44%" data-zone="espalda-alta" data-lado="none">Espalda alta</button>
+          <button type="button" class="zone-btn" style="top:50%;left:44%" data-zone="espalda-baja" data-lado="none">Espalda baja</button>
+          <button type="button" class="zone-btn" style="top:60%;left:44%" data-zone="gluteo" data-lado="none">Glúteo</button>
+          <button type="button" class="zone-btn" style="top:70%;left:30%" data-zone="pierna" data-lado="izquierdo">Pierna izq.</button>
+          <button type="button" class="zone-btn" style="top:70%;left:60%" data-zone="pierna" data-lado="derecho">Pierna der.</button>
+        </div>
+
+        <p class="muted small" id="zoneSelectedText">Ninguna zona seleccionada todavía.</p>
+
+        <fieldset class="field-group">
+          <legend class="field-label">Intensidad</legend>
+          <div class="segmented segmented--wide" data-group="intensidadZona">
+            <button type="button" class="segmented__btn" data-value="leve">Leve</button>
+            <button type="button" class="segmented__btn" data-value="moderada">Moderada</button>
+            <button type="button" class="segmented__btn" data-value="importante">Importante</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend class="field-label">Tipo (opcional)</legend>
+          <div class="segmented segmented--wide" data-group="tipoMolestia">
+            <button type="button" class="segmented__btn" data-value="dolor">Dolor</button>
+            <button type="button" class="segmented__btn" data-value="rigidez">Rigidez</button>
+            <button type="button" class="segmented__btn" data-value="fatiga">Fatiga</button>
+          </div>
+        </fieldset>
+
+        <p class="alert alert--info" id="importantPainNotice" hidden>Si la molestia es importante o persiste varios días, lo recomendable es detener o adaptar el entrenamiento y consultar a un profesional. Esto no es un diagnóstico.</p>
+      </div>
+
+      <button type="button" class="primary-btn primary-btn--block" id="btnReviewProposal">Ver propuesta</button>
+    </form>
+  </section>
+
+  <!-- VISTA: PROPUESTA DE ADAPTACIÓN -->
+  <section class="view" data-view="adaptation" aria-labelledby="adaptationTitle">
+    <div class="view-header">
+      <button type="button" class="back-btn" data-nav="checkin" aria-label="Volver al check-in">←</button>
+      <h1 id="adaptationTitle" class="view-title">Propuesta de hoy</h1>
+    </div>
+
+    <div class="card card--adapted">
+      <p class="eyebrow">Basado en tu check-in</p>
+      <p class="stat-big" id="adaptationName">Pull adaptado · 40 min</p>
+      <ul class="change-list" id="adaptationChanges"></ul>
+      <p class="muted" id="adaptationReason"></p>
+    </div>
+
+    <p class="alert alert--info" id="adaptationSafetyNotice" hidden>Si la molestia es importante o persiste, detén o adapta el entrenamiento y consulta a un profesional. Esto no sustituye una valoración médica.</p>
+
+    <div class="decision-actions">
+      <button type="button" class="primary-btn primary-btn--block" id="btnApplyAdapted">Aplicar versión adaptada</button>
+      <button type="button" class="ghost-btn ghost-btn--block" id="btnKeepPlanned">Mantener sesión prevista</button>
+    </div>
+  </section>
+
+  <!-- VISTA: CIERRE DE SESIÓN -->
+  <section class="view" data-view="close" aria-labelledby="closeTitle">
+    <div class="view-header">
+      <button type="button" class="back-btn" data-nav="session" aria-label="Volver a la sesión">←</button>
+      <h1 id="closeTitle" class="view-title">Cerrar sesión</h1>
+    </div>
+
+    <form id="closeForm">
+      <fieldset class="field-group">
+        <legend class="field-label">Esfuerzo global</legend>
+        <div class="segmented segmented--wide" data-group="esfuerzo">
+          <button type="button" class="segmented__btn" data-value="suave">Suave</button>
+          <button type="button" class="segmented__btn" data-value="moderado">Moderado</button>
+          <button type="button" class="segmented__btn" data-value="exigente">Exigente</button>
+          <button type="button" class="segmented__btn" data-value="maximo">Al máximo</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="field-group">
+        <legend class="field-label">Molestias (opcional)</legend>
+        <div class="segmented segmented--wide" data-group="molestiasCierre">
+          <button type="button" class="segmented__btn" data-value="ninguna">Ninguna</button>
+          <button type="button" class="segmented__btn" data-value="leve">Leve</button>
+          <button type="button" class="segmented__btn" data-value="moderada">Moderada</button>
+          <button type="button" class="segmented__btn" data-value="importante">Importante</button>
+        </div>
+        <p class="alert alert--info" id="closePainNotice" hidden>Si la molestia es importante o persiste, lo recomendable es adaptar las próximas sesiones y consultar a un profesional. Esto no es un diagnóstico.</p>
+      </fieldset>
+
+      <label class="field-group">
+        <span class="field-label">Comentario (opcional)</span>
+        <textarea id="closeComment" rows="3" placeholder="Ej. buena sesión, hoy el jalón se ha sentido más fácil"></textarea>
+      </label>
+
+      <button type="button" class="primary-btn primary-btn--block" id="btnSaveClose">Guardar y terminar</button>
+    </form>
+  </section>
+
+  <!-- VISTA: HISTORIAL -->
+  <section class="view" data-view="history" aria-labelledby="historyTitle">
+    <div class="view-header">
+      <button type="button" class="back-btn" data-nav="home" aria-label="Volver a Tu camino">←</button>
+      <h1 id="historyTitle" class="view-title">Historial</h1>
+    </div>
+
+    <div class="tabs tabs--small" role="tablist" aria-label="Vista del historial">
+      <button type="button" class="tab" id="tabHistoryFull" role="tab" aria-selected="true" aria-controls="panelHistoryFull">Con actividad</button>
+      <button type="button" class="tab" id="tabHistoryEmpty" role="tab" aria-selected="false" aria-controls="panelHistoryEmpty">Ejemplo: sin actividad</button>
+    </div>
+
+    <div id="panelHistoryFull" role="tabpanel" aria-labelledby="tabHistoryFull">
+      <div class="activity-list" id="historyList"></div>
+      <button type="button" class="chip-btn" id="btnViewProgress">Ver progreso de un ejercicio</button>
+    </div>
+
+    <div id="panelHistoryEmpty" role="tabpanel" aria-labelledby="tabHistoryEmpty" hidden>
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19h16M6 19V9m4 10V5m4 14v-7m4 7v-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <p>Todavía no hay sesiones registradas.</p>
+        <p class="muted small">Cuando termines tu primera sesión, aparecerá aquí.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<nav class="bottom-nav" aria-label="Navegación principal">
+  <button type="button" class="bottom-nav__btn" data-nav="home" aria-current="page">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11l8-7 8 7v9a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1v-9z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    <span>Inicio</span>
+  </button>
+  <button type="button" class="bottom-nav__btn" data-nav="plan">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M4 9h16M8 3v4m8-4v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span>Plan</span>
+  </button>
+  <button type="button" class="bottom-nav__btn" data-nav="session">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 8h2m0 0v8m0-8h8m-8 8h8m0-8h2m-2 0v8m2-8v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span>Sesión</span>
+  </button>
+  <button type="button" class="bottom-nav__btn" data-nav="history">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5l3 2M21 12a9 9 0 11-3-6.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span>Historial</span>
+  </button>
+</nav>
+
+<!-- MODAL: CAMBIO DE VARIANTE -->
+<div class="modal-overlay" id="variantModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="variantModalTitle">
+    <div class="modal__header">
+      <h2 id="variantModalTitle">Cambiar variante</h2>
+      <button type="button" class="icon-btn" id="btnCloseVariant" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal__body" id="variantModalBody"></div>
+  </div>
+</div>
+
+<!-- MODAL: GUÍA TÉCNICA -->
+<div class="modal-overlay" id="guideModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="guideModalTitle">
+    <div class="modal__header">
+      <h2 id="guideModalTitle">Guía técnica</h2>
+      <button type="button" class="icon-btn" id="btnCloseGuide" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal__body" id="guideModalBody"></div>
+  </div>
+</div>
+
+<!-- MODAL: PROGRESO DE EJERCICIO -->
+<div class="modal-overlay" id="progressModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="progressModalTitle">
+    <div class="modal__header">
+      <h2 id="progressModalTitle">Progreso: jalón al pecho</h2>
+      <button type="button" class="icon-btn" id="btnCloseProgress" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal__body" id="progressModalBody"></div>
+  </div>
+</div>
+
+<!-- MODAL: RECOLOCAR SESIÓN -->
+<div class="modal-overlay" id="rescheduleModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="rescheduleModalTitle">
+    <div class="modal__header">
+      <h2 id="rescheduleModalTitle">Recolocar sesión</h2>
+      <button type="button" class="icon-btn" id="btnCloseReschedule" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal__body" id="rescheduleModalBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
