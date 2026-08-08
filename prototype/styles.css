@@ -164,10 +164,15 @@ a.chip:active:not(:focus-visible) {
   font-size: 0.7rem;
   color: var(--ink-2);
   max-width: 140px;
-  min-height: 34px;
+  min-height: 44px; /* C3: 34px medía por debajo del objetivo táctil de 44px */
 }
 .sync-pill span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
+.sync-dot[data-state="sincronizado"] { background: var(--done); }
+.sync-dot[data-state="sincronizando"] { background: var(--cardio); }
+.sync-dot[data-state="conflicto"] { background: var(--warn); }
+.sync-dot[data-state="error"] { background: var(--accent); }
+.sync-dot[data-state="local"] { background: var(--ink-3); }
 
 .icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -476,29 +481,34 @@ a.chip:active:not(:focus-visible) {
 .log__item:last-child { border-bottom: none; }
 
 .log__bar { width: 3px; align-self: stretch; min-height: 34px; border-radius: 2px; background: var(--rule); flex-shrink: 0; }
-.log__bar--completed { background: var(--done); }
-.log__bar--adapted   { background: var(--accent); }
-.log__bar--partial   { background: var(--warn); }
-.log__bar--skipped   { background: var(--ink-3); }
+.log__bar--completada { background: var(--done); }
+.log__bar--adaptada  { background: var(--accent); }
+.log__bar--parcial   { background: var(--warn); }
+.log__bar--omitida   { background: var(--ink-3); }
+.log__bar--planificada { background: var(--cardio); }
+.log__bar--en_curso  { background: var(--accent); }
 
 .log__body { min-width: 0; flex: 1; }
 .log__title { font-weight: 700; font-size: 0.95rem; }
 .log__meta { color: var(--ink-3); font-size: 0.79rem; }
 
+/* Estados de sesión/registro: vocabulario único en todas las superficies
+   (nota 29 — la misma sesión no puede leerse distinto en dos sitios). */
 .state {
   font-size: 0.66rem; font-weight: 800;
   letter-spacing: 0.06em; text-transform: uppercase;
   padding: 4px 8px; border-radius: 4px;
   white-space: nowrap; flex-shrink: 0;
 }
-.state--completed { background: var(--done-wash); color: var(--done); }
-.state--adapted   { background: var(--accent-wash); color: var(--accent); }
-.state--partial   { background: var(--warn-wash); color: var(--warn); }
-.state--skipped   { background: var(--paper-2); color: var(--ink-2); }
-.state--planned   { background: var(--cardio-wash); color: var(--cardio); }
-.state--today     { background: var(--accent); color: var(--on-accent); }
+.state--completada { background: var(--done-wash); color: var(--done); }
+.state--adaptada    { background: var(--accent-wash); color: var(--accent); }
+.state--parcial     { background: var(--warn-wash); color: var(--warn); }
+.state--omitida     { background: var(--paper-2); color: var(--ink-2); }
+.state--planificada { background: var(--cardio-wash); color: var(--cardio); }
+.state--en_curso    { background: var(--accent); color: var(--on-accent); }
 .state--rest      { background: none; color: var(--ink-3); border: 1px dashed var(--rule); }
 .state--sim       { background: none; color: var(--ink-3); border: 1px dashed var(--rule); }
+.state--adapted { background: var(--accent-wash); color: var(--accent); } /* alias vistas antiguas */
 
 .achievement {
   display: flex; gap: 10px; align-items: flex-start;
@@ -540,6 +550,7 @@ a.chip:active:not(:focus-visible) {
   background: none; border: none;
   padding: 10px 0;
   min-height: 46px;
+  min-width: 44px; /* C3: etiquetas cortas ("Fases") medían menos de 44px de ancho */
   font-size: 0.86rem; font-weight: 700;
   color: var(--ink-3);
   border-bottom: 2px solid transparent;
@@ -744,7 +755,7 @@ a.chip:active:not(:focus-visible) {
   padding: 6px 11px;
   font-size: 0.72rem; font-weight: 700;
   color: var(--ink-3);
-  min-height: 38px;
+  min-height: 44px; /* C3b: 38px quedaba por debajo del objetivo tactil movil de 44px */
   white-space: nowrap;
   transition: background-color var(--dur-state) var(--ease-out), color var(--dur-state) var(--ease-out);
 }
@@ -901,6 +912,7 @@ a.chip:active:not(:focus-visible) {
   font-size: 0.85rem; font-weight: 700;
   color: var(--ink-2);
   min-height: 46px;
+  min-width: 44px; /* C3b: etiquetas muy cortas ("lb") median 42px de ancho */
   transition: background-color var(--dur-press) var(--ease-out),
               color var(--dur-press) var(--ease-out),
               border-color var(--dur-press) var(--ease-out);
@@ -1146,6 +1158,229 @@ textarea {
   from { transform: translate(-50%, 8px); opacity: 0; }
   to { transform: translate(-50%, 0); opacity: 1; }
 }
+
+/* =====================================================================
+   Estados transversales (App.states) — cargando / vacío / error
+   ===================================================================== */
+
+.state-block {
+  padding: 40px 12px;
+  text-align: center;
+  color: var(--ink-3);
+}
+.state-block__title { color: var(--ink); font-weight: 800; font-size: 1.05rem; margin-bottom: 6px; }
+.state-block--error .state-block__title { color: var(--warn); }
+.state-block__actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+
+/* =====================================================================
+   Campos de formulario (correo, contraseña, texto libre)
+   ===================================================================== */
+
+.field input[type="text"],
+.field input[type="email"],
+.field input[type="password"],
+.field input[type="number"] {
+  width: 100%;
+  background: var(--paper);
+  border: 1.5px solid var(--rule);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font: inherit; font-size: 0.95rem;
+  padding: 12px 14px;
+  min-height: 48px;
+}
+.field input[aria-invalid="true"] { border-color: var(--warn); }
+.field__error { color: var(--warn); font-size: 0.8rem; margin-top: 6px; }
+
+/* =====================================================================
+   Acceso y onboarding
+   ===================================================================== */
+
+.access { padding-top: 4px; }
+.access .field { margin-bottom: 16px; }
+.access form { margin-top: 18px; }
+
+/* =====================================================================
+   ZONA PARA LOTES SIGUIENTES — añadid vuestras secciones aquí, comentadas
+   y sin modificar las reglas de los lotes anteriores.
+   ===================================================================== */
+
+/* ---- LOTE 2: vista Plan (pestañas, gestión de planes) ------------------- */
+
+.tabpanel { margin-top: 4px; }
+
+/* Estados del ciclo de vida del PLAN (nota 22). Comparten el vocabulario
+   visual `.state` con los estados de sesión (nota 29); no colisionan porque
+   las claves son distintas (borrador/activo/pausado/finalizado/archivado
+   frente a planificada/en_curso/completada/adaptada/parcial/omitida). */
+.state--borrador  { background: none; color: var(--ink-2); border: 1px dashed var(--rule); }
+.state--activo    { background: var(--done-wash); color: var(--done); }
+.state--pausado   { background: var(--warn-wash); color: var(--warn); }
+.state--finalizado{ background: var(--cardio-wash); color: var(--cardio); }
+.state--archivado { background: none; color: var(--ink-3); border: 1px solid var(--rule); }
+
+.planlist { margin-top: 4px; }
+.planrow { padding: 14px 0; border-bottom: 1px solid var(--rule-soft); }
+.planrow:last-child { border-bottom: none; }
+.planrow__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.planrow__title { font-weight: 800; font-size: 1rem; letter-spacing: -0.015em; }
+.planrow__meta { color: var(--ink-3); font-size: 0.8rem; margin-top: 3px; }
+.planrow__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+.view-planbuilder .field { margin-bottom: 20px; }
+
+/* ---- LOTE 3: sesión de fuerza, check-in/molestias y recuperación -------- */
+
+.badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 16px; }
+
+/* Fila de ejercicio omitido: visible pero claramente marcada (nunca solo color) */
+.exrow.is-omitido { opacity: 0.7; }
+.exrow.is-omitido .exrow__name { text-decoration: line-through; }
+
+/* Error de validación asociado a un carril de serie (modo "editar todas") */
+.lane__error-row { padding: 0 0 8px; }
+.lane__error-row .field__error { margin: 0; }
+
+.view-exercise .exhead { margin-top: 4px; }
+.lanes-host { margin-top: 4px; }
+
+.view-recovery .cues { margin-top: 6px; }
+
+/* ---- LOTE 4: catálogo, ficha/guía, variantes y referencia de carga ------ */
+
+.field select {
+  width: 100%;
+  background: var(--paper);
+  border: 1.5px solid var(--rule);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font: inherit; font-size: 0.92rem;
+  padding: 12px 14px;
+  min-height: 48px;
+}
+
+.library-results { margin-top: 6px; }
+
+.catalog-list { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+
+.catalog-card {
+  padding: 14px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+}
+.catalog-card__top { display: flex; align-items: center; gap: 12px; }
+.catalog-card__thumb {
+  width: 44px; height: 44px; flex-shrink: 0;
+  border-radius: var(--r-sm);
+  background: var(--accent-wash);
+  color: var(--accent);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.catalog-card__body { min-width: 0; flex: 1; }
+.catalog-card__name { font-weight: 700; font-size: 0.95rem; }
+.catalog-card__meta { color: var(--ink-3); font-size: 0.78rem; margin-top: 2px; }
+
+.favbtn { flex-shrink: 0; font-size: 1.1rem; color: var(--warn); }
+
+.media-demand {
+  padding: 22px 12px;
+  text-align: center;
+  border: 1px dashed var(--rule);
+  border-radius: var(--r-md);
+  margin: 6px 0 14px;
+}
+.media-demand__placeholder { color: var(--ink-3); font-size: 0.85rem; margin-bottom: 10px; }
+
+.refblock { margin-top: 6px; padding: 14px; background: var(--paper-2); border-radius: var(--r-md); }
+.reffields { display: flex; gap: 10px; }
+.reffields .field { flex: 1; margin-bottom: 14px; }
+
+/* =====================================================================
+   LOTE 5: resistencia (objetivos, briefing, tramos) e importación
+   ===================================================================== */
+
+.objective-card {
+  padding: 14px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  margin-bottom: 12px;
+}
+.objective-card__name { font-weight: 700; font-size: 0.98rem; margin-bottom: 4px; }
+.objective-card__meta { color: var(--cardio); font-size: 0.82rem; margin-bottom: 6px; }
+
+.endurance-brief {
+  padding: 14px;
+  background: var(--paper-2);
+  border-radius: var(--r-md);
+  margin: 10px 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.endurance-brief__line { font-size: 0.9rem; }
+
+.endurance-continuous {
+  padding: 16px;
+  border: 1px dashed var(--rule);
+  border-radius: var(--r-md);
+  margin: 10px 0;
+}
+
+.endurance-controls { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+
+.segments { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+
+.segment {
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--paper);
+}
+.segment--en_curso { border-color: var(--accent); background: var(--accent-wash); }
+.segment--realizado { border-color: var(--done); }
+.segment--ajustado { border-color: var(--accent); }
+.segment--omitido { opacity: 0.6; }
+
+.segment__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.segment__name { font-weight: 700; font-size: 0.92rem; }
+.segment__meta { color: var(--ink-3); font-size: 0.8rem; margin-top: 4px; }
+.segment__actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+.import-filelist { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 16px; }
+.import-file {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--paper);
+}
+.import-file__name { font-weight: 700; font-size: 0.9rem; }
+.import-file__meta { color: var(--ink-3); font-size: 0.78rem; margin-top: 2px; }
+
+.import-analysis {
+  padding: 14px;
+  background: var(--paper-2);
+  border-radius: var(--r-md);
+  margin: 10px 0 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.import-analysis__row { font-size: 0.9rem; }
+
+/* ---- LOTE 6: historial (filtros/adherencia/métricas), perfil y compartir */
+
+.filter-block { margin: 6px 0 16px; }
+.filter-block .field__label { margin-top: 12px; }
+.filter-block .field__label:first-child { margin-top: 0; }
+
+.view-history .figures,
+.view-history .figures + .figures { margin-bottom: 10px; }
+
+.view-profile .refblock,
+.view-share .refblock { margin-bottom: 18px; }
+.view-profile .refblock .btn,
+.view-share .refblock .btn { margin-top: 10px; }
+.view-profile .refblock .picker,
+.view-profile .refblock .field { margin-bottom: 12px; }
 
 /* =====================================================================
    Escritorio / pantallas grandes
