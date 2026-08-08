@@ -1,61 +1,97 @@
 /*
  * Trainer — prototipo navegable (datos ficticios, todo en memoria).
  * Sin backend, sin fetch, sin módulos ES: script clásico para que funcione con file://.
- * ponytail: motor de reglas de adaptación deliberadamente simple (if/else), no es
- * el motor determinista real descrito en MVP-DEFINITION.md; sustituir si se valida por un profesional.
+ *
+ * Modelo: una sesión es UN objeto con un día de programación (`day`). Recolocar
+ * cambia ese día; nunca se copia la sesión a otro día. Los días del calendario
+ * (DAYS) son solo la rejilla temporal.
+ *
+ * ponytail: el motor de adaptación es deliberadamente simple (if/else), no es el
+ * motor determinista descrito en MVP-DEFINITION.md; debe validarlo un profesional.
  */
 (function () {
   "use strict";
 
-  /* ---------------------------------------------------------------------
+  /* =====================================================================
    * Datos ficticios
-   * ------------------------------------------------------------------- */
+   * ================================================================== */
 
-  var WEEK = [
-    { key: "lun", day: "Lunes", short: "Lun", title: "Push", type: "fuerza", status: "completada", duration: 52, detail: "Press banca, press militar, fondos en máquina, elevaciones laterales." },
-    { key: "mar", day: "Martes", short: "Mar", title: "Carrera suave", type: "cardio", status: "completada", duration: 30, detail: "30 min a ritmo cómodo, recuperación activa tras Push." },
-    { key: "mie", day: "Miércoles", short: "Mié", title: "Pull", type: "fuerza", status: "hoy", duration: null, detail: "Jalón al pecho, remo sentado, face pull, pullover en polea, curl de bíceps." },
-    { key: "jue", day: "Jueves", short: "Jue", title: "Descanso", type: "descanso", status: "libre", duration: null, detail: "Día libre." },
-    { key: "vie", day: "Viernes", short: "Vie", title: "Legs", type: "fuerza", status: "planificada", duration: null, detail: "Sentadilla, prensa, curl femoral, elevación de gemelo." },
-    { key: "sab", day: "Sábado", short: "Sáb", title: "Descanso", type: "descanso", status: "libre", duration: null, detail: "Día libre." },
-    { key: "dom", day: "Domingo", short: "Dom", title: "Carrera larga", type: "cardio", status: "planificada", duration: null, detail: "70-80 min a ritmo constante.", intense: true }
+  var DAYS = [
+    { key: "lun", name: "Lunes",     short: "Lun", initial: "L" },
+    { key: "mar", name: "Martes",    short: "Mar", initial: "M" },
+    { key: "mie", name: "Miércoles", short: "Mié", initial: "X" },
+    { key: "jue", name: "Jueves",    short: "Jue", initial: "J" },
+    { key: "vie", name: "Viernes",   short: "Vie", initial: "V" },
+    { key: "sab", name: "Sábado",    short: "Sáb", initial: "S" },
+    { key: "dom", name: "Domingo",   short: "Dom", initial: "D" }
+  ];
+
+  // Una entrada = una sesión activa. `day` es su día de programación actual.
+  var SESSIONS = [
+    {
+      id: "push", title: "Push", type: "fuerza", day: "lun",
+      status: "completada", duration: 52,
+      why: "Empuje de pecho, hombro y tríceps.",
+      detail: "Press banca, press militar, fondos en máquina, elevaciones laterales."
+    },
+    {
+      id: "run-easy", title: "Carrera suave", type: "cardio", day: "mar",
+      status: "completada", duration: 30,
+      why: "Recuperación activa tras el empuje del lunes.",
+      detail: "30 min a ritmo cómodo."
+    },
+    {
+      id: "pull", title: "Pull", type: "fuerza", day: "mie",
+      status: "hoy", duration: null, interactive: true,
+      why: "Tirón de espalda y bíceps. Es tu segunda sesión de fuerza de la semana y toca subir volumen de dorsal.",
+      detail: "Jalón al pecho, remo sentado, face pull, pullover en polea, curl de bíceps."
+    },
+    {
+      id: "legs", title: "Legs", type: "fuerza", day: "vie",
+      status: "planificada", duration: null,
+      why: "Tren inferior completo.",
+      detail: "Sentadilla, prensa, curl femoral, elevación de gemelo."
+    },
+    {
+      id: "run-long", title: "Carrera larga", type: "cardio", day: "dom",
+      status: "planificada", duration: null, intense: true,
+      why: "Base aeróbica de la semana.",
+      detail: "70-80 min a ritmo constante."
+    }
   ];
 
   var PHASES = [
-    { name: "Adaptación", weeks: "Semanas 1-2", status: "done" },
-    { name: "Progresión · hipertrofia", weeks: "Semanas 3-6 (estás aquí)", status: "current" },
-    { name: "Descarga", weeks: "Semana 7", status: "pending" },
-    { name: "Mantenimiento", weeks: "Semana 8", status: "pending" }
+    { name: "Adaptación",               weeks: "Semanas 1-2", span: 2, status: "done" },
+    { name: "Progresión · hipertrofia", weeks: "Semanas 3-6", span: 4, status: "current" },
+    { name: "Descarga",                 weeks: "Semana 7",    span: 1, status: "pending" },
+    { name: "Mantenimiento",            weeks: "Semana 8",    span: 1, status: "pending" }
   ];
 
   var HISTORY = [
-    { title: "Push", meta: "Lunes · 52 min", status: "completed" },
-    { title: "Carrera suave", meta: "Martes · 30 min", status: "completed" },
-    { title: "Pull", meta: "Semana pasada · completada", status: "completed" },
-    { title: "Legs", meta: "Semana pasada · adaptada por fatiga", status: "adapted" },
-    { title: "Carrera larga", meta: "Hace 2 semanas · omitida y recolocada al lunes", status: "skipped" }
+    { title: "Push",          meta: "Lunes · 52 min · 4 de 4 ejercicios",          status: "completed" },
+    { title: "Carrera suave", meta: "Martes · 30 min",                              status: "completed" },
+    { title: "Pull",          meta: "Semana pasada · 48 min · 5 de 5 ejercicios",   status: "completed" },
+    { title: "Legs",          meta: "Semana pasada · adaptada por fatiga",          status: "adapted" },
+    { title: "Push",          meta: "Hace 2 semanas · parcial, 2 de 4 ejercicios",  status: "partial" },
+    { title: "Carrera larga", meta: "Hace 2 semanas · omitida y recolocada",        status: "skipped" }
   ];
+
+  var ADHERENCE = [true, true, false, true, true, false];
 
   var EXERCISES = [
     {
-      id: "jalon",
-      nombre: "Jalón al pecho",
-      variante: "Polea (agarre ancho)",
-      patron: "Tracción vertical",
-      icon: "pull",
-      objetivo: "3 series × 10-12 reps",
-      ultimoTexto: "Último resultado: 52.5 kg × 11 reps",
-      restSeconds: 90,
+      id: "jalon", nombre: "Jalón al pecho", variante: "Polea (agarre ancho)",
+      patron: "Tracción vertical", icon: "pull",
+      objetivo: "3 × 10-12 reps", ultimoTexto: "52.5 kg × 11 reps",
+      restSeconds: 90, difficulty: null, included: true,
       sets: [
         { peso: 52.5, reps: 11, estado: "pendiente" },
         { peso: 52.5, reps: 10, estado: "pendiente" },
         { peso: 50, reps: 12, estado: "pendiente" }
       ],
-      difficulty: null,
-      included: true,
       variantes: {
-        favoritas: [{ nombre: "Polea (agarre ancho)", meta: "Tu variante habitual · última vez 52.5 kg × 11" }],
-        recientes: [{ nombre: "Agarre supino (polea)", meta: "Usada hace 2 semanas · 47.5 kg × 10" }],
+        favoritas: [{ nombre: "Polea (agarre ancho)", meta: "Tu variante habitual · 52.5 kg × 11" }],
+        recientes: [{ nombre: "Agarre supino (polea)", meta: "Hace 2 semanas · 47.5 kg × 10" }],
         mismoPatron: [
           { nombre: "Dominada asistida", meta: "Mismo patrón: tracción vertical" },
           { nombre: "Jalón a una mano (polea)", meta: "Mismo patrón: tracción vertical" }
@@ -74,24 +110,18 @@
       video: "https://www.youtube.com/results?search_query=jalon+al+pecho+tecnica"
     },
     {
-      id: "remo",
-      nombre: "Remo sentado",
-      variante: "Máquina",
-      patron: "Tracción horizontal",
-      icon: "row",
-      objetivo: "3 series × 10-12 reps",
-      ultimoTexto: "Último resultado: 45 kg × 12 reps",
-      restSeconds: 90,
+      id: "remo", nombre: "Remo sentado", variante: "Máquina",
+      patron: "Tracción horizontal", icon: "row",
+      objetivo: "3 × 10-12 reps", ultimoTexto: "45 kg × 12 reps",
+      restSeconds: 90, difficulty: null, included: true,
       sets: [
         { peso: 45, reps: 12, estado: "pendiente" },
         { peso: 45, reps: 11, estado: "pendiente" },
         { peso: 42.5, reps: 12, estado: "pendiente" }
       ],
-      difficulty: null,
-      included: true,
       variantes: {
-        favoritas: [{ nombre: "Máquina", meta: "Tu variante habitual · última vez 45 kg × 12" }],
-        recientes: [{ nombre: "Remo con cable (agarre neutro)", meta: "Usada hace 3 semanas · 40 kg × 10" }],
+        favoritas: [{ nombre: "Máquina", meta: "Tu variante habitual · 45 kg × 12" }],
+        recientes: [{ nombre: "Remo con cable (agarre neutro)", meta: "Hace 3 semanas · 40 kg × 10" }],
         mismoPatron: [{ nombre: "Remo en punta T", meta: "Mismo patrón: tracción horizontal" }],
         catalogo: [{ nombre: "Remo invertido en barra", meta: "Catálogo general" }]
       },
@@ -107,24 +137,18 @@
       video: "https://www.youtube.com/results?search_query=remo+sentado+en+maquina+tecnica"
     },
     {
-      id: "facepull",
-      nombre: "Face pull",
-      variante: "Polea con cuerda",
-      patron: "Rotación externa / deltoide posterior",
-      icon: "facepull",
-      objetivo: "3 series × 15 reps",
-      ultimoTexto: "Último resultado: 17.5 kg × 15 reps",
-      restSeconds: 60,
+      id: "facepull", nombre: "Face pull", variante: "Polea con cuerda",
+      patron: "Rotación externa / deltoide posterior", icon: "facepull",
+      objetivo: "3 × 15 reps", ultimoTexto: "17.5 kg × 15 reps",
+      restSeconds: 60, difficulty: null, included: true,
       sets: [
         { peso: 17.5, reps: 15, estado: "pendiente" },
         { peso: 17.5, reps: 15, estado: "pendiente" },
         { peso: 15, reps: 15, estado: "pendiente" }
       ],
-      difficulty: null,
-      included: true,
       variantes: {
         favoritas: [],
-        recientes: [{ nombre: "Face pull con banda elástica", meta: "Usada hace 1 mes · más suave para el hombro" }],
+        recientes: [{ nombre: "Face pull con banda elástica", meta: "Hace 1 mes · más suave para el hombro" }],
         mismoPatron: [{ nombre: "Pájaros con mancuerna", meta: "Mismo grupo: deltoide posterior" }],
         catalogo: [{ nombre: "Rotación externa con banda", meta: "Catálogo general" }]
       },
@@ -140,21 +164,15 @@
       video: "https://www.youtube.com/results?search_query=face+pull+tecnica"
     },
     {
-      id: "pullover",
-      nombre: "Pullover en polea",
-      variante: "Polea alta",
-      patron: "Aducción de hombro / dorsal",
-      icon: "pullover",
-      objetivo: "3 series × 12-15 reps",
-      ultimoTexto: "Último resultado: 25 kg × 14 reps",
-      restSeconds: 75,
+      id: "pullover", nombre: "Pullover en polea", variante: "Polea alta",
+      patron: "Aducción de hombro / dorsal", icon: "pullover",
+      objetivo: "3 × 12-15 reps", ultimoTexto: "25 kg × 14 reps",
+      restSeconds: 75, difficulty: null, included: true,
       sets: [
         { peso: 25, reps: 14, estado: "pendiente" },
         { peso: 25, reps: 13, estado: "pendiente" },
         { peso: 22.5, reps: 15, estado: "pendiente" }
       ],
-      difficulty: null,
-      included: true,
       variantes: {
         favoritas: [],
         recientes: [],
@@ -173,24 +191,18 @@
       video: "https://www.youtube.com/results?search_query=pullover+en+polea+tecnica"
     },
     {
-      id: "curl",
-      nombre: "Curl de bíceps",
-      variante: "Barra Z",
-      patron: "Flexión de codo",
-      icon: "curl",
-      objetivo: "3 series × 10-12 reps",
-      ultimoTexto: "Último resultado: 27.5 kg × 10 reps",
-      restSeconds: 60,
+      id: "curl", nombre: "Curl de bíceps", variante: "Barra Z",
+      patron: "Flexión de codo", icon: "curl",
+      objetivo: "3 × 10-12 reps", ultimoTexto: "27.5 kg × 10 reps",
+      restSeconds: 60, difficulty: null, included: true,
       sets: [
         { peso: 27.5, reps: 10, estado: "pendiente" },
         { peso: 27.5, reps: 10, estado: "pendiente" },
         { peso: 25, reps: 11, estado: "pendiente" }
       ],
-      difficulty: null,
-      included: true,
       variantes: {
         favoritas: [],
-        recientes: [{ nombre: "Curl con mancuernas alterno", meta: "Usada hace 2 semanas · 14 kg × 11" }],
+        recientes: [{ nombre: "Curl con mancuernas alterno", meta: "Hace 2 semanas · 14 kg × 11" }],
         mismoPatron: [{ nombre: "Curl en polea con cuerda", meta: "Mismo patrón: flexión de codo" }],
         catalogo: [{ nombre: "Curl en banco Scott", meta: "Catálogo general" }]
       },
@@ -214,51 +226,56 @@
   ];
 
   var PROGRESS_EXAMPLE = [
-    { fecha: "Hoy", valor: "52.5 kg × 11 reps" },
-    { fecha: "Hace 1 semana", valor: "50 kg × 12 reps" },
+    { fecha: "Hoy",            valor: "52.5 kg × 11 reps" },
+    { fecha: "Hace 1 semana",  valor: "50 kg × 12 reps" },
     { fecha: "Hace 2 semanas", valor: "50 kg × 10 reps" },
     { fecha: "Hace 3 semanas", valor: "47.5 kg × 11 reps" },
     { fecha: "Hace 4 semanas", valor: "47.5 kg × 9 reps" }
   ];
 
-  /* ---------------------------------------------------------------------
-   * Estado de la sesión / check-in / UI
-   * ------------------------------------------------------------------- */
+  // Duración de referencia de la sesión Pull completa (dato ficticio).
+  var FULL_SESSION_MINUTES = 48;
+
+  /* =====================================================================
+   * Estado de UI
+   * ================================================================== */
 
   var session = {
-    state: "prevista", // prevista | adaptada
+    state: "prevista",      // prevista | adaptada
     exerciseMode: "confirm" // confirm | editAll
   };
 
   var checkinState = {
-    energia: null,
-    motivacion: null,
-    tiempo: null,
-    molestias: null,
-    zona: null,
-    lado: null,
-    intensidadZona: null,
-    tipoMolestia: null
+    energia: null, motivacion: null, tiempo: null, molestias: null,
+    zona: null, lado: null, zonaTexto: null, intensidadZona: null, tipoMolestia: null
   };
 
   var currentExerciseId = null;
   var restTimerHandle = null;
   var restTimerRemaining = 0;
+  var restAnchorIndex = null; // tras qué serie se dibuja el carril de descanso
   var pendingAdaptation = null;
-  var rescheduleTarget = null; // key of the day being rescheduled
+  var closeMode = "completa"; // completa | parcial
 
-  /* ---------------------------------------------------------------------
+  /* =====================================================================
    * Utilidades
-   * ------------------------------------------------------------------- */
+   * ================================================================== */
 
   function $(id) { return document.getElementById(id); }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null) node.textContent = text;
+    return node;
+  }
 
   function showToast(message) {
     var toast = $("toast");
     toast.textContent = message;
     toast.hidden = false;
     window.clearTimeout(showToast._t);
-    showToast._t = window.setTimeout(function () { toast.hidden = true; }, 2600);
+    showToast._t = window.setTimeout(function () { toast.hidden = true; }, 2800);
   }
 
   function findExercise(id) {
@@ -268,35 +285,64 @@
     return null;
   }
 
-  function findDay(key) {
-    for (var i = 0; i < WEEK.length; i++) {
-      if (WEEK[i].key === key) return WEEK[i];
+  function findSession(id) {
+    for (var i = 0; i < SESSIONS.length; i++) {
+      if (SESSIONS[i].id === id) return SESSIONS[i];
     }
     return null;
   }
 
-  function iconMarkup(kind) {
+  function sessionOnDay(dayKey) {
+    for (var i = 0; i < SESSIONS.length; i++) {
+      if (SESSIONS[i].day === dayKey) return SESSIONS[i];
+    }
+    return null;
+  }
+
+  function ghostOnDay(dayKey) {
+    // Rastro visual de una sesión que se movió desde este día. No es sesión activa.
+    for (var i = 0; i < SESSIONS.length; i++) {
+      if (SESSIONS[i].movedFrom === dayKey) return SESSIONS[i];
+    }
+    return null;
+  }
+
+  function dayByKey(key) {
+    for (var i = 0; i < DAYS.length; i++) {
+      if (DAYS[i].key === key) return DAYS[i];
+    }
+    return null;
+  }
+
+  function icon(kind) {
     var icons = {
       pull: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M6 21h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
       row: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 12h6m0 0l3-3m-3 3l3 3M21 12h-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
       facepull: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="7" r="2.4" stroke="currentColor" stroke-width="1.6"/><path d="M6 20c1-4 3-6 6-6s5 2 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
       pullover: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 8c3 6 13 6 16 0M6 16c2-2 10-2 12 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
-      curl: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 18l4-9 5 3 5-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-      recovery: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 21c-4-3-8-6-8-10a4 4 0 018-1 4 4 0 018 1c0 4-4 7-8 10z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>'
+      curl: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 18l4-9 5 3 5-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     };
     return icons[kind] || icons.pull;
   }
 
-  /* ---------------------------------------------------------------------
-   * Navegación entre vistas (sin recarga)
-   * ------------------------------------------------------------------- */
+  var STATE_LABEL = {
+    completed: "Completada",
+    adapted: "Adaptada",
+    partial: "Parcial",
+    skipped: "Omitida",
+    planned: "Planificada"
+  };
+
+  /* =====================================================================
+   * Navegación
+   * ================================================================== */
 
   function showView(name) {
     var views = document.querySelectorAll(".view");
     for (var i = 0; i < views.length; i++) {
       views[i].classList.toggle("is-active", views[i].getAttribute("data-view") === name);
     }
-    var navBtns = document.querySelectorAll(".bottom-nav__btn");
+    var navBtns = document.querySelectorAll(".bottomnav__btn");
     var topLevel = ["home", "plan", "session", "history"].indexOf(name) >= 0 ? name : null;
     for (var j = 0; j < navBtns.length; j++) {
       if (topLevel && navBtns[j].getAttribute("data-nav") === topLevel) {
@@ -322,282 +368,436 @@
     }
   }
 
-  /* ---------------------------------------------------------------------
-   * Home — "Tu camino"
-   * ------------------------------------------------------------------- */
+  /* =====================================================================
+   * Estado de la sesión de fuerza
+   * ================================================================== */
+
+  function sessionStats() {
+    var active = EXERCISES.filter(function (ex) { return ex.included; });
+    var setsTotal = 0, setsDone = 0, exDone = 0;
+    active.forEach(function (ex) {
+      var done = 0;
+      ex.sets.forEach(function (s) { if (s.estado === "hecha") done++; });
+      setsTotal += ex.sets.length;
+      setsDone += done;
+      if (ex.sets.length > 0 && done === ex.sets.length) exDone++;
+    });
+    return { exTotal: active.length, exDone: exDone, setsTotal: setsTotal, setsDone: setsDone };
+  }
+
+  /* =====================================================================
+   * INICIO
+   * ================================================================== */
 
   function renderHome() {
-    var sessionsPlanned = WEEK.filter(function (d) { return d.type !== "descanso"; }).length;
-    var sessionsDone = WEEK.filter(function (d) { return d.status === "completada"; }).length;
-    var minutes = WEEK.reduce(function (sum, d) { return sum + (d.duration || 0); }, 0);
+    renderToday();
+    renderWeekRail();
 
-    $("weekDone").textContent = sessionsDone;
-    $("weekTotal").textContent = sessionsPlanned;
+    var done = SESSIONS.filter(function (s) {
+      return s.status === "completada" || s.status === "adaptada";
+    }).length;
+    var minutes = SESSIONS.reduce(function (sum, s) { return sum + (s.duration || 0); }, 0);
+
+    $("weekDone").textContent = done;
+    $("weekTotal").textContent = SESSIONS.length;
     $("weekMinutes").textContent = minutes;
 
     var list = $("recentActivity");
     list.innerHTML = "";
-    HISTORY.slice(0, 3).forEach(function (item) {
-      list.appendChild(buildActivityItem(item));
-    });
+    HISTORY.slice(0, 3).forEach(function (item) { list.appendChild(buildLogItem(item)); });
   }
 
-  function badgeForStatus(status) {
-    var map = {
-      completed: { cls: "badge--completed", text: "Completada" },
-      adapted: { cls: "badge--adapted", text: "Adaptada" },
-      skipped: { cls: "badge--skipped", text: "Omitida y recolocada" },
-      planned: { cls: "badge--planned", text: "Planificada" }
-    };
-    return map[status] || map.planned;
-  }
+  function renderToday() {
+    var pull = findSession("pull");
+    var block = $("todayBlock");
+    var stats = sessionStats();
+    block.innerHTML = "";
+    block.className = "today";
 
-  function buildActivityItem(item) {
-    var el = document.createElement("div");
-    el.className = "activity-item";
-    var b = badgeForStatus(item.status);
-    el.innerHTML =
-      '<div><p class="activity-item__title">' + item.title + '</p>' +
-      '<p class="activity-item__meta">' + item.meta + "</p></div>" +
-      '<span class="badge ' + b.cls + '">' + b.text + "</span>";
-    return el;
-  }
+    var eyebrow = el("p", "today__eyebrow");
+    var title = el("h2", "today__title", pull.title);
+    title.id = "todayTitle";
 
-  /* ---------------------------------------------------------------------
-   * Plan semanal + fases
-   * ------------------------------------------------------------------- */
+    if (pull.status === "completada" || pull.status === "adaptada" || pull.status === "parcial") {
+      block.classList.add("today--done");
+      eyebrow.textContent = pull.status === "completada" ? "Hoy · sesión completada"
+        : pull.status === "adaptada" ? "Hoy · versión adaptada terminada"
+        : "Hoy · sesión parcial";
+      block.appendChild(eyebrow);
+      block.appendChild(title);
+      block.appendChild(el("p", "today__why",
+        pull.status === "parcial"
+          ? "Guardada como parcial: " + stats.exDone + " de " + stats.exTotal + " ejercicios y " +
+            stats.setsDone + " de " + stats.setsTotal + " series. No cuenta como completada."
+          : "Sesión registrada: " + (pull.duration || 0) + " min activos, " +
+            stats.setsDone + " de " + stats.setsTotal + " series."));
 
-  function renderPlan() {
-    var weekList = $("weekList");
-    weekList.innerHTML = "";
-    WEEK.forEach(function (day) {
-      weekList.appendChild(buildDayCard(day));
-    });
-
-    var timeline = $("phaseTimeline");
-    timeline.innerHTML = "";
-    PHASES.forEach(function (phase) {
-      var li = document.createElement("li");
-      li.className = "phase-item" + (phase.status === "current" ? " phase-item--current" : "") + (phase.status === "done" ? " phase-item--done" : "");
-      li.innerHTML = '<p class="phase-item__title">' + phase.name + '</p><p class="phase-item__meta">' + phase.weeks + "</p>";
-      timeline.appendChild(li);
-    });
-
-    $("planWarning").hidden = true;
-  }
-
-  function dayStatusLabel(day) {
-    if (day.status === "completada") return { text: "Completada", cls: "badge--completed" };
-    if (day.status === "hoy") return { text: "Hoy", cls: "badge--planned" };
-    if (day.status === "planificada") return { text: "Planificada", cls: "badge--planned" };
-    if (day.status === "omitida") return { text: "Omitida", cls: "badge--skipped" };
-    if (day.status === "recolocada") return { text: "Recolocada", cls: "badge--skipped" };
-    return { text: "Libre", cls: "badge--sim" };
-  }
-
-  function buildDayCard(day) {
-    var card = document.createElement("div");
-    card.className = "day-card" + (day.status === "hoy" ? " day-card--today" : "");
-    var label = dayStatusLabel(day);
-
-    var metaText = day.detail;
-    if (day.duration) metaText = day.duration + " min · " + day.detail;
-    if (day.status === "recolocada" && day.movedTo) metaText = "Recolocada al " + day.movedTo + ". " + day.detail;
-    if (day.status === "omitida") metaText = "Omitida esta semana. " + day.detail;
-
-    var html =
-      '<div class="day-card__top">' +
-      '<div><p class="day-card__day">' + day.day + '</p>' +
-      '<p class="day-card__title">' + day.title + '</p>' +
-      '<p class="day-card__meta">' + metaText + "</p></div>" +
-      '<span class="badge ' + label.cls + '">' + label.text + "</span>" +
-      "</div>";
-
-    card.innerHTML = html;
-
-    var actions = document.createElement("div");
-    actions.className = "day-card__actions";
-
-    if (day.type !== "descanso") {
-      var openBtn = document.createElement("button");
-      openBtn.type = "button";
-      openBtn.className = "chip-btn";
-      openBtn.textContent = day.status === "hoy" && day.title === "Pull" ? "Abrir sesión" : "Ver detalle";
-      openBtn.addEventListener("click", function () {
-        if (day.status === "hoy" && day.title === "Pull") {
-          showView("session");
-        } else {
-          openDaySummary(day);
-        }
-      });
-      actions.appendChild(openBtn);
-
-      if (day.status === "planificada") {
-        var skipBtn = document.createElement("button");
-        skipBtn.type = "button";
-        skipBtn.className = "chip-btn";
-        skipBtn.textContent = "Omitir";
-        skipBtn.addEventListener("click", function () {
-          day.status = "omitida";
-          renderPlan();
-          showToast(day.title + " marcada como omitida.");
-        });
-        actions.appendChild(skipBtn);
-
-        var moveBtn = document.createElement("button");
-        moveBtn.type = "button";
-        moveBtn.className = "chip-btn";
-        moveBtn.textContent = "Recolocar";
-        moveBtn.addEventListener("click", function () { openRescheduleModal(day); });
-        actions.appendChild(moveBtn);
-      }
+      var altsDone = el("div", "today__alts");
+      altsDone.appendChild(buildAlt("recovery", "Recuperación · movilidad suave", "10–15 min, sin carga", openRecovery));
+      block.appendChild(altsDone);
+      return;
     }
 
-    card.appendChild(actions);
-    return card;
+    var adapted = session.state === "adaptada";
+    eyebrow.textContent = "Hoy · fuerza";
+    if (adapted) eyebrow.appendChild(el("span", "state state--adapted", "Adaptada"));
+    block.appendChild(eyebrow);
+    block.appendChild(title);
+    block.appendChild(el("p", "today__why", pull.why));
+
+    var facts = el("ul", "today__facts");
+    facts.appendChild(buildFact(stats.exTotal, "ejercicios"));
+    facts.appendChild(buildFact(stats.setsTotal, "series"));
+    facts.appendChild(buildFact("~" + (adapted ? 40 : FULL_SESSION_MINUTES), "min"));
+    block.appendChild(facts);
+
+    var start = el("button", "btn btn--primary btn--block",
+      stats.setsDone > 0 ? "Continuar sesión" : "Empezar sesión");
+    start.type = "button";
+    start.style.marginTop = "0";
+    start.addEventListener("click", function () { showView("session"); });
+    block.appendChild(start);
+
+    var alts = el("div", "today__alts");
+    alts.appendChild(buildAlt("adapt", "Ajustar a cómo llego hoy", "Check-in de 20 s · propone y confirmas", function () { showView("checkin"); }));
+    alts.appendChild(buildAlt("recovery", "Cambiar a recuperación", "Movilidad suave, 10–15 min", openRecovery));
+    block.appendChild(alts);
   }
 
-  function openDaySummary(day) {
-    $("daySummaryTitle").textContent = day.title;
-    var label = dayStatusLabel(day);
+  function buildFact(value, unit) {
+    var li = document.createElement("li");
+    li.appendChild(el("b", null, String(value)));
+    li.appendChild(el("span", null, unit));
+    return li;
+  }
+
+  function buildAlt(kind, title, meta, onClick) {
+    var btn = el("button", "alt alt--" + kind);
+    btn.type = "button";
+    btn.appendChild(el("span", "alt__mark"));
+    var body = el("span", "alt__body");
+    body.appendChild(el("span", "alt__title", title));
+    body.appendChild(el("span", "alt__meta", meta));
+    btn.appendChild(body);
+    var arrow = el("span", "alt__arrow", "→");
+    arrow.setAttribute("aria-hidden", "true");
+    btn.appendChild(arrow);
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
+
+  function renderWeekRail() {
+    var rail = $("weekRail");
+    rail.innerHTML = "";
+
+    DAYS.forEach(function (day) {
+      var s = sessionOnDay(day.key);
+      var ghost = s ? null : ghostOnDay(day.key);
+
+      var li = el("li", "weekrail__day");
+      var name = el("span", "weekrail__name");
+      var described;
+
+      if (s) {
+        if (s.type === "cardio") li.classList.add("is-cardio");
+        name.textContent = s.title;
+        if (s.status === "completada") { li.classList.add("is-done"); described = s.title + ", completada"; }
+        else if (s.status === "adaptada") { li.classList.add("is-done"); described = s.title + ", adaptada y terminada"; }
+        else if (s.status === "hoy") { li.classList.add("is-today"); described = s.title + ", hoy"; }
+        else if (s.status === "omitida") { li.classList.add("is-skipped"); described = s.title + ", omitida"; }
+        else if (s.status === "parcial") { li.classList.add("is-skipped"); described = s.title + ", parcial"; }
+        else { li.classList.add("is-planned"); described = s.title + ", planificada"; }
+        if (s.movedFrom) described += ", recolocada aquí";
+      } else if (ghost) {
+        li.classList.add("is-moved");
+        name.textContent = "movida";
+        described = ghost.title + " se movió de este día";
+      } else {
+        li.classList.add("is-rest");
+        name.textContent = "descanso";
+        described = "descanso";
+      }
+
+      li.setAttribute("aria-label", day.name + ": " + described);
+      li.appendChild(el("span", "weekrail__label", day.initial));
+      li.appendChild(el("span", "weekrail__mark"));
+      li.appendChild(name);
+      rail.appendChild(li);
+    });
+
+    $("railLegend").textContent =
+      "Relleno: completada · anillo naranja: hoy · anillo hueco: planificada · trazo discontinuo: día del que se movió una sesión · punto: descanso.";
+  }
+
+  function buildLogItem(item) {
+    var li = el("li", "log__item");
+    li.appendChild(el("span", "log__bar log__bar--" + item.status));
+    var body = el("div", "log__body");
+    body.appendChild(el("p", "log__title", item.title));
+    body.appendChild(el("p", "log__meta", item.meta));
+    li.appendChild(body);
+    li.appendChild(el("span", "state state--" + item.status, STATE_LABEL[item.status] || item.status));
+    return li;
+  }
+
+  function openRecovery() {
+    $("daySummaryTitle").textContent = "Recuperación";
     var card = $("daySummaryCard");
-    card.innerHTML =
-      '<span class="badge ' + label.cls + '">' + label.text + "</span>" +
-      '<p class="stat-big" style="margin-top:10px">' + day.title + "</p>" +
-      '<p class="muted">' + day.day + (day.duration ? " · " + day.duration + " min" : "") + "</p>" +
-      '<p style="margin-top:12px">' + day.detail + "</p>" +
-      '<p class="muted small" style="margin-top:14px">Vista de solo lectura en este prototipo. Solo la sesión Pull de hoy es completamente interactiva.</p>';
+    card.innerHTML = "";
+    card.appendChild(el("span", "state state--rest", "Opcional"));
+    card.appendChild(el("p", "view-title", "Movilidad suave"));
+    card.appendChild(el("p", "lede", "10–15 min · sin carga"));
+    card.appendChild(el("p", "lede small", "Movilidad de hombro, cadera y tobillo, respiración y estiramientos suaves. Pensada para días de baja energía o como complemento tras una sesión exigente."));
+    card.appendChild(el("p", "lede small", "Contenido de ejemplo en este prototipo; no incluye vídeo guiado real."));
     showView("daySummary");
   }
 
-  function openRescheduleModal(day) {
-    rescheduleTarget = day.key;
-    var freeDays = WEEK.filter(function (d) { return d.type === "descanso"; });
-    var body = $("rescheduleModalBody");
-    body.innerHTML = '<p class="muted">Elige un día libre para mover <strong>' + day.title + "</strong>.</p>";
+  /* =====================================================================
+   * PLAN
+   * ================================================================== */
 
-    var list = document.createElement("div");
-    list.className = "activity-list";
-    freeDays.forEach(function (freeDay) {
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "variant-option";
-      btn.innerHTML = '<span class="variant-option__name">' + freeDay.day + "</span><span class=\"variant-option__meta\">Día libre</span>";
-      btn.addEventListener("click", function () { confirmReschedule(day, freeDay); });
-      list.appendChild(btn);
+  function renderPlan() {
+    var list = $("weekList");
+    list.innerHTML = "";
+    DAYS.forEach(function (day) { list.appendChild(buildDayRow(day)); });
+    renderPhases();
+  }
+
+  function buildDayRow(day) {
+    var s = sessionOnDay(day.key);
+    var ghost = s ? null : ghostOnDay(day.key);
+    var li = el("li", "dayrow");
+
+    var top = el("div", "dayrow__top");
+    var head = document.createElement("div");
+    head.appendChild(el("p", "dayrow__day", day.name));
+    top.appendChild(head);
+
+    if (s) {
+      li.classList.add("dayrow--" + s.status);
+      if (s.type === "cardio") li.classList.add("dayrow--cardio");
+
+      head.appendChild(el("p", "dayrow__title", s.title));
+      var meta = s.detail;
+      if (s.duration) meta = s.duration + " min · " + s.detail;
+      if (s.movedFrom) meta = "Recolocada desde " + dayByKey(s.movedFrom).name.toLowerCase() + ". " + meta;
+      head.appendChild(el("p", "dayrow__meta", meta));
+
+      var stateKey = s.status === "completada" ? "completed"
+        : s.status === "adaptada" ? "adapted"
+        : s.status === "hoy" ? "today"
+        : s.status === "omitida" ? "skipped"
+        : s.status === "parcial" ? "partial"
+        : "planned";
+      top.appendChild(el("span", "state state--" + stateKey,
+        s.status === "hoy" ? "Hoy" : (STATE_LABEL[stateKey] || "Planificada")));
+      li.appendChild(top);
+
+      var actions = el("div", "dayrow__actions");
+      var openBtn = el("button", "chip btn--sm", s.interactive && s.status === "hoy" ? "Abrir sesión" : "Ver detalle");
+      openBtn.type = "button";
+      openBtn.addEventListener("click", function () {
+        if (s.interactive && s.status === "hoy") showView("session");
+        else openDaySummary(s, day);
+      });
+      actions.appendChild(openBtn);
+
+      if (s.status === "planificada") {
+        var skipBtn = el("button", "chip btn--sm", "Omitir");
+        skipBtn.type = "button";
+        skipBtn.addEventListener("click", function () {
+          s.status = "omitida";
+          renderPlan();
+          showToast(s.title + " marcada como omitida.");
+        });
+        actions.appendChild(skipBtn);
+
+        var moveBtn = el("button", "chip btn--sm", "Recolocar");
+        moveBtn.type = "button";
+        moveBtn.addEventListener("click", function () { openRescheduleModal(s); });
+        actions.appendChild(moveBtn);
+      }
+      li.appendChild(actions);
+      return li;
+    }
+
+    if (ghost) {
+      // Registro visual, no sesión activa: sin acciones y sin contar en la semana.
+      li.classList.add("dayrow--ghost");
+      head.appendChild(el("p", "dayrow__title", ghost.title + " · recolocada"));
+      head.appendChild(el("p", "dayrow__meta",
+        "Se movió al " + dayByKey(ghost.day).name.toLowerCase() + ". Este día ya no tiene sesión."));
+      top.appendChild(el("span", "state state--skipped", "Movida"));
+      li.appendChild(top);
+      return li;
+    }
+
+    li.classList.add("dayrow--descanso");
+    head.appendChild(el("p", "dayrow__title", "Descanso"));
+    head.appendChild(el("p", "dayrow__meta", "Día libre."));
+    top.appendChild(el("span", "state state--rest", "Libre"));
+    li.appendChild(top);
+    return li;
+  }
+
+  function renderPhases() {
+    var bar = $("phaseBar");
+    var list = $("phaseList");
+    bar.innerHTML = "";
+    list.innerHTML = "";
+
+    PHASES.forEach(function (phase) {
+      var seg = el("div", "phaseseg phaseseg--" + phase.status, phase.span > 1 ? phase.span + " sem" : "1");
+      seg.style.flex = String(phase.span);
+      bar.appendChild(seg);
+
+      var li = el("li", phase.status === "current" ? "is-current" : null);
+      li.appendChild(el("span", "phase__name", phase.name));
+      li.appendChild(el("span", "phase__weeks", phase.weeks + (phase.status === "current" ? " · estás aquí" : "")));
+      list.appendChild(li);
     });
-    body.appendChild(list);
+  }
+
+  function openDaySummary(s, day) {
+    $("daySummaryTitle").textContent = s.title;
+    var card = $("daySummaryCard");
+    card.innerHTML = "";
+    card.appendChild(el("p", "kicker", day.name + (s.duration ? " · " + s.duration + " min" : "")));
+    card.appendChild(el("p", "view-title", s.title));
+    card.appendChild(el("p", "lede", s.why));
+    card.appendChild(el("p", "lede small", s.detail));
+    card.appendChild(el("p", "lede small", "Vista de solo lectura en este prototipo. Solo la sesión Pull de hoy es completamente interactiva."));
+    showView("daySummary");
+  }
+
+  /* ---- Recolocar: mueve la sesión, no la duplica ---------------------- */
+
+  function openRescheduleModal(s) {
+    var body = $("rescheduleModalBody");
+    body.innerHTML = "";
+    body.appendChild(el("p", "lede small",
+      "Elige un día libre para mover " + s.title + ". La sesión cambia de día; no se crea una copia."));
+
+    var freeDays = DAYS.filter(function (d) {
+      return d.key !== s.day && !sessionOnDay(d.key);
+    });
+
+    if (!freeDays.length) {
+      body.appendChild(el("p", "notice notice--warn", "No queda ningún día libre esta semana."));
+      openModal("rescheduleModal");
+      return;
+    }
+
+    freeDays.forEach(function (freeDay) {
+      var btn = el("button", "opt");
+      btn.type = "button";
+      btn.appendChild(el("span", "opt__name", freeDay.name));
+      btn.appendChild(el("span", "opt__meta", "Día libre"));
+      btn.addEventListener("click", function () { confirmReschedule(s, freeDay); });
+      body.appendChild(btn);
+    });
+
     openModal("rescheduleModal");
   }
 
-  function dayIsAdjacentIntense(freeDay) {
-    var idx = WEEK.indexOf(freeDay);
-    var prev = WEEK[idx - 1];
-    var next = WEEK[idx + 1];
-    return (prev && prev.intense) || (next && next.intense);
+  function dayIsAdjacentIntense(dayKey) {
+    var keys = DAYS.map(function (d) { return d.key; });
+    var idx = keys.indexOf(dayKey);
+    var neighbours = [DAYS[idx - 1], DAYS[idx + 1]];
+    for (var i = 0; i < neighbours.length; i++) {
+      if (!neighbours[i]) continue;
+      var s = sessionOnDay(neighbours[i].key);
+      if (s && s.intense) return true;
+    }
+    return false;
   }
 
-  function confirmReschedule(day, freeDay) {
-    if (day.title === "Legs" && dayIsAdjacentIntense(freeDay)) {
+  function confirmReschedule(s, freeDay) {
+    if (s.title === "Legs" && dayIsAdjacentIntense(freeDay.key)) {
       var body = $("rescheduleModalBody");
-      body.innerHTML =
-        '<p class="alert alert--warning">Aviso: colocar Legs junto a una carrera intensa puede acumular fatiga en las piernas. Puedes confirmar igualmente o elegir otro día.</p>';
-      var confirmBtn = document.createElement("button");
+      body.innerHTML = "";
+      body.appendChild(el("p", "notice notice--warn",
+        "Colocar Legs junto a una carrera intensa puede acumular fatiga en las piernas. Puedes confirmar igualmente o elegir otro día."));
+
+      var confirmBtn = el("button", "btn btn--primary btn--block", "Confirmar de todas formas");
       confirmBtn.type = "button";
-      confirmBtn.className = "primary-btn primary-btn--block";
-      confirmBtn.textContent = "Confirmar de todas formas";
-      confirmBtn.addEventListener("click", function () { applyReschedule(day, freeDay); });
-      var backBtn = document.createElement("button");
-      backBtn.type = "button";
-      backBtn.className = "ghost-btn ghost-btn--block";
-      backBtn.textContent = "Elegir otro día";
-      backBtn.addEventListener("click", function () { openRescheduleModal(day); });
+      confirmBtn.addEventListener("click", function () { applyReschedule(s, freeDay); });
       body.appendChild(confirmBtn);
+
+      var backBtn = el("button", "btn btn--ghost btn--block", "Elegir otro día");
+      backBtn.type = "button";
+      backBtn.addEventListener("click", function () { openRescheduleModal(s); });
       body.appendChild(backBtn);
       return;
     }
-    applyReschedule(day, freeDay);
+    applyReschedule(s, freeDay);
   }
 
-  function applyReschedule(day, freeDay) {
-    freeDay.title = day.title;
-    freeDay.type = day.type;
-    freeDay.status = "planificada";
-    freeDay.detail = day.detail;
-    freeDay.duration = day.duration;
+  function applyReschedule(s, freeDay) {
+    var origin = s.movedFrom || s.day; // mover dos veces conserva el día de origen real
+    s.movedFrom = origin === freeDay.key ? null : origin;
+    s.day = freeDay.key;
 
-    day.status = "recolocada";
-    day.movedTo = freeDay.short;
-
-    // renderPlan() se ejecuta antes de cerrar el modal: reconstruye las tarjetas
-    // y destruye el botón "Recolocar" que abrió el modal, así que closeModal()
-    // debe comprobar la conexión al DOM después de esta reconstrucción, no antes.
+    // renderPlan() reconstruye la fila que abrió el modal antes de restaurar el
+    // foco; closeModal() detecta el elemento desconectado y usa un sustituto.
     renderPlan();
     closeModal($("rescheduleModal"));
-    showToast(day.title + " recolocado al " + freeDay.day + ".");
+    showToast(s.title + " se movió al " + freeDay.name.toLowerCase() + ". Sigue siendo una única sesión.");
   }
 
-  function wirePlanTabs() {
-    $("tabWeek").addEventListener("click", function () { setPlanTab("week"); });
-    $("tabPhases").addEventListener("click", function () { setPlanTab("phases"); });
-  }
-
-  function setPlanTab(which) {
-    var weekActive = which === "week";
-    $("tabWeek").setAttribute("aria-selected", weekActive ? "true" : "false");
-    $("tabPhases").setAttribute("aria-selected", weekActive ? "false" : "true");
-    $("panelWeek").hidden = !weekActive;
-    $("panelPhases").hidden = weekActive;
-  }
-
-  /* ---------------------------------------------------------------------
-   * Sesión de fuerza — lista
-   * ------------------------------------------------------------------- */
+  /* =====================================================================
+   * SESIÓN — lista de ejercicios
+   * ================================================================== */
 
   function renderSession() {
     var list = $("exerciseList");
     list.innerHTML = "";
 
     var active = EXERCISES.filter(function (ex) { return ex.included; });
-    var completedCount = 0;
 
-    active.forEach(function (ex) {
-      var allDone = ex.sets.every(function (s) { return s.estado === "hecha"; });
-      if (allDone) completedCount++;
+    active.forEach(function (ex, i) {
+      var setsDone = ex.sets.filter(function (s) { return s.estado === "hecha"; }).length;
+      var allDone = ex.sets.length > 0 && setsDone === ex.sets.length;
 
       var li = document.createElement("li");
-      var btn = document.createElement("button");
+      var btn = el("button", "exrow" + (allDone ? " is-done" : ""));
       btn.type = "button";
-      btn.className = "exercise-list__item" + (allDone ? " is-done" : "");
-      var setsDone = ex.sets.filter(function (s) { return s.estado === "hecha"; }).length;
-      btn.innerHTML =
-        '<span class="exercise-list__thumb">' + iconMarkup(ex.icon) + "</span>" +
-        '<span class="exercise-list__body">' +
-        '<span class="exercise-list__name">' + ex.nombre + "</span><br>" +
-        '<span class="exercise-list__meta">' + ex.variante + " · " + setsDone + "/" + ex.sets.length + " series</span>" +
-        "</span>" +
-        '<span class="exercise-list__status" aria-hidden="true">' + (allDone ? "✓" : "›") + "</span>";
+
+      btn.appendChild(el("span", "exrow__index", allDone ? "✓" : String(i + 1)));
+
+      var body = el("span", "exrow__body");
+      body.appendChild(el("span", "exrow__name", ex.nombre));
+      body.appendChild(el("span", "exrow__meta", ex.variante + " · " + setsDone + "/" + ex.sets.length + " series"));
+      btn.appendChild(body);
+
+      var pips = el("span", "exrow__sets");
+      ex.sets.forEach(function (s) {
+        pips.appendChild(el("span", "exrow__pip" + (s.estado === "hecha" ? " is-done" : "")));
+      });
+      btn.appendChild(pips);
+
+      btn.setAttribute("aria-label", ex.nombre + ", " + setsDone + " de " + ex.sets.length + " series registradas");
       btn.addEventListener("click", function () { openExercise(ex.id); });
       li.appendChild(btn);
       list.appendChild(li);
     });
 
-    var fill = $("sessionProgressFill");
-    var pct = active.length ? Math.round((completedCount / active.length) * 100) : 0;
-    fill.style.width = pct + "%";
-    $("sessionProgressText").textContent = completedCount + " de " + active.length + " ejercicios completados";
+    var stats = sessionStats();
+    var pct = stats.setsTotal ? Math.round((stats.setsDone / stats.setsTotal) * 100) : 0;
+    $("sessionProgressFill").style.width = pct + "%";
+    $("sessionProgressText").textContent =
+      stats.exDone + " de " + stats.exTotal + " ejercicios · " + stats.setsDone + " de " + stats.setsTotal + " series";
+    $("sessionMeter").setAttribute("aria-label", "Progreso de la sesión: " + pct + " por ciento de las series registradas");
 
     var badges = $("sessionBadges");
     badges.innerHTML = "";
-    if (session.state === "adaptada") {
-      badges.innerHTML += '<span class="badge badge--adapted">Sesión adaptada</span>';
-    }
-    badges.innerHTML += '<span class="badge badge--sim">Pendiente de sincronizar (simulado)</span>';
+    if (session.state === "adaptada") badges.appendChild(el("span", "state state--adapted", "Sesión adaptada"));
+    badges.appendChild(el("span", "state state--sim", "Pendiente de sincronizar (simulado)"));
   }
 
-  /* ---------------------------------------------------------------------
-   * Tarjeta de ejercicio
-   * ------------------------------------------------------------------- */
+  /* =====================================================================
+   * EJERCICIO — carriles de serie
+   * ================================================================== */
 
   function openExercise(id) {
     currentExerciseId = id;
@@ -605,193 +805,190 @@
     if (!ex) return;
 
     $("exerciseTitle").textContent = ex.nombre;
-    $("exerciseThumb").innerHTML = iconMarkup(ex.icon);
+    $("exercisePattern").textContent = ex.patron;
+    $("exerciseThumb").innerHTML = icon(ex.icon);
     $("exerciseVariant").textContent = ex.variante;
     $("exerciseObjective").textContent = ex.objetivo;
     $("exerciseLast").textContent = ex.ultimoTexto;
     $("btnVideo").href = ex.video;
 
-    session.exerciseMode = "confirm";
-    $("modeConfirm").classList.add("is-active");
-    $("modeConfirm").setAttribute("aria-pressed", "true");
-    $("modeEditAll").classList.remove("is-active");
-    $("modeEditAll").setAttribute("aria-pressed", "false");
-
-    $("restSeconds").value = ex.restSeconds;
+    setExerciseMode("confirm");
     stopRestTimer();
-    resetRestDisplay();
-
+    restAnchorIndex = null;
+    restTimerRemaining = ex.restSeconds;
     renderDifficulty(ex);
-    renderSetTable(ex);
+    renderLanes(ex);
 
     showView("exercise");
   }
 
+  function setExerciseMode(mode) {
+    session.exerciseMode = mode;
+    var confirmBtn = $("modeConfirm");
+    var editBtn = $("modeEditAll");
+    confirmBtn.classList.toggle("is-active", mode === "confirm");
+    confirmBtn.setAttribute("aria-pressed", mode === "confirm" ? "true" : "false");
+    editBtn.classList.toggle("is-active", mode === "editAll");
+    editBtn.setAttribute("aria-pressed", mode === "editAll" ? "true" : "false");
+  }
+
   function renderDifficulty(ex) {
-    var btns = $("difficultyGroup").querySelectorAll(".segmented__btn");
+    var btns = $("difficultyGroup").querySelectorAll(".picker__btn");
     for (var i = 0; i < btns.length; i++) {
-      btns[i].classList.toggle("is-selected", btns[i].getAttribute("data-difficulty") === ex.difficulty);
+      btns[i].setAttribute("aria-pressed",
+        btns[i].getAttribute("data-difficulty") === ex.difficulty ? "true" : "false");
     }
   }
 
-  function renderSetTable(ex) {
-    var body = $("setTableBody");
-    body.innerHTML = "";
+  function renderLanes(ex) {
+    var list = $("laneList");
+    list.innerHTML = "";
 
     ex.sets.forEach(function (set, index) {
-      var row = document.createElement("tr");
       var done = set.estado === "hecha";
+      var li = el("li", "lane" + (done ? " is-done" : ""));
 
-      var pesoCell = document.createElement("td");
-      var pesoInput = document.createElement("input");
-      pesoInput.type = "number";
-      pesoInput.step = "0.5";
-      pesoInput.min = "0";
-      pesoInput.value = set.peso;
-      pesoInput.setAttribute("aria-label", "Peso serie " + (index + 1) + " en kilos");
-      pesoInput.disabled = done && session.exerciseMode === "confirm";
-      pesoInput.addEventListener("input", function () { set.peso = parseFloat(pesoInput.value) || 0; });
-      pesoCell.appendChild(pesoInput);
+      li.appendChild(el("span", "lane__num", String(index + 1)));
+      li.appendChild(buildLaneField(set, index, "peso", "kg", ex, done));
+      li.appendChild(buildLaneField(set, index, "reps", "reps", ex, done));
 
-      var repsCell = document.createElement("td");
-      var repsInput = document.createElement("input");
-      repsInput.type = "number";
-      repsInput.step = "1";
-      repsInput.min = "0";
-      repsInput.value = set.reps;
-      repsInput.setAttribute("aria-label", "Repeticiones serie " + (index + 1));
-      repsInput.disabled = done && session.exerciseMode === "confirm";
-      repsInput.addEventListener("input", function () { set.reps = parseInt(repsInput.value, 10) || 0; });
-      repsCell.appendChild(repsInput);
-
-      var stateCell = document.createElement("td");
+      var state = el("span", "lane__state");
       if (session.exerciseMode === "confirm") {
-        var confirmBtn = document.createElement("button");
-        confirmBtn.type = "button";
-        confirmBtn.className = "set-confirm-btn" + (done ? " is-done" : "");
-        confirmBtn.textContent = done ? "Hecha ✓" : "Confirmar";
-        confirmBtn.addEventListener("click", function () {
-          set.estado = set.estado === "hecha" ? "pendiente" : "hecha";
-          renderSetTable(ex);
-          renderSessionBadgeState();
+        var btn = el("button", "setbtn" + (done ? " is-done" : ""), done ? "Hecha ✓" : "Confirmar");
+        btn.type = "button";
+        btn.setAttribute("aria-label",
+          (done ? "Deshacer serie " : "Confirmar serie ") + (index + 1) + " de " + ex.nombre);
+        btn.addEventListener("click", function () {
+          set.estado = done ? "pendiente" : "hecha";
+          if (!done) {
+            restAnchorIndex = index;
+            if (!restTimerHandle) restTimerRemaining = ex.restSeconds;
+          }
+          renderLanes(ex);
         });
-        stateCell.appendChild(confirmBtn);
+        state.appendChild(btn);
       } else {
-        var span = document.createElement("span");
-        span.className = "muted small";
-        span.textContent = done ? "Hecha ✓" : "Pendiente";
-        stateCell.appendChild(span);
+        state.appendChild(el("span", "lane__flag", done ? "Hecha ✓" : "Pendiente"));
       }
+      li.appendChild(state);
+      list.appendChild(li);
 
-      row.appendChild(document.createElement("td")).textContent = index + 1;
-      row.appendChild(pesoCell);
-      row.appendChild(repsCell);
-      row.appendChild(stateCell);
-      body.appendChild(row);
+      if (restAnchorIndex === index) list.appendChild(buildRestLane(ex));
     });
 
-    var existingAll = document.getElementById("confirmAllBtn");
-    if (existingAll) existingAll.remove();
-
+    var footer = $("laneFooter");
+    footer.innerHTML = "";
     if (session.exerciseMode === "editAll") {
-      var allBtn = document.createElement("button");
+      var allBtn = el("button", "btn btn--primary btn--block", "Confirmar todas las series");
       allBtn.type = "button";
-      allBtn.id = "confirmAllBtn";
-      allBtn.className = "primary-btn primary-btn--block";
-      allBtn.textContent = "Confirmar todas las series";
       allBtn.addEventListener("click", function () {
         ex.sets.forEach(function (s) { s.estado = "hecha"; });
-        renderSetTable(ex);
-        renderSessionBadgeState();
+        restAnchorIndex = ex.sets.length - 1;
+        if (!restTimerHandle) restTimerRemaining = ex.restSeconds;
+        renderLanes(ex);
         showToast("Series de " + ex.nombre + " confirmadas.");
       });
-      $("setTable").insertAdjacentElement("afterend", allBtn);
+      footer.appendChild(allBtn);
     }
   }
 
-  function renderSessionBadgeState() {
-    // Mantiene la lista de ejercicios sincronizada si el usuario vuelve atrás.
+  function buildLaneField(set, index, prop, unit, ex, done) {
+    var wrap = el("span", "lane__field");
+    var input = document.createElement("input");
+    input.type = "number";
+    input.step = prop === "peso" ? "0.5" : "1";
+    input.min = "0";
+    input.value = set[prop];
+    input.setAttribute("aria-label",
+      (prop === "peso" ? "Peso en kilos, serie " : "Repeticiones, serie ") + (index + 1) + " de " + ex.nombre);
+    input.disabled = done && session.exerciseMode === "confirm";
+    input.addEventListener("input", function () {
+      var value = prop === "peso" ? parseFloat(input.value) : parseInt(input.value, 10);
+      set[prop] = isNaN(value) || value < 0 ? 0 : value;
+    });
+    wrap.appendChild(input);
+    wrap.appendChild(el("span", "lane__unit", unit));
+    return wrap;
   }
 
-  function wireExerciseView() {
-    $("modeConfirm").addEventListener("click", function () {
-      session.exerciseMode = "confirm";
-      $("modeConfirm").classList.add("is-active");
-      $("modeConfirm").setAttribute("aria-pressed", "true");
-      $("modeEditAll").classList.remove("is-active");
-      $("modeEditAll").setAttribute("aria-pressed", "false");
-      renderSetTable(findExercise(currentExerciseId));
+  /* ---- Descanso integrado en el flujo de carriles --------------------- */
+
+  function buildRestLane(ex) {
+    var running = !!restTimerHandle;
+    var li = el("li", "restlane");
+
+    var clock = el("span", "restlane__clock", formatTime(restTimerRemaining));
+    clock.id = "restClock";
+    clock.setAttribute("aria-live", "polite");
+    li.appendChild(clock);
+
+    var body = el("div", "restlane__body");
+    body.appendChild(el("p", "restlane__label", running ? "Descansando" : "Descanso recomendado"));
+
+    var edit = el("span", "restlane__edit");
+    var input = document.createElement("input");
+    input.type = "number";
+    input.id = "restSeconds";
+    input.min = "15";
+    input.max = "300";
+    input.step = "5";
+    input.value = ex.restSeconds;
+    input.disabled = running;
+    input.setAttribute("aria-label", "Segundos de descanso recomendado");
+    input.addEventListener("input", function () {
+      var v = parseInt(input.value, 10);
+      if (isNaN(v)) return;
+      ex.restSeconds = v;
+      if (!restTimerHandle) {
+        restTimerRemaining = v;
+        var c = $("restClock");
+        if (c) c.textContent = formatTime(v);
+      }
     });
+    edit.appendChild(input);
+    edit.appendChild(el("span", null, "s editables"));
+    body.appendChild(edit);
+    li.appendChild(body);
 
-    $("modeEditAll").addEventListener("click", function () {
-      session.exerciseMode = "editAll";
-      $("modeEditAll").classList.add("is-active");
-      $("modeEditAll").setAttribute("aria-pressed", "true");
-      $("modeConfirm").classList.remove("is-active");
-      $("modeConfirm").setAttribute("aria-pressed", "false");
-      renderSetTable(findExercise(currentExerciseId));
+    var action = el("span", "restlane__action");
+    var btn = el("button", "btn btn--ghost btn--sm", running ? "Detener" : "Iniciar");
+    btn.type = "button";
+    btn.addEventListener("click", function () {
+      if (restTimerHandle) stopRestTimer();
+      else startRestTimer(ex);
+      renderLanes(ex);
     });
-
-    var diffBtns = $("difficultyGroup").querySelectorAll(".segmented__btn");
-    for (var i = 0; i < diffBtns.length; i++) {
-      diffBtns[i].addEventListener("click", function (e) {
-        var ex = findExercise(currentExerciseId);
-        var value = e.currentTarget.getAttribute("data-difficulty");
-        ex.difficulty = ex.difficulty === value ? null : value;
-        renderDifficulty(ex);
-      });
-    }
-
-    $("btnBackToList").addEventListener("click", function () { showView("session"); });
-
-    $("btnChangeVariant").addEventListener("click", openVariantModal);
-    $("btnGuide").addEventListener("click", openGuideModal);
-
-    $("btnStartRest").addEventListener("click", startRestTimer);
-    $("btnCancelRest").addEventListener("click", stopRestTimer);
-    $("restSeconds").addEventListener("input", function () {
-      if (!restTimerHandle) resetRestDisplay();
-    });
-  }
-
-  /* ---------------------------------------------------------------------
-   * Temporizador de descanso (solo manual)
-   * ------------------------------------------------------------------- */
-
-  function resetRestDisplay() {
-    var seconds = parseInt($("restSeconds").value, 10) || 0;
-    restTimerRemaining = seconds;
-    $("restDisplay").textContent = formatTime(seconds);
+    action.appendChild(btn);
+    li.appendChild(action);
+    return li;
   }
 
   function formatTime(totalSeconds) {
-    var m = Math.floor(totalSeconds / 60);
-    var s = totalSeconds % 60;
-    return m + ":" + (s < 10 ? "0" : "") + s;
+    var s = Math.max(totalSeconds, 0);
+    var m = Math.floor(s / 60);
+    var rest = s % 60;
+    return m + ":" + (rest < 10 ? "0" : "") + rest;
   }
 
-  function startRestTimer() {
+  // El temporizador solo arranca con una acción explícita del usuario.
+  function startRestTimer(ex) {
     if (restTimerHandle) return;
-    restTimerRemaining = parseInt($("restSeconds").value, 10) || 0;
+    restTimerRemaining = parseInt(ex.restSeconds, 10) || 0;
     if (restTimerRemaining <= 0) return;
-
-    $("btnStartRest").hidden = true;
-    $("btnCancelRest").hidden = false;
-    $("restSeconds").disabled = true;
-
-    updateRestDisplay();
     restTimerHandle = window.setInterval(function () {
       restTimerRemaining--;
-      updateRestDisplay();
+      var clock = $("restClock");
+      if (clock) clock.textContent = formatTime(restTimerRemaining);
       if (restTimerRemaining <= 0) {
         stopRestTimer();
+        var current = findExercise(currentExerciseId);
+        if (current) {
+          restTimerRemaining = current.restSeconds;
+          renderLanes(current);
+        }
         showToast("Descanso terminado.");
       }
     }, 1000);
-  }
-
-  function updateRestDisplay() {
-    $("restDisplay").textContent = formatTime(Math.max(restTimerRemaining, 0));
   }
 
   function stopRestTimer() {
@@ -799,15 +996,40 @@
       window.clearInterval(restTimerHandle);
       restTimerHandle = null;
     }
-    $("btnStartRest").hidden = false;
-    $("btnCancelRest").hidden = true;
-    $("restSeconds").disabled = false;
-    resetRestDisplay();
   }
 
-  /* ---------------------------------------------------------------------
-   * Cambiar variante
-   * ------------------------------------------------------------------- */
+  function wireExerciseView() {
+    $("modeConfirm").addEventListener("click", function () {
+      setExerciseMode("confirm");
+      renderLanes(findExercise(currentExerciseId));
+    });
+    $("modeEditAll").addEventListener("click", function () {
+      setExerciseMode("editAll");
+      renderLanes(findExercise(currentExerciseId));
+    });
+
+    var diffBtns = $("difficultyGroup").querySelectorAll(".picker__btn");
+    for (var i = 0; i < diffBtns.length; i++) {
+      diffBtns[i].addEventListener("click", function (e) {
+        var ex = findExercise(currentExerciseId);
+        if (!ex) return;
+        var value = e.currentTarget.getAttribute("data-difficulty");
+        ex.difficulty = ex.difficulty === value ? null : value;
+        renderDifficulty(ex);
+      });
+    }
+
+    $("btnBackToList").addEventListener("click", function () {
+      stopRestTimer();
+      showView("session");
+    });
+    $("btnChangeVariant").addEventListener("click", openVariantModal);
+    $("btnGuide").addEventListener("click", openGuideModal);
+  }
+
+  /* =====================================================================
+   * Variante y guía
+   * ================================================================== */
 
   function openVariantModal() {
     var ex = findExercise(currentExerciseId);
@@ -823,17 +1045,18 @@
 
     groups.forEach(function (group) {
       if (!group.items.length) return;
-      var wrap = document.createElement("div");
-      wrap.className = "variant-group";
-      wrap.innerHTML = '<p class="variant-group__title">' + group.title + "</p>";
+      var wrap = el("div", "optgroup");
+      wrap.appendChild(el("p", "optgroup__title", group.title));
       group.items.forEach(function (item) {
-        var btn = document.createElement("button");
+        var btn = el("button", "opt" + (item.nombre === ex.variante ? " is-current" : ""));
         btn.type = "button";
-        btn.className = "variant-option" + (item.nombre === ex.variante ? " is-current" : "");
-        btn.innerHTML = '<span class="variant-option__name">' + item.nombre + "</span><span class=\"variant-option__meta\">" + item.meta + "</span>";
+        btn.appendChild(el("span", "opt__name", item.nombre));
+        btn.appendChild(el("span", "opt__meta", item.meta));
         btn.addEventListener("click", function () {
           ex.variante = item.nombre;
-          ex.ultimoTexto = "Último resultado con esta variante: " + (item.meta.indexOf("·") >= 0 ? item.meta.split("·").pop().trim() : "sin historial previo, será tu primera vez");
+          ex.ultimoTexto = item.meta.indexOf("·") >= 0
+            ? item.meta.split("·").pop().trim() + " (con esta variante)"
+            : "sin historial previo, será tu primera vez";
           closeModal($("variantModal"));
           openExercise(ex.id);
           showToast("Variante actualizada a " + item.nombre + ".");
@@ -843,15 +1066,13 @@
       body.appendChild(wrap);
     });
 
-    var favSummary = document.createElement("div");
-    favSummary.className = "variant-group";
-    favSummary.innerHTML = '<p class="variant-group__title">Tus favoritos guardados</p><p class="muted small">' + OTHER_FAVORITES.join(" · ") + "</p>";
-    body.appendChild(favSummary);
+    var fav = el("div", "optgroup");
+    fav.appendChild(el("p", "optgroup__title", "Tus favoritos guardados"));
+    fav.appendChild(el("p", "lede small", OTHER_FAVORITES.join(" · ")));
+    body.appendChild(fav);
 
-    var customBtn = document.createElement("button");
+    var customBtn = el("button", "btn btn--quiet", "+ Crear ejercicio personalizado");
     customBtn.type = "button";
-    customBtn.className = "custom-exercise-link";
-    customBtn.textContent = "+ Crear ejercicio personalizado";
     customBtn.addEventListener("click", function () {
       closeModal($("variantModal"));
       showToast("Ejercicio personalizado creado (no se guarda en este prototipo).");
@@ -861,34 +1082,96 @@
     openModal("variantModal");
   }
 
-  /* ---------------------------------------------------------------------
-   * Guía técnica
-   * ------------------------------------------------------------------- */
-
   function openGuideModal() {
     var ex = findExercise(currentExerciseId);
     var body = $("guideModalBody");
-    var cuesHtml = ex.guide.cues.map(function (c) { return "<li>" + c + "</li>"; }).join("");
-    var muscleHtml = ex.guide.muscles.map(function (m) { return '<span class="muscle-tag">' + m + "</span>"; }).join("");
+    body.innerHTML = "";
 
-    body.innerHTML =
-      '<div class="guide-illustration">' + iconMarkup(ex.icon).replace("width=\"24\"", "width=\"56\"").replace("height=\"24\"", "height=\"56\"") + "</div>" +
-      '<p class="field-label">' + ex.nombre + " · " + ex.variante + "</p>" +
-      '<ul class="guide-list">' + cuesHtml + "</ul>" +
-      '<p class="field-label" style="margin-top:14px">Músculos implicados</p>' +
-      '<div class="muscle-tags">' + muscleHtml + "</div>" +
-      '<p class="muted small" style="margin-top:14px">Guía informativa general, no sustituye la supervisión de un profesional.</p>';
+    var figure = el("div", "guide-figure");
+    figure.innerHTML = icon(ex.icon).replace('width="24"', 'width="56"').replace('height="24"', 'height="56"');
+    body.appendChild(figure);
 
+    body.appendChild(el("p", "field__label", ex.nombre + " · " + ex.variante));
+
+    var cues = el("ul", "cues");
+    ex.guide.cues.forEach(function (c) { cues.appendChild(el("li", null, c)); });
+    body.appendChild(cues);
+
+    body.appendChild(el("p", "field__label", "Músculos implicados"));
+    var tags = el("div", "tags");
+    ex.guide.muscles.forEach(function (m) { tags.appendChild(el("span", "tag", m)); });
+    body.appendChild(tags);
+
+    body.appendChild(el("p", "lede small", "Guía informativa general, no sustituye la supervisión de un profesional."));
     openModal("guideModal");
   }
 
-  /* ---------------------------------------------------------------------
-   * Cerrar ejercicio y sesión
-   * ------------------------------------------------------------------- */
+  /* =====================================================================
+   * Terminar sesión: completa o parcial
+   * ================================================================== */
+
+  function wireFinishSession() {
+    $("btnFinishSession").addEventListener("click", function () {
+      var stats = sessionStats();
+      if (stats.setsTotal > 0 && stats.setsDone === stats.setsTotal) {
+        openClose("completa");
+        return;
+      }
+      openFinishModal(stats);
+    });
+
+    $("btnCloseFinish").addEventListener("click", function () { closeModal($("finishModal")); });
+  }
+
+  function openFinishModal(stats) {
+    var body = $("finishModalBody");
+    body.innerHTML = "";
+    body.appendChild(el("p", "lede",
+      "Llevas " + stats.setsDone + " de " + stats.setsTotal + " series y " +
+      stats.exDone + " de " + stats.exTotal + " ejercicios. Si guardas ahora se registrará como sesión parcial, no como completada."));
+
+    var keep = el("button", "btn btn--primary btn--block", "Continuar registrando");
+    keep.type = "button";
+    keep.addEventListener("click", function () { closeModal($("finishModal")); });
+    body.appendChild(keep);
+
+    var partial = el("button", "btn btn--ghost btn--block", "Guardar como parcial");
+    partial.type = "button";
+    partial.addEventListener("click", function () {
+      closeModal($("finishModal"));
+      openClose("parcial");
+    });
+    body.appendChild(partial);
+
+    openModal("finishModal");
+  }
+
+  function openClose(mode) {
+    closeMode = mode;
+    var stats = sessionStats();
+
+    var summary = $("closeSummary");
+    summary.className = "closesummary" + (mode === "parcial" ? " closesummary--partial" : "");
+    summary.innerHTML = "";
+    summary.appendChild(el("p", "closesummary__head",
+      mode === "parcial" ? "Se guardará como parcial" : "Sesión completada"));
+    summary.appendChild(el("p", "closesummary__meta",
+      stats.exDone + " de " + stats.exTotal + " ejercicios · " +
+      stats.setsDone + " de " + stats.setsTotal + " series registradas" +
+      (session.state === "adaptada" ? " · versión adaptada" : "")));
+
+    $("closeKicker").textContent = mode === "parcial" ? "Cierre parcial" : "Cierre";
+
+    // La confirmación explícita de "he terminado la versión adaptada" solo tiene
+    // sentido en un cierre parcial de una sesión que el usuario adaptó a propósito.
+    var showAdapted = mode === "parcial" && session.state === "adaptada";
+    $("adaptedDoneField").hidden = !showAdapted;
+    if (!showAdapted) $("adaptedDoneCheck").checked = false;
+
+    showView("close");
+  }
 
   function wireCloseSession() {
-    $("btnFinishSession").addEventListener("click", function () { showView("close"); });
-
     $("btnSaveClose").addEventListener("click", function () {
       var esfuerzo = getSelectedValue("esfuerzo");
       if (!esfuerzo) {
@@ -896,102 +1179,157 @@
         return;
       }
 
-      var estadoFinal = session.state === "adaptada" ? "adapted" : "completed";
+      var stats = sessionStats();
+      var adaptedConfirmed = closeMode === "parcial" &&
+        session.state === "adaptada" &&
+        $("adaptedDoneCheck").checked;
+      var isComplete = closeMode === "completa" || adaptedConfirmed;
+
+      // Minutos proporcionales a lo realmente registrado: no se inflan.
+      var minutes = stats.setsTotal
+        ? Math.max(5, Math.round(FULL_SESSION_MINUTES * (stats.setsDone / stats.setsTotal)))
+        : 5;
+
+      var status = isComplete
+        ? (session.state === "adaptada" ? "adapted" : "completed")
+        : "partial";
+
       HISTORY.unshift({
         title: "Pull",
-        meta: "Hoy · esfuerzo " + esfuerzo + (session.state === "adaptada" ? " · adaptada" : ""),
-        status: estadoFinal
+        meta: "Hoy · " + minutes + " min · " + stats.exDone + " de " + stats.exTotal + " ejercicios · " +
+              stats.setsDone + " de " + stats.setsTotal + " series · esfuerzo " + esfuerzo,
+        status: status
       });
 
-      var today = findDay("mie");
-      today.status = "completada";
-      today.duration = 48;
+      // Una sesión adaptada terminada cuenta como hecha (MVP §11), pero se etiqueta
+      // "Adaptada", no "Completada": plan, carril e historial deben decir lo mismo.
+      var pull = findSession("pull");
+      pull.status = isComplete
+        ? (session.state === "adaptada" ? "adaptada" : "completada")
+        : "parcial";
+      pull.duration = minutes;
 
-      showToast("Sesión guardada. Buen trabajo.");
+      showToast(isComplete
+        ? "Sesión guardada como completada."
+        : "Sesión guardada como parcial: cuenta lo registrado, no la sesión entera.");
       showView("home");
     });
   }
 
-  /* ---------------------------------------------------------------------
-   * Check-in y adaptación
-   * ------------------------------------------------------------------- */
+  /* =====================================================================
+   * Selectores rápidos (aria-pressed) y mapa corporal
+   * ================================================================== */
 
   function getSelectedValue(groupName) {
-    var group = document.querySelector('.segmented[data-group="' + groupName + '"]');
+    var group = document.querySelector('.picker[data-group="' + groupName + '"]');
     if (!group) return null;
-    var selected = group.querySelector(".is-selected");
+    var selected = group.querySelector('[aria-pressed="true"]');
     return selected ? selected.getAttribute("data-value") : null;
   }
 
-  function wireSegmentedGroups() {
-    var groups = document.querySelectorAll(".segmented[data-group]");
-    groups.forEach(function (group) {
-      var groupName = group.getAttribute("data-group");
-      var buttons = group.querySelectorAll(".segmented__btn");
-      buttons.forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var already = btn.classList.contains("is-selected");
-          buttons.forEach(function (b) { b.classList.remove("is-selected"); });
-          if (!already) btn.classList.add("is-selected");
-          onSegmentedChange(groupName);
-        });
-      });
-    });
+  function selectValue(groupName, value) {
+    var group = document.querySelector('.picker[data-group="' + groupName + '"]');
+    if (!group) return;
+    var buttons = group.querySelectorAll(".picker__btn");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].setAttribute("aria-pressed",
+        buttons[i].getAttribute("data-value") === value ? "true" : "false");
+    }
   }
 
-  function onSegmentedChange(groupName) {
+  function wirePickers() {
+    var groups = document.querySelectorAll(".picker[data-group]");
+    for (var g = 0; g < groups.length; g++) {
+      (function (group) {
+        var groupName = group.getAttribute("data-group");
+        var buttons = group.querySelectorAll(".picker__btn");
+        for (var i = 0; i < buttons.length; i++) {
+          buttons[i].addEventListener("click", function (e) {
+            var btn = e.currentTarget;
+            var already = btn.getAttribute("aria-pressed") === "true";
+            for (var j = 0; j < buttons.length; j++) buttons[j].setAttribute("aria-pressed", "false");
+            if (!already) btn.setAttribute("aria-pressed", "true");
+            onPickerChange(groupName);
+          });
+        }
+      })(groups[g]);
+    }
+  }
+
+  function onPickerChange(groupName) {
     if (groupName === "molestias") {
       var value = getSelectedValue("molestias");
       checkinState.molestias = value;
-      var showMap = value && value !== "ninguna";
+      var showMap = !!value && value !== "ninguna";
       $("bodyMapSection").hidden = !showMap;
-      if (showMap && (value === "leve" || value === "moderada" || value === "importante")) {
-        selectSegmentedValue("intensidadZona", value);
-      }
+      if (showMap) selectValue("intensidadZona", value);
     }
     if (groupName === "intensidadZona" || groupName === "molestias") {
-      var intensidad = getSelectedValue("intensidadZona");
-      $("importantPainNotice").hidden = intensidad !== "importante";
+      $("importantPainNotice").hidden = getSelectedValue("intensidadZona") !== "importante";
     }
     if (groupName === "molestiasCierre") {
       $("closePainNotice").hidden = getSelectedValue("molestiasCierre") !== "importante";
     }
   }
 
-  function selectSegmentedValue(groupName, value) {
-    var group = document.querySelector('.segmented[data-group="' + groupName + '"]');
-    if (!group) return;
-    var buttons = group.querySelectorAll(".segmented__btn");
-    buttons.forEach(function (b) {
-      b.classList.toggle("is-selected", b.getAttribute("data-value") === value);
-    });
-  }
-
   function wireBodyMap() {
-    $("bodyTabFront").addEventListener("click", function () { setBodyTab("front"); });
-    $("bodyTabBack").addEventListener("click", function () { setBodyTab("back"); });
-
-    var zoneBtns = document.querySelectorAll(".zone-btn");
-    zoneBtns.forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var all = document.querySelectorAll(".zone-btn");
-        all.forEach(function (b) { b.classList.remove("is-selected"); });
-        btn.classList.add("is-selected");
+    var zones = document.querySelectorAll(".zone");
+    for (var i = 0; i < zones.length; i++) {
+      zones[i].addEventListener("click", function (e) {
+        var btn = e.currentTarget;
+        var all = document.querySelectorAll(".zone");
+        for (var j = 0; j < all.length; j++) all[j].setAttribute("aria-pressed", "false");
+        btn.setAttribute("aria-pressed", "true");
         checkinState.zona = btn.getAttribute("data-zone");
         checkinState.lado = btn.getAttribute("data-lado");
-        var ladoTexto = checkinState.lado && checkinState.lado !== "none" ? " (" + checkinState.lado + ")" : "";
-        $("zoneSelectedText").textContent = "Zona seleccionada: " + btn.textContent + ladoTexto + ".";
+        // Las etiquetas abreviadas ya acaban en punto ("Hombro der."): no duplicarlo.
+        checkinState.zonaTexto = btn.textContent.trim().replace(/\.$/, "");
+        $("zoneSelectedText").textContent = "Zona seleccionada: " + checkinState.zonaTexto + ".";
       });
+    }
+  }
+
+  /* =====================================================================
+   * Pestañas con teclado (flechas, Inicio, Fin)
+   * ================================================================== */
+
+  function wireTabs() {
+    var lists = document.querySelectorAll("[data-tabs]");
+    for (var i = 0; i < lists.length; i++) {
+      (function (list) {
+        var tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+        tabs.forEach(function (tab, index) {
+          tab.addEventListener("click", function () { selectTab(tabs, index); });
+          tab.addEventListener("keydown", function (e) {
+            var next = null;
+            if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (index + 1) % tabs.length;
+            else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (index - 1 + tabs.length) % tabs.length;
+            else if (e.key === "Home") next = 0;
+            else if (e.key === "End") next = tabs.length - 1;
+            if (next === null) return;
+            e.preventDefault();
+            selectTab(tabs, next);
+            tabs[next].focus();
+          });
+        });
+      })(lists[i]);
+    }
+  }
+
+  function selectTab(tabs, activeIndex) {
+    tabs.forEach(function (tab, i) {
+      var active = i === activeIndex;
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+      if (active) tab.removeAttribute("tabindex");
+      else tab.setAttribute("tabindex", "-1");
+      var panel = $(tab.getAttribute("aria-controls"));
+      if (panel) panel.hidden = !active;
     });
   }
 
-  function setBodyTab(which) {
-    var frontActive = which === "front";
-    $("bodyTabFront").setAttribute("aria-selected", frontActive ? "true" : "false");
-    $("bodyTabBack").setAttribute("aria-selected", frontActive ? "false" : "true");
-    $("bodyFront").hidden = !frontActive;
-    $("bodyBack").hidden = frontActive;
-  }
+  /* =====================================================================
+   * Check-in y adaptación
+   * ================================================================== */
 
   function wireReviewProposal() {
     $("btnReviewProposal").addEventListener("click", function () {
@@ -1019,8 +1357,8 @@
 
   function generateAdaptation(checkin) {
     var changes = [];
-    var duration = checkin.tiempo || "40";
     var apply = [];
+    var duration = checkin.tiempo || "40";
 
     if (checkin.tiempo === "20" || checkin.tiempo === "40") {
       changes.push("Se retira el curl de bíceps para ajustarse a " + checkin.tiempo + " minutos disponibles.");
@@ -1031,8 +1369,8 @@
     }
 
     if (checkin.molestias !== "ninguna" && checkin.zona === "hombro") {
-      var ladoTexto = checkin.lado && checkin.lado !== "none" ? " " + checkin.lado : "";
-      changes.push("Se reduce una serie de jalón al pecho y de remo sentado para bajar la carga sobre el hombro" + ladoTexto + " que indicaste.");
+      var lado = checkin.lado && checkin.lado !== "none" ? " " + checkin.lado : "";
+      changes.push("Se reduce una serie de jalón al pecho y de remo sentado para bajar la carga sobre el hombro" + lado + " que indicaste.");
       changes.push("Face pull cambia a variante con banda elástica, menos exigente para el hombro.");
       apply.push(function () {
         var jalon = findExercise("jalon");
@@ -1043,7 +1381,9 @@
         if (face) face.variante = "Face pull con banda elástica";
       });
     } else if (checkin.molestias !== "ninguna") {
-      changes.push("Se reduce ligeramente el volumen de tirón en la zona indicada.");
+      // No decir "en la zona que indicaste": el recorte es genérico (siempre jalón),
+      // no un ajuste dirigido a esa zona. No prometer precisión que el motor no tiene.
+      changes.push("Se reduce ligeramente el volumen general de la sesión porque indicaste una molestia. No es un ajuste dirigido a una zona concreta; puedes editarlo.");
       apply.push(function () {
         var jalon = findExercise("jalon");
         if (jalon && jalon.sets.length > 2) jalon.sets.pop();
@@ -1051,7 +1391,7 @@
     }
 
     if (checkin.energia === "baja") {
-      changes.push("El descanso recomendado entre series aumenta 15 s para compensar la energía baja.");
+      changes.push("El descanso recomendado entre series sube 15 s para compensar la energía baja.");
       apply.push(function () {
         EXERCISES.forEach(function (ex) { ex.restSeconds += 15; });
       });
@@ -1061,18 +1401,15 @@
       changes.push("No se detectan ajustes necesarios: puedes mantener la sesión Pull tal como está prevista.");
     }
 
-    var reasonParts = [];
-    reasonParts.push("energía " + checkin.energia);
-    reasonParts.push("motivación " + checkin.motivacion);
-    reasonParts.push(checkin.tiempo + " min disponibles");
+    var reason = ["energía " + checkin.energia, "motivación " + checkin.motivacion, checkin.tiempo + " min disponibles"];
     if (checkin.molestias !== "ninguna") {
-      reasonParts.push("molestia " + checkin.molestias + (checkin.zona ? " en " + checkin.zona.replace("-", " ") : ""));
+      reason.push("molestia " + checkin.molestias + (checkin.zonaTexto ? " en " + checkin.zonaTexto.toLowerCase() : ""));
     }
 
     return {
       title: "Pull adaptado · " + duration + " min",
       changes: changes,
-      reason: "Motivo: indicaste " + reasonParts.join(", ") + ".",
+      reason: "Motivo: indicaste " + reason.join(", ") + ".",
       importantPain: checkin.molestias === "importante" || checkin.intensidadZona === "importante",
       apply: function () { apply.forEach(function (fn) { fn(); }); }
     };
@@ -1082,11 +1419,7 @@
     $("adaptationName").textContent = adaptation.title;
     var list = $("adaptationChanges");
     list.innerHTML = "";
-    adaptation.changes.forEach(function (c) {
-      var li = document.createElement("li");
-      li.textContent = c;
-      list.appendChild(li);
-    });
+    adaptation.changes.forEach(function (c) { list.appendChild(el("li", null, c)); });
     $("adaptationReason").textContent = adaptation.reason;
     $("adaptationSafetyNotice").hidden = !adaptation.importantPain;
   }
@@ -1098,7 +1431,6 @@
       showToast("Versión adaptada aplicada.");
       showView("session");
     });
-
     $("btnKeepPlanned").addEventListener("click", function () {
       session.state = "prevista";
       showToast("Mantienes la sesión prevista.");
@@ -1106,50 +1438,48 @@
     });
   }
 
-  /* ---------------------------------------------------------------------
+  /* =====================================================================
    * Historial
-   * ------------------------------------------------------------------- */
+   * ================================================================== */
 
   function renderHistory() {
     var list = $("historyList");
     list.innerHTML = "";
-    HISTORY.forEach(function (item) {
-      list.appendChild(buildActivityItem(item));
+    HISTORY.forEach(function (item) { list.appendChild(buildLogItem(item)); });
+
+    var marks = $("adherenceMarks");
+    marks.innerHTML = "";
+    ADHERENCE.forEach(function (hit) {
+      marks.appendChild(el("span", "adherence__mark" + (hit ? " is-hit" : "")));
     });
   }
 
-  function wireHistoryTabs() {
-    $("tabHistoryFull").addEventListener("click", function () { setHistoryTab(true); });
-    $("tabHistoryEmpty").addEventListener("click", function () { setHistoryTab(false); });
-
+  function wireHistory() {
     $("btnViewProgress").addEventListener("click", function () {
       var body = $("progressModalBody");
-      var rows = PROGRESS_EXAMPLE.map(function (p) {
-        return '<div class="activity-item"><span>' + p.fecha + '</span><span class="muted small">' + p.valor + "</span></div>";
-      }).join("");
-      body.innerHTML = '<p class="muted">Jalón al pecho · polea (agarre ancho)</p><div class="activity-list" style="margin-top:10px">' + rows + "</div>";
+      body.innerHTML = "";
+      body.appendChild(el("p", "lede small", "Jalón al pecho · polea (agarre ancho)"));
+      PROGRESS_EXAMPLE.forEach(function (p) {
+        var row = el("div", "progressrow");
+        row.appendChild(el("span", null, p.fecha));
+        row.appendChild(el("b", null, p.valor));
+        body.appendChild(row);
+      });
       openModal("progressModal");
     });
   }
 
-  function setHistoryTab(showFull) {
-    $("tabHistoryFull").setAttribute("aria-selected", showFull ? "true" : "false");
-    $("tabHistoryEmpty").setAttribute("aria-selected", showFull ? "false" : "true");
-    $("panelHistoryFull").hidden = !showFull;
-    $("panelHistoryEmpty").hidden = showFull;
-  }
-
-  /* ---------------------------------------------------------------------
-   * Modales genéricos
-   * ------------------------------------------------------------------- */
+  /* =====================================================================
+   * Hojas modales
+   * ================================================================== */
 
   var lastFocusedEl = null;
-  var activeModalOverlay = null;
+  var activeOverlay = null;
 
   function getFocusable(container) {
     var nodes = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-    return Array.prototype.filter.call(nodes, function (el) {
-      return !el.disabled && el.offsetParent !== null;
+    return Array.prototype.filter.call(nodes, function (node) {
+      return !node.disabled && node.offsetParent !== null;
     });
   }
 
@@ -1157,20 +1487,23 @@
     var overlay = $(overlayId);
     if (overlay.hidden) lastFocusedEl = document.activeElement;
     overlay.hidden = false;
-    activeModalOverlay = overlay;
-    var focusable = getFocusable(overlay);
+    activeOverlay = overlay;
+    // Foco inicial en el primer control del cuerpo (la acción real), no en la ✕.
+    var body = overlay.querySelector(".sheet__body");
+    var focusable = getFocusable(body && getFocusable(body).length ? body : overlay);
     if (focusable.length) focusable[0].focus();
   }
 
   function closeModal(overlay) {
     if (!overlay || overlay.hidden) return;
     overlay.hidden = true;
-    if (overlay === activeModalOverlay) activeModalOverlay = null;
+    if (overlay === activeOverlay) activeOverlay = null;
 
-    // ponytail: si quien abrió el modal fue destruido por un re-render posterior
-    // (p. ej. renderPlan() reconstruye la tarjeta "Recolocar"), el foco no puede
-    // volver ahí. Fallback: el título de la vista activa, en vez de perderse en <body>.
-    var target = lastFocusedEl && lastFocusedEl.isConnected ? lastFocusedEl : null;
+    // Si quien abrió el modal fue destruido por un re-render (renderPlan()
+    // reconstruye la fila "Recolocar"), el foco vuelve al título de la vista.
+    var target = lastFocusedEl && lastFocusedEl.isConnected && lastFocusedEl !== document.body
+      ? lastFocusedEl
+      : null;
     if (!target) {
       target = document.querySelector(".view.is-active .view-title");
       if (target && !target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
@@ -1184,69 +1517,52 @@
     $("btnCloseProgress").addEventListener("click", function () { closeModal($("progressModal")); });
     $("btnCloseReschedule").addEventListener("click", function () { closeModal($("rescheduleModal")); });
 
-    document.querySelectorAll(".modal-overlay").forEach(function (overlay) {
-      overlay.addEventListener("click", function (e) {
-        if (e.target === overlay) closeModal(overlay);
-      });
-    });
+    var overlays = document.querySelectorAll(".sheet-overlay");
+    for (var i = 0; i < overlays.length; i++) {
+      (function (overlay) {
+        overlay.addEventListener("click", function (e) {
+          if (e.target === overlay) closeModal(overlay);
+        });
+      })(overlays[i]);
+    }
 
     document.addEventListener("keydown", function (e) {
-      if (!activeModalOverlay) return;
+      if (!activeOverlay) return;
       if (e.key === "Escape") {
-        closeModal(activeModalOverlay);
+        closeModal(activeOverlay);
         return;
       }
-      if (e.key === "Tab") {
-        var focusable = getFocusable(activeModalOverlay);
-        if (!focusable.length) return;
-        var first = focusable[0];
-        var last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
+      if (e.key !== "Tab") return;
+      var focusable = getFocusable(activeOverlay);
+      if (!focusable.length) return;
+      var first = focusable[0];
+      var last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
     });
   }
 
-  /* ---------------------------------------------------------------------
-   * Opciones rápidas de Inicio
-   * ------------------------------------------------------------------- */
-
-  function wireHomeOptions() {
-    $("btnStartPlanned").addEventListener("click", function () { showView("session"); });
-    $("btnStartAdapted").addEventListener("click", function () { showView("checkin"); });
-    $("btnStartRecovery").addEventListener("click", function () {
-      $("daySummaryTitle").textContent = "Recuperación · movilidad";
-      $("daySummaryCard").innerHTML =
-        '<span class="badge badge--planned">Opcional</span>' +
-        '<p class="stat-big" style="margin-top:10px">Movilidad suave</p>' +
-        '<p class="muted">10-15 min · sin carga</p>' +
-        '<p style="margin-top:12px">Movilidad de hombro, cadera y tobillo, respiración y estiramientos suaves. Pensada para días de baja energía o como complemento tras una sesión exigente.</p>' +
-        '<p class="muted small" style="margin-top:14px">Contenido de ejemplo en este prototipo; no incluye vídeo guiado real.</p>';
-      showView("daySummary");
-    });
-  }
-
-  /* ---------------------------------------------------------------------
-   * Tema y estado de sincronización simulado
-   * ------------------------------------------------------------------- */
+  /* =====================================================================
+   * Tema y estado simulado
+   * ================================================================== */
 
   function wireTheme() {
     $("themeToggle").addEventListener("click", function () {
       var root = document.documentElement;
-      var isLight = root.getAttribute("data-theme") === "light";
-      if (isLight) {
-        root.removeAttribute("data-theme");
-        $("themeToggle").setAttribute("aria-pressed", "false");
-        $("themeToggle").setAttribute("aria-label", "Cambiar a modo claro");
-      } else {
+      var toLight = root.getAttribute("data-theme") !== "light";
+      if (toLight) {
         root.setAttribute("data-theme", "light");
         $("themeToggle").setAttribute("aria-pressed", "true");
         $("themeToggle").setAttribute("aria-label", "Cambiar a modo oscuro");
+      } else {
+        root.removeAttribute("data-theme");
+        $("themeToggle").setAttribute("aria-pressed", "false");
+        $("themeToggle").setAttribute("aria-label", "Cambiar a modo claro");
       }
     });
   }
@@ -1257,25 +1573,24 @@
     });
   }
 
-  /* ---------------------------------------------------------------------
+  /* =====================================================================
    * Arranque
-   * ------------------------------------------------------------------- */
+   * ================================================================== */
 
   function init() {
     wireNav();
-    wirePlanTabs();
+    wireTabs();
     wireExerciseView();
+    wireFinishSession();
     wireCloseSession();
-    wireSegmentedGroups();
+    wirePickers();
     wireBodyMap();
     wireReviewProposal();
     wireAdaptationDecision();
-    wireHistoryTabs();
+    wireHistory();
     wireModals();
-    wireHomeOptions();
     wireTheme();
     wireSyncStatus();
-
     showView("home");
   }
 
