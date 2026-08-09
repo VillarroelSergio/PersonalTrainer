@@ -42,10 +42,7 @@
         onAction: function () { openObjectivesSheet(data); }
       });
       wrap0.appendChild(body0);
-      var importLink = App.el("button", "btn btn--ghost btn--block", "Importar actividad");
-      importLink.type = "button";
-      importLink.addEventListener("click", function () { App.navigate("import"); });
-      wrap0.appendChild(importLink);
+      wrap0.appendChild(buildImportEntry());
       mount.appendChild(wrap0);
       return;
     }
@@ -152,10 +149,21 @@
       wrap.appendChild(adjustNotice);
     }
 
+    // ---- prioridad-hibrida-006: capas SECUNDARIAS y NUNCA obligatorias,
+    // después de la guía humana de arriba (nota: ninguna se exige para
+    // cerrar la sesión, ver openCloseSheet). Colapsadas por defecto. --------
+    wrap.appendChild(buildOptionalLayers(session));
+    wrap.appendChild(buildEnvAlternatives());
+
     var objLink = App.el("button", "btn btn--quiet", "Ver los seis objetivos de resistencia");
     objLink.type = "button";
     objLink.addEventListener("click", function () { openObjectivesSheet(data); });
     wrap.appendChild(objLink);
+
+    // ---- LOTE 2 (mejoras-ux-ui-004): importar SIEMPRE visible aquí, no solo
+    // cuando no hay sesión de hoy (nota 07): es el sitio natural para traer
+    // el contexto de cardio de tu reloj mientras ves tu sesión planificada.
+    wrap.appendChild(buildImportEntry());
 
     if (segments) {
       wrap.appendChild(buildSegmentList(segments, session, data, mount));
@@ -184,6 +192,69 @@
     wrap.appendChild(finishBtn);
 
     mount.appendChild(wrap);
+  }
+
+  // Botón + explicación reutilizados en el estado vacío y en una sesión real
+  // (nota 07/29): admite .FIT/.TCX/.GPX, sin parser real, y sirve para
+  // registrar el contexto de cardio que el reloj ya tiene.
+  function buildImportEntry() {
+    var box = App.el("div", "endurance-import-entry");
+    var importLink = App.el("button", "btn btn--ghost btn--block", "Importar actividad");
+    importLink.type = "button";
+    importLink.addEventListener("click", function () { App.navigate("import"); });
+    box.appendChild(importLink);
+    box.appendChild(App.el("p", "lede small",
+      "Admite .FIT, .TCX y .GPX de tu reloj. Este prototipo no procesa archivos reales: sirve para registrar el contexto de cardio que tu reloj ya tiene."));
+    return box;
+  }
+
+  // ---- prioridad-hibrida-006: capas opcionales (duración/distancia/ritmo/
+  // RPE/desnivel/superficie/FC-zona). Viven en session.detalleOpcional, texto
+  // libre (sin sensores reales), y nunca se validan ni se exigen. -----------
+  var OPTIONAL_FIELDS = [
+    ["duracionMin", "Duración (min)"], ["distanciaKm", "Distancia (km)"], ["ritmo", "Ritmo"],
+    ["rpe", "RPE (1-10)"], ["desnivel", "Desnivel (m)"], ["superficie", "Superficie"], ["fcZona", "Zona de FC"]
+  ];
+
+  function buildOptionalLayers(session) {
+    session.detalleOpcional = session.detalleOpcional || {};
+    var det = document.createElement("details");
+    det.className = "endurance-optional";
+    var summary = document.createElement("summary");
+    summary.textContent = "Datos opcionales (nunca obligatorios)";
+    det.appendChild(summary);
+    OPTIONAL_FIELDS.forEach(function (f) {
+      var field = App.el("div", "field");
+      var label = App.el("label", "field__label", f[1]);
+      label.setAttribute("for", "opt-" + f[0]);
+      field.appendChild(label);
+      var input = document.createElement("input");
+      input.type = "text";
+      input.id = "opt-" + f[0];
+      input.value = session.detalleOpcional[f[0]] || "";
+      input.addEventListener("input", function () { session.detalleOpcional[f[0]] = input.value; });
+      field.appendChild(input);
+      det.appendChild(field);
+    });
+    return det;
+  }
+
+  // ---- Alternativas por entorno: texto genérico coherente con cualquier
+  // objetivo, no requiere que la sesión declare su propio entorno.
+  function buildEnvAlternatives() {
+    var box = App.el("div", "endurance-envalts");
+    box.appendChild(App.el("p", "field__label", "Alternativas por entorno"));
+    var list = App.el("ul", "cues");
+    [
+      "Cinta: mismo objetivo con velocidad e inclinación en vez de terreno real.",
+      "Parque o exterior: ideal si el objetivo pide terreno variable.",
+      "Bici estática: sustituye el impacto en piernas si lo necesitas.",
+      "Casa: circuito corto si no puedes salir.",
+      "Viaje: adapta a lo que tengas disponible, mismo tiempo objetivo.",
+      "Lluvia: pásate a cinta o bici estática sin perder el estímulo."
+    ].forEach(function (a) { list.appendChild(App.el("li", null, a)); });
+    box.appendChild(list);
+    return box;
   }
 
   function buildContinuousBlock(session, tmpl) {

@@ -29,19 +29,31 @@
     wrap.appendChild(App.el("p", "lede small",
       "No es un fallo: es una forma distinta de sumar hoy. Elige lo que mejor encaje con cómo llegas."));
 
+    // ---- prioridad-hibrida-006: resumen de bienestar general (3 estados),
+    // nunca diagnóstico, basado solo en HISTORY/check-ins ya registrados.
+    var readiness = data.readinessSummary();
+    wrap.appendChild(App.el("p", "notice notice--info", readiness.texto));
+
     var group = App.el("div", "optgroup");
 
-    var mob = data.RECOVERY_BLOCKS.movilidad;
-    group.appendChild(buildOption(mob.nombre, mob.duracion + " · " + mob.esfuerzoEsperado, function () {
-      s.kind = "movilidad"; s.stage = "detail"; s.running = false;
-      redraw();
-    }));
+    // Alternativas dependientes del entorno declarado (nota 17 ampliada):
+    // movilidad siempre disponible (vale en casa o donde sea), caminata si
+    // hay exterior/parque, cinta si el entorno es cinta (típico día de
+    // lluvia), cardio suave siempre como comodín, descanso siempre al final.
+    var envs = (data.user && data.user.entornos) || [];
+    var keys = ["movilidad"];
+    if (envs.indexOf("Exterior") > -1 || envs.indexOf("Parque") > -1) keys.push("caminata");
+    if (envs.indexOf("Cinta") > -1) keys.push("cinta");
+    keys.push("cardio");
 
-    var car = data.RECOVERY_BLOCKS.cardio;
-    group.appendChild(buildOption(car.nombre, car.duracion + " · " + car.esfuerzoEsperado, function () {
-      s.kind = "cardio"; s.stage = "detail"; s.running = false;
-      redraw();
-    }));
+    keys.forEach(function (key) {
+      var block = data.RECOVERY_BLOCKS[key];
+      if (!block) return;
+      group.appendChild(buildOption(block.nombre, block.duracion + " · " + block.esfuerzoEsperado, function () {
+        s.kind = key; s.stage = "detail"; s.running = false;
+        redraw();
+      }));
+    });
 
     group.appendChild(buildOption("Descanso", "Registra la decisión, sin cargar nada más hoy.", function () {
       openRestConfirm(data, mount, ctx);

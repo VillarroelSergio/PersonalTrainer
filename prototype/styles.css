@@ -156,17 +156,21 @@ a.chip:active:not(:focus-visible) {
 .topbar__tools { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 .sync-pill {
-  display: inline-flex; align-items: center; gap: 6px;
+  /* Mobile-first: solo-icono por defecto (deja hueco a la marca a 375px);
+     el texto completo vuelve a partir de ~480px, ver sección Lote 1 abajo. */
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
   background: none;
   border: 1px dashed var(--rule);
   border-radius: 999px;
-  padding: 6px 10px;
+  padding: 0;
   font-size: 0.7rem;
   color: var(--ink-2);
-  max-width: 140px;
+  width: 44px;
   min-height: 44px; /* C3: 34px medía por debajo del objetivo táctil de 44px */
+  flex-shrink: 0;
 }
-.sync-pill span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sync-pill__icon { font-size: 0.85rem; line-height: 1; }
+.sync-pill__text { display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
 .sync-dot[data-state="sincronizado"] { background: var(--done); }
 .sync-dot[data-state="sincronizando"] { background: var(--cardio); }
@@ -926,12 +930,38 @@ a.chip:active:not(:focus-visible) {
 .checkrow { display: flex; align-items: flex-start; gap: 10px; font-size: 0.88rem; min-height: 44px; padding: 6px 0; }
 .checkrow input { width: 22px; height: 22px; margin-top: 1px; flex-shrink: 0; accent-color: var(--accent); }
 
-.bodymap { position: relative; max-width: 280px; margin: 16px auto; }
-.bodymap__svg {
-  width: 100%; height: auto;
-  fill: var(--paper-2);
-  stroke: var(--rule);
-  stroke-width: 1.5;
+.bodymap__wellness { margin-bottom: 10px; }
+
+.bodymap-dual { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+.bodymap-pane { display: none; width: 100%; }
+.bodymap-pane.is-active { display: block; }
+
+.bodymap-crop {
+  position: relative;
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 320 / 800;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: #14161a;
+}
+.bodymap-img {
+  position: absolute;
+  top: 0; left: 0;
+  width: 200%;
+  max-width: none;
+  height: 100%;
+  object-fit: cover;
+}
+.bodymap-pane[data-side="trasera"] .bodymap-img { left: -100%; }
+.bodymap-img--broken { display: none; }
+
+@media (min-width: 768px) {
+  .bodymap__tabs { display: none; }
+  .bodymap-dual { flex-direction: row; justify-content: center; align-items: flex-start; gap: 24px; }
+  .bodymap-pane { display: block; flex: 1 1 240px; max-width: 260px; }
 }
 
 .zone {
@@ -1065,7 +1095,11 @@ textarea {
   font-size: 0.66rem; font-weight: 700;
   border-radius: var(--r-sm);
 }
-.bottomnav__btn[aria-current="page"] { color: var(--accent); }
+.bottomnav__btn[aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-wash);
+  border-radius: var(--r-md);
+}
 
 /* =====================================================================
    Hojas modales
@@ -1121,7 +1155,28 @@ textarea {
 .opt__meta { color: var(--ink-3); font-size: 0.76rem; text-align: right; }
 .opt.is-current .opt__name { color: var(--accent); }
 
-.guide-figure { display: flex; justify-content: center; color: var(--accent); padding: 6px 0 14px; }
+/* Ficha de ejercicio (catalogo-visual-ejercicios-004): ilustración real
+   (4:5, ancho reservado) o estado "Ilustración próximamente" explícito.
+   aspect-ratio reserva el hueco antes de que la imagen cargue: sin salto
+   de layout ni en la ilustración real ni en el fallback. */
+.exercise-media {
+  width: 100%;
+  max-width: 280px;
+  margin: 6px auto 14px;
+  aspect-ratio: 4 / 5;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--paper-2);
+}
+.exercise-media__img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.exercise-media--pending {
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--rule);
+  padding: 12px;
+  text-align: center;
+}
+.exercise-media__pending { color: var(--ink-3); font-size: 0.85rem; }
+
 .cues { margin-bottom: 14px; }
 .cues li { position: relative; padding: 8px 0 8px 24px; font-size: 0.9rem; border-top: 1px solid var(--rule-soft); }
 .cues li::before { content: "\2713"; position: absolute; left: 0; top: 8px; color: var(--done); font-weight: 800; }
@@ -1283,15 +1338,6 @@ textarea {
 
 .favbtn { flex-shrink: 0; font-size: 1.1rem; color: var(--warn); }
 
-.media-demand {
-  padding: 22px 12px;
-  text-align: center;
-  border: 1px dashed var(--rule);
-  border-radius: var(--r-md);
-  margin: 6px 0 14px;
-}
-.media-demand__placeholder { color: var(--ink-3); font-size: 0.85rem; margin-bottom: 10px; }
-
 .refblock { margin-top: 6px; padding: 14px; background: var(--paper-2); border-radius: var(--r-md); }
 .reffields { display: flex; gap: 10px; }
 .reffields .field { flex: 1; margin-bottom: 14px; }
@@ -1395,8 +1441,6 @@ textarea {
 }
 
 @media (min-width: 1024px) {
-  body { padding-bottom: 28px; }
-  .bottomnav { display: none; }
   .toast { bottom: 26px; }
   #mainContent { max-width: 680px; }
 }
@@ -1405,4 +1449,148 @@ textarea {
   #mainContent { padding-left: 12px; padding-right: 12px; }
   .today__title { font-size: 2rem; }
   .figure__num { font-size: 1.6rem; }
+}
+
+/* =====================================================================
+   === Lote 1 (mejoras-ux-ui-004): navegación persistente + cabecera compacta ===
+   ===================================================================== */
+
+/* --- Navegación persistente: de 640px en adelante deja de estirarse borde
+   a borde (patrón móvil) y pasa a ser una superficie flotante, centrada y
+   compacta con esquinas redondeadas y separación real del borde. --------- */
+@media (min-width: 640px) {
+  .bottomnav {
+    left: 50%;
+    right: auto;
+    bottom: 16px;
+    transform: translateX(-50%);
+    width: calc(100% - 32px);
+    max-width: 600px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--paper-2);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+  }
+  [data-theme="light"] .bottomnav {
+    box-shadow: 0 10px 24px rgba(27, 24, 19, 0.16);
+  }
+  .bottomnav__btn { min-height: 44px; }
+
+  /* El contenido nunca debe quedar bajo la barra flotante: la barra ocupa
+     su propia altura + 16px de separación del borde + margen de sobra. */
+  body { padding-bottom: 132px; }
+}
+
+/* En escritorio la barra sigue centrada y compacta (mismo max-width),
+   nunca estirada a todo el ancho de la ventana. */
+@media (min-width: 1024px) {
+  .bottomnav { max-width: 600px; }
+}
+
+/* --- Cabecera: el estado de sincronización se queda en icono + punto en
+   TODOS los anchos (prioridad-hibrida-006, criterio 13): el texto
+   "Sin conexión · simulado" ya no aparece de forma permanente en la
+   cabecera. Se mantiene accesible vía aria-label/title (actualizados en
+   App.sync.set) y visible como detalle en Perfil ("Demo local"). --------- */
+@media (min-width: 480px) {
+  .sync-pill {
+    width: auto;
+    max-width: 190px;
+    padding: 6px 10px;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+}
+
+/* === Lote 3 (mejoras-ux-ui-004): sesión de fuerza, biblioteca y molestias === */
+
+/* --- Sesión de fuerza: hueco permanente para la barra persistente, para
+   que ni el progreso ni el CTA de "Terminar sesión" queden nunca ocultos
+   tras el scroll. El valor cubre la barra con el descanso desplegado. --- */
+.view-strength { padding-bottom: 210px; }
+
+.sessionbar {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: 88px; /* justo encima del hueco reservado por .bottomnav móvil */
+  z-index: 19; /* por debajo de .bottomnav (20): nunca la tapa ni se solapan */
+  background: var(--paper-2);
+  border-top: 1px solid var(--rule);
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.22);
+}
+[data-theme="light"] .sessionbar { box-shadow: 0 -6px 18px rgba(27, 24, 19, 0.10); }
+
+.sessionbar__top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  max-width: 460px; margin: 0 auto;
+}
+.sessionbar__meta { min-width: 0; }
+.sessionbar__progress { font-weight: 800; font-size: 0.92rem; }
+.sessionbar__current {
+  color: var(--ink-3); font-size: 0.78rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.sessionbar__rest {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  max-width: 460px; margin: 10px auto 0; padding-top: 10px;
+  border-top: 1px dashed var(--rule);
+}
+.sessionbar__clock {
+  font-variant-numeric: tabular-nums; font-weight: 800; font-size: 1.1rem;
+  color: var(--accent); min-width: 3ch;
+}
+.sessionbar__restlabel { font-size: 0.78rem; color: var(--ink-2); flex: 1; min-width: 120px; }
+.sessionbar__restedit { display: inline-flex; align-items: center; gap: 4px; font-size: 0.78rem; color: var(--ink-3); }
+.sessionbar__restedit input {
+  width: 56px;
+  background: var(--paper); border: 1.5px solid var(--rule); border-radius: var(--r-sm);
+  color: var(--ink); font: inherit; font-size: 0.85rem; padding: 6px 8px; min-height: 36px;
+}
+
+/* De 640px en adelante la bottomnav flota (ver Lote 1): la barra de sesión
+   sube al mismo hueco reservado (132px) y se centra igual que ella. */
+@media (min-width: 640px) {
+  .sessionbar {
+    bottom: 132px;
+    left: 50%; right: auto; transform: translateX(-50%);
+    width: calc(100% - 32px); max-width: 600px;
+    border: 1px solid var(--rule); border-bottom: none;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+}
+
+/* --- Biblioteca: accesos rápidos (favoritos, recientes, por patrón) como
+   entrada por defecto en vez de listar ~33 tarjetas de golpe (nota 09). -- */
+.quicklinks { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.quicklink .opt__name { font-weight: 700; }
+
+/* === Lote 4 (mejoras-ux-ui-004): compartir con privacidad, inicio y estados vacíos === */
+
+/* home.js: buildWeekRail ahora genera <button class="weekrail__day"> (antes
+   no interactivo) para dar foco de teclado y acción por día. El reset
+   global de button (línea ~100) no quita el chrome nativo (borde, fondo,
+   padding). Sin esto cada día se ve como botón de navegador, no como el
+   círculo/etiqueta diseñado. */
+.weekrail__day {
+  border: none;
+  background: none;
+  padding: 6px 0;
+  width: 100%;
+  text-align: center;
+  min-height: 44px; /* área táctil */
+}
+.weekrail__day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm, 6px);
+}
+
+/* share.js: vista previa del enlace usa .tag--muted para "sin cargas
+   personales"; no existía variante atenuada de .tag. */
+.tag--muted {
+  color: var(--ink-3);
+  border-color: var(--rule-soft, var(--rule));
 }

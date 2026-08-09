@@ -13,6 +13,9 @@
     wrap.appendChild(App.el("h1", "view-title", "Perfil"));
     wrap.appendChild(App.el("p", "lede small",
       (data.user.email || "Cuenta de demostración") + " · " + (data.user.objetivo || "Sin objetivo definido")));
+    // ---- prioridad-hibrida-006: el pill de la cabecera ya no muestra texto
+    // permanente de simulación (criterio 13); el detalle queda aquí.
+    wrap.appendChild(App.el("p", "lede small", "Demo local · sin conexión real, todo vive en este dispositivo."));
 
     wrap.appendChild(App.el("h2", "section-title", "Preferencias"));
     wrap.appendChild(buildPreferences(data));

@@ -15,38 +15,33 @@
   var DEMO_EMAIL = "demo@trainer.app";
   var DEMO_PASSWORD = "demo1234";
 
+  // ---- prioridad-hibrida-006: onboarding mínimo (deporte → objetivo →
+  // días+duración → entornos). Se quita el paso de "experiencia" (queda un
+  // campo interno con valor por defecto, ver App.dataDefaults) y se sustituye
+  // el entorno único por multi-selección de 6 entornos. Constantes de deporte
+  // y entorno viven en data.js (DEPORTES/ENTORNOS_ONBOARDING) para no
+  // duplicarlas con plan-builder.js.
+  var OBJETIVOS = ["Ganar músculo", "Perder grasa", "Mejorar resistencia", "Mantener forma", "Rendimiento combinado"];
+  var DIAS_OPCIONES = ["3", "4", "5", "6"];
+  var DURACIONES = ["20 min", "40 min", "60 min", "90+ min"];
+
   var PROFILE_STEPS = [
-    {
-      key: "objetivo", label: "Objetivo",
-      options: ["Ganar músculo", "Mejorar resistencia", "Mantener forma", "Rendimiento combinado"]
-    },
-    {
-      key: "experiencia", label: "Experiencia",
-      options: ["Principiante", "Intermedia", "Avanzada"]
-    },
-    {
-      key: "diasDisponibles", label: "Días disponibles por semana",
-      options: ["3", "4", "5", "6"]
-    },
-    {
-      key: "duracionHabitual", label: "Duración habitual de sesión",
-      options: ["20 min", "40 min", "60 min", "90+ min"]
-    },
-    {
-      key: "entorno", label: "Entorno habitual",
-      options: ["Gimnasio completo", "Gimnasio básico", "Casa", "Exterior"]
-    }
+    { key: "deporte", label: "Tu deporte principal" },
+    { key: "objetivo", label: "Objetivo" },
+    { key: "diasDuracion", label: "Días y duración" },
+    { key: "entornos", label: "Entornos habituales" }
   ];
 
   function freshFormState() {
     return {
-      step: "auth",              // auth | recover | privacy | profile
-      mode: "login",             // login | signup
+      step: "auth",              // auth | recover | privacy | profile | summary
+      mode: "login",             // login | request (solicitar acceso, no crea cuenta)
       email: "", password: "",
       emailError: null, passwordError: null, authError: null,
       recoverEmail: "", recoverSent: false,
       profileIndex: 0,
-      profile: { objetivo: null, experiencia: null, diasDisponibles: null, duracionHabitual: null, entorno: null }
+      profile: { deporte: null, objetivo: null, diasDisponibles: null, duracionHabitual: null, entornos: [] },
+      proposal: null
     };
   }
 
@@ -62,6 +57,7 @@
     else if (ctx.form.step === "recover") renderRecover(mount, ctx);
     else if (ctx.form.step === "privacy") renderPrivacy(mount, ctx);
     else if (ctx.form.step === "profile") renderProfile(mount, ctx);
+    else if (ctx.form.step === "summary") renderSummary(mount, ctx);
   }
 
   /* ---- Paso 1: crear cuenta / iniciar sesión --------------------------- */
@@ -71,7 +67,7 @@
 
     var wrap = App.el("section", "access");
     wrap.appendChild(App.el("p", "kicker", "Tu camino"));
-    var h1 = App.el("h1", "view-title", form.mode === "login" ? "Inicia sesión" : "Crea tu cuenta");
+    var h1 = App.el("h1", "view-title", form.mode === "login" ? "Inicia sesión" : "Solicitar acceso (demo)");
     wrap.appendChild(h1);
     wrap.appendChild(App.el("p", "lede", "Prototipo: no hay servidor real. La cuenta " + DEMO_EMAIL + " con la contraseña " + DEMO_PASSWORD + " simula un acceso válido."));
 
@@ -82,18 +78,49 @@
     loginBtn.type = "button";
     loginBtn.setAttribute("aria-pressed", String(form.mode === "login"));
     loginBtn.addEventListener("click", function () { form.mode = "login"; form.authError = null; renderStep(mount, ctx); });
-    var signupBtn = App.el("button", "modeswitch__btn" + (form.mode === "signup" ? " is-active" : ""), "Crear cuenta");
-    signupBtn.type = "button";
-    signupBtn.setAttribute("aria-pressed", String(form.mode === "signup"));
-    signupBtn.addEventListener("click", function () { form.mode = "signup"; form.authError = null; renderStep(mount, ctx); });
+    var requestBtn = App.el("button", "modeswitch__btn" + (form.mode === "request" ? " is-active" : ""), "Solicitar acceso (demo)");
+    requestBtn.type = "button";
+    requestBtn.setAttribute("aria-pressed", String(form.mode === "request"));
+    requestBtn.addEventListener("click", function () { form.mode = "request"; form.authError = null; renderStep(mount, ctx); });
     modeSwitch.appendChild(loginBtn);
-    modeSwitch.appendChild(signupBtn);
+    modeSwitch.appendChild(requestBtn);
     wrap.appendChild(modeSwitch);
 
     if (form.authError) {
       var err = App.el("p", "notice notice--warn", form.authError);
       err.setAttribute("role", "alert");
       wrap.appendChild(err);
+    }
+
+    // "Solicitar acceso (demo)" NO es un alta de cuenta: en el MVP las cuentas
+    // se aprovisionan manualmente (MVP-DEFINITION.md §13) y este prototipo no
+    // registra públicamente a nadie ni envía correos reales. Solo explica el
+    // procedimiento real y ofrece las credenciales de demostración.
+    if (form.mode === "request") {
+      wrap.appendChild(App.el("p", "lede",
+        "Las cuentas de esta app se crean manualmente por el equipo; no hay registro público ni un formulario de alta real aquí."));
+      wrap.appendChild(App.el("p", "lede small",
+        "Este prototipo no envía ninguna solicitud ni correo real. Para explorar la app, usa las credenciales de demostración disponibles:"));
+
+      var demoBox = App.el("div", "notice notice--info");
+      demoBox.appendChild(App.el("p", "lede small", "Correo: " + DEMO_EMAIL));
+      demoBox.appendChild(App.el("p", "lede small", "Contraseña: " + DEMO_PASSWORD));
+      wrap.appendChild(demoBox);
+
+      var useDemo = App.el("button", "btn btn--primary btn--block", "Usar credenciales de demostración");
+      useDemo.type = "button";
+      useDemo.addEventListener("click", function () {
+        form.mode = "login";
+        form.email = DEMO_EMAIL;
+        form.password = DEMO_PASSWORD;
+        form.emailError = null; form.passwordError = null; form.authError = null;
+        renderStep(mount, ctx);
+        App.toast("Credenciales de demostración rellenadas.");
+      });
+      wrap.appendChild(useDemo);
+
+      mount.appendChild(wrap);
+      return;
     }
 
     var formEl = document.createElement("form");
@@ -113,16 +140,14 @@
     });
     formEl.appendChild(passField);
 
-    var submit = App.el("button", "btn btn--primary btn--block", form.mode === "login" ? "Entrar" : "Crear cuenta");
+    var submit = App.el("button", "btn btn--primary btn--block", "Entrar");
     submit.type = "submit";
     formEl.appendChild(submit);
 
-    if (form.mode === "login") {
-      var recoverBtn = App.el("button", "btn btn--quiet", "¿Olvidaste tu contraseña?");
-      recoverBtn.type = "button";
-      recoverBtn.addEventListener("click", function () { form.step = "recover"; renderStep(mount, ctx); });
-      formEl.appendChild(recoverBtn);
-    }
+    var recoverBtn = App.el("button", "btn btn--quiet", "¿Olvidaste tu contraseña?");
+    recoverBtn.type = "button";
+    recoverBtn.addEventListener("click", function () { form.step = "recover"; renderStep(mount, ctx); });
+    formEl.appendChild(recoverBtn);
 
     formEl.addEventListener("submit", function (e) {
       e.preventDefault();
@@ -148,12 +173,12 @@
 
     if (form.emailError || form.passwordError) { renderStep(mount, ctx); return; }
 
-    if (form.mode === "login") {
-      if (form.email.trim().toLowerCase() !== DEMO_EMAIL || form.password !== DEMO_PASSWORD) {
-        form.authError = "Correo o contraseña incorrectos. Vuelve a intentarlo o recupera tu contraseña.";
-        renderStep(mount, ctx);
-        return;
-      }
+    // Único camino de acceso: credenciales de demostración aprovisionadas
+    // manualmente. No existe alta pública que pueda saltarse esta comprobación.
+    if (form.email.trim().toLowerCase() !== DEMO_EMAIL || form.password !== DEMO_PASSWORD) {
+      form.authError = "Correo o contraseña incorrectos. Vuelve a intentarlo o recupera tu contraseña.";
+      renderStep(mount, ctx);
+      return;
     }
 
     App.data.user.email = form.email.trim();
@@ -296,35 +321,36 @@
     progress.appendChild(track);
     wrap.appendChild(progress);
 
-    wrap.appendChild(App.el("p", "lede small", "Nada de RPE ni inventario de máquinas: solo lo esencial para proponerte una primera semana."));
+    wrap.appendChild(App.el("p", "lede small", "Nada de peso, FC, zonas, ritmo, desnivel ni inventario de máquinas: solo lo esencial para proponerte una primera semana."));
 
-    var picker = App.el("div", "picker picker--wide");
-    picker.setAttribute("role", "group");
-    picker.setAttribute("aria-labelledby", "profileStepLabel");
-    var current = form.profile[stepDef.key];
-    stepDef.options.forEach(function (opt) {
-      var btn = App.el("button", "picker__btn", opt);
-      btn.type = "button";
-      var pressed = current === opt;
-      btn.setAttribute("aria-pressed", String(pressed));
-      btn.addEventListener("click", function () {
-        form.profile[stepDef.key] = opt;
-        renderStep(mount, ctx);
-      });
-      picker.appendChild(btn);
-    });
-    wrap.appendChild(picker);
+    var enabled;
+    if (stepDef.key === "deporte") {
+      enabled = buildSinglePicker(wrap, mount, ctx, App.data.DEPORTES, form.profile.deporte, "Deporte principal", function (opt) { form.profile.deporte = opt; });
+    } else if (stepDef.key === "objetivo") {
+      enabled = buildSinglePicker(wrap, mount, ctx, OBJETIVOS, form.profile.objetivo, "Objetivo", function (opt) { form.profile.objetivo = opt; });
+    } else if (stepDef.key === "diasDuracion") {
+      wrap.appendChild(App.el("p", "field__label", "Días disponibles por semana"));
+      buildSinglePicker(wrap, mount, ctx, DIAS_OPCIONES, form.profile.diasDisponibles, "Días disponibles", function (opt) { form.profile.diasDisponibles = opt; });
+      wrap.appendChild(App.el("p", "field__label", "Duración habitual de sesión"));
+      buildSinglePicker(wrap, mount, ctx, DURACIONES, form.profile.duracionHabitual, "Duración habitual", function (opt) { form.profile.duracionHabitual = opt; });
+      enabled = !!(form.profile.diasDisponibles && form.profile.duracionHabitual);
+    } else if (stepDef.key === "entornos") {
+      wrap.appendChild(App.el("p", "lede small", "Elige uno o varios. Solo para priorizar alternativas compatibles, no un inventario exacto."));
+      enabled = buildMultiPicker(wrap, mount, ctx, App.data.ENTORNOS_ONBOARDING, form.profile.entornos, "Entornos habituales");
+    }
 
     var nextBtn = App.el("button", "btn btn--primary btn--block",
-      form.profileIndex === total - 1 ? "Terminar" : "Siguiente");
+      form.profileIndex === total - 1 ? "Ver mi semana propuesta" : "Siguiente");
     nextBtn.type = "button";
     nextBtn.addEventListener("click", function () {
-      if (!form.profile[stepDef.key]) { App.toast("Elige una opción para continuar."); return; }
+      if (!enabled) { App.toast("Elige una opción para continuar."); return; }
       if (form.profileIndex < total - 1) {
         form.profileIndex++;
         renderStep(mount, ctx);
       } else {
-        finishOnboarding(ctx);
+        buildOnboardingProposal(ctx);
+        form.step = "summary";
+        renderStep(mount, ctx);
       }
     });
     wrap.appendChild(nextBtn);
@@ -332,14 +358,149 @@
     mount.appendChild(wrap);
   }
 
+  function buildSinglePicker(wrap, mount, ctx, options, current, ariaLabel, onSelect) {
+    var picker = App.el("div", "picker picker--wide");
+    picker.setAttribute("role", "group");
+    picker.setAttribute("aria-label", ariaLabel);
+    options.forEach(function (opt) {
+      var btn = App.el("button", "picker__btn", opt);
+      btn.type = "button";
+      btn.setAttribute("aria-pressed", String(current === opt));
+      btn.addEventListener("click", function () { onSelect(opt); renderStep(mount, ctx); });
+      picker.appendChild(btn);
+    });
+    wrap.appendChild(picker);
+    return !!current;
+  }
+
+  // Multi-selección real (toggle): a diferencia de buildSinglePicker, cada
+  // botón conmuta su propia presencia en el array `selected` sin recomponer
+  // el resto de opciones elegidas.
+  function buildMultiPicker(wrap, mount, ctx, options, selected, ariaLabel) {
+    var picker = App.el("div", "picker picker--wide");
+    picker.setAttribute("role", "group");
+    picker.setAttribute("aria-label", ariaLabel);
+    options.forEach(function (opt) {
+      var btn = App.el("button", "picker__btn", opt);
+      btn.type = "button";
+      var pressed = selected.indexOf(opt) > -1;
+      btn.setAttribute("aria-pressed", String(pressed));
+      btn.addEventListener("click", function () {
+        var idx = selected.indexOf(opt);
+        if (idx > -1) selected.splice(idx, 1); else selected.push(opt);
+        renderStep(mount, ctx);
+      });
+      picker.appendChild(btn);
+    });
+    wrap.appendChild(picker);
+    return selected.length > 0;
+  }
+
+  /* ---- Resumen visual: cómo se formó la semana propuesta ---------------- */
+
+  // Genera la propuesta con el MISMO generador que usa el creador guiado
+  // (data.generatePlanWeek): no se reimplementa nada. Si la combinación
+  // elegida deja 0 días para fuerza (posible con Trail/Senderismo y pocos
+  // días), se reintenta una vez con la frecuencia de resistencia sugerida en
+  // vez de dejar el onboarding en un callejón sin salida.
+  function buildOnboardingProposal(ctx) {
+    var profile = ctx.form.profile;
+    var map = App.data.DEPORTE_CARDIO_MAP[profile.deporte] || App.data.DEPORTE_CARDIO_MAP.Fuerza;
+    var opts = {
+      modo: "plantilla", plantilla: map.plantilla,
+      diasDisponibles: profile.diasDisponibles, duracionHabitual: profile.duracionHabitual,
+      cardioActividad: map.cardioActividad, cardioFrecuencia: map.cardioFrecuencia
+    };
+    var proposal = App.data.generatePlanWeek(opts);
+    if (proposal.infeasible && proposal.suggestReduceFreq !== undefined) {
+      opts.cardioFrecuencia = String(proposal.suggestReduceFreq);
+      proposal = App.data.generatePlanWeek(opts);
+      proposal.adjustedFreq = true;
+    }
+    ctx.form.proposal = proposal;
+    ctx.form.proposalMeta = { plantilla: map.plantilla, cardioActividad: map.cardioActividad };
+  }
+
+  function renderSummary(mount, ctx) {
+    var data = App.data;
+    var form = ctx.form;
+    var proposal = form.proposal;
+
+    var wrap = App.el("section", "access");
+    var header = App.el("div", "view-header");
+    var back = App.el("button", "back-btn", "←");
+    back.type = "button";
+    back.setAttribute("aria-label", "Volver a entornos habituales");
+    back.addEventListener("click", function () { form.step = "profile"; form.profileIndex = PROFILE_STEPS.length - 1; renderStep(mount, ctx); });
+    header.appendChild(back);
+    var headBody = document.createElement("div");
+    headBody.appendChild(App.el("p", "kicker", "Tu semana, explicada"));
+    headBody.appendChild(App.el("h1", "view-title", "Así formamos tu primera semana"));
+    header.appendChild(headBody);
+    wrap.appendChild(header);
+
+    wrap.appendChild(App.el("p", "lede", proposal.explanation ||
+      "No pudimos generar una propuesta con esta combinación. Vuelve atrás y ajusta tus días o tu deporte."));
+    if (proposal.adjustedFreq) {
+      wrap.appendChild(App.el("p", "notice notice--info",
+        "Ajustamos automáticamente la frecuencia de resistencia para dejar sitio a tu sesión de fuerza. Podrás cambiarlo después desde el calendario."));
+    }
+
+    if (proposal.sessions && proposal.sessions.length) {
+      var list = App.el("ol", "daylist");
+      data.DAYS.forEach(function (day) {
+        var session = null;
+        proposal.sessions.forEach(function (s) { if (s.day === day.key) session = s; });
+        var cls = "dayrow" + (session ? (session.tipo === "resistencia" ? " dayrow--cardio dayrow--planificada" : " dayrow--planificada") : " dayrow--descanso");
+        var row = App.el("li", cls);
+        var top = App.el("div", "dayrow__top");
+        var body = document.createElement("div");
+        body.appendChild(App.el("p", "dayrow__day", day.nombre));
+        if (session) {
+          body.appendChild(App.el("p", "dayrow__title", session.nombre));
+          body.appendChild(App.el("p", "dayrow__meta", session.proposito + " · " + session.duracionPrevista + " min"));
+        } else {
+          body.appendChild(App.el("p", "dayrow__title", "Descanso"));
+        }
+        top.appendChild(body);
+        row.appendChild(top);
+        list.appendChild(row);
+      });
+      wrap.appendChild(list);
+    }
+
+    var confirmBtn = App.el("button", "btn btn--primary btn--block", "Confirmar y continuar");
+    confirmBtn.type = "button";
+    confirmBtn.disabled = !(proposal.sessions && proposal.sessions.length);
+    confirmBtn.addEventListener("click", function () { finishOnboarding(ctx); });
+    wrap.appendChild(confirmBtn);
+
+    var editBtn = App.el("button", "btn btn--ghost btn--block", "Cambiar mis respuestas");
+    editBtn.type = "button";
+    editBtn.addEventListener("click", function () { form.step = "profile"; form.profileIndex = 0; renderStep(mount, ctx); });
+    wrap.appendChild(editBtn);
+
+    mount.appendChild(wrap);
+  }
+
   function finishOnboarding(ctx) {
     var profile = ctx.form.profile;
+    var proposal = ctx.form.proposal;
     var user = App.data.user;
+    user.deporte = profile.deporte;
     user.objetivo = profile.objetivo;
-    user.experiencia = profile.experiencia;
     user.diasDisponibles = parseInt(profile.diasDisponibles, 10) || null;
     user.duracionHabitual = profile.duracionHabitual;
-    user.entorno = profile.entorno;
+    user.entornos = profile.entornos.slice();
+    user.entorno = profile.entornos[0] || null; // compat: creador guiado/Perfil siguen leyendo el singular
+
+    if (proposal && proposal.sessions && proposal.sessions.length) {
+      App.data.SESSIONS.length = 0;
+      Array.prototype.push.apply(App.data.SESSIONS, proposal.sessions);
+      App.data.plan.fases = App.data.buildFasesFromTemplate(1);
+      App.data.plan.semanaActual = 1;
+      App.data.lastAction = null;
+    }
 
     App.data.auth.estado = "autenticado";
     App.data.auth.primerUso = false;
@@ -349,7 +510,7 @@
 
     if (App.data.plan && App.data.plan.estado === "activo") {
       App.navigate("home", {}, { replace: true });
-      App.toast("Cuenta creada. Bienvenido a tu camino.");
+      App.toast("Perfil completado. Bienvenido a tu camino.");
     } else {
       App.navigate("access", {}, { replace: true }); // no debería ocurrir con los datos de demo
     }

@@ -20,6 +20,10 @@
     if (ctx.grupo === undefined) ctx.grupo = "";
     if (ctx.equipo === undefined) ctx.equipo = "";
     if (ctx.favoritosOnly === undefined) ctx.favoritosOnly = false;
+    if (ctx.recentOnly === undefined) ctx.recentOnly = false;
+    // "quick" = accesos rápidos (entrada por defecto); "all" = catálogo
+    // completo/búsqueda, un camino explícito (nota 09 del encargo).
+    if (ctx.mode === undefined) ctx.mode = "quick";
 
     var wrap = App.el("section", "view-library");
     wrap.appendChild(App.el("h1", "view-title", "Ejercicios"));
@@ -43,15 +47,17 @@
     var grupos = uniqueValues(data, "grupo");
     var equipos = uniqueValues(data, "equipo");
 
-    wrap.appendChild(buildSelect("Patrón de movimiento", patrones, ctx.patron, function (v) { ctx.patron = v; update(); }));
-    wrap.appendChild(buildSelect("Grupo muscular", grupos, ctx.grupo, function (v) { ctx.grupo = v; update(); }));
-    wrap.appendChild(buildSelect("Equipamiento", equipos, ctx.equipo, function (v) { ctx.equipo = v; update(); }));
+    wrap.appendChild(buildSelect("Patrón de movimiento", patrones, ctx.patron, function (v) { ctx.patron = v; ctx.mode = "all"; ctx.recentOnly = false; update(); }));
+    wrap.appendChild(buildSelect("Grupo muscular", grupos, ctx.grupo, function (v) { ctx.grupo = v; ctx.mode = "all"; ctx.recentOnly = false; update(); }));
+    wrap.appendChild(buildSelect("Equipamiento", equipos, ctx.equipo, function (v) { ctx.equipo = v; ctx.mode = "all"; ctx.recentOnly = false; update(); }));
 
     var favBtn = App.el("button", "picker__btn", (ctx.favoritosOnly ? "★" : "☆") + " Solo favoritas");
     favBtn.type = "button";
     favBtn.setAttribute("aria-pressed", String(ctx.favoritosOnly));
     favBtn.addEventListener("click", function () {
       ctx.favoritosOnly = !ctx.favoritosOnly;
+      ctx.mode = "all";
+      ctx.recentOnly = false;
       favBtn.setAttribute("aria-pressed", String(ctx.favoritosOnly));
       favBtn.textContent = (ctx.favoritosOnly ? "★" : "☆") + " Solo favoritas";
       update();
@@ -70,16 +76,66 @@
 
     mount.appendChild(wrap);
 
-    input.addEventListener("input", function () { ctx.query = input.value; update(); });
+    input.addEventListener("input", function () { ctx.query = input.value; ctx.mode = "all"; ctx.recentOnly = false; update(); });
+
+    function goAll() { ctx.mode = "all"; update(); }
 
     function update() {
-      var results = data.searchCatalog({
-        query: ctx.query, patron: ctx.patron, grupo: ctx.grupo,
-        equipo: ctx.equipo, favoritosOnly: ctx.favoritosOnly
-      });
+      if (ctx.mode !== "all") {
+        renderQuickAccess(resultsHost, data, ctx, goAll);
+        return;
+      }
+      var results = ctx.recentOnly
+        ? data.RECENT_EXERCISE_IDS.map(function (id) { return data.findCatalogItem(id); }).filter(Boolean)
+        : data.searchCatalog({
+          query: ctx.query, patron: ctx.patron, grupo: ctx.grupo,
+          equipo: ctx.equipo, favoritosOnly: ctx.favoritosOnly
+        });
       renderResults(resultsHost, data, results, ctx, update);
     }
     update();
+  }
+
+  /* ---- Accesos rápidos: entrada por defecto (nota 09) ---------------------- */
+
+  function renderQuickAccess(host, data, ctx, goAll) {
+    host.innerHTML = "";
+
+    var favCount = data.EXERCISE_CATALOG.filter(function (x) { return x.favorito; }).length;
+    var recentCount = data.RECENT_EXERCISE_IDS.length;
+
+    var top = App.el("div", "quicklinks");
+    top.appendChild(quickLinkButton("★ Favoritos", favCount + (favCount === 1 ? " ejercicio guardado" : " ejercicios guardados"), function () {
+      ctx.favoritosOnly = true; ctx.recentOnly = false; goAll();
+    }));
+    top.appendChild(quickLinkButton("🕘 Recientes", recentCount + (recentCount === 1 ? " ejercicio usado" : " ejercicios usados"), function () {
+      ctx.recentOnly = true; ctx.favoritosOnly = false; goAll();
+    }));
+    host.appendChild(top);
+
+    host.appendChild(App.el("p", "field__label", "Por patrón de movimiento"));
+    var patternGroup = App.el("div", "quicklinks");
+    uniqueValues(data, "patron").forEach(function (p) {
+      var count = data.EXERCISE_CATALOG.filter(function (x) { return x.patron === p; }).length;
+      patternGroup.appendChild(quickLinkButton(p, count + (count === 1 ? " ejercicio" : " ejercicios"), function () {
+        ctx.patron = p; ctx.recentOnly = false; goAll();
+      }));
+    });
+    host.appendChild(patternGroup);
+
+    var allBtn = App.el("button", "btn btn--ghost btn--block", "Ver todo el catálogo");
+    allBtn.type = "button";
+    allBtn.addEventListener("click", function () { ctx.recentOnly = false; goAll(); });
+    host.appendChild(allBtn);
+  }
+
+  function quickLinkButton(title, meta, onClick) {
+    var btn = App.el("button", "opt quicklink");
+    btn.type = "button";
+    btn.appendChild(App.el("span", "opt__name", title));
+    btn.appendChild(App.el("span", "opt__meta", meta));
+    btn.addEventListener("click", onClick);
+    return btn;
   }
 
   function uniqueValues(data, key) {
@@ -116,22 +172,35 @@
 
   function renderResults(host, data, results, ctx, refresh) {
     host.innerHTML = "";
+
+    var backBtn = App.el("button", "chip", "← Accesos rápidos");
+    backBtn.type = "button";
+    backBtn.addEventListener("click", function () {
+      ctx.mode = "quick";
+      ctx.query = ""; ctx.patron = ""; ctx.grupo = ""; ctx.equipo = "";
+      ctx.favoritosOnly = false; ctx.recentOnly = false;
+      App.navigate("library", {}, { replace: true });
+    });
+    host.appendChild(backBtn);
+
     var count = App.el("p", "small", results.length + (results.length === 1 ? " resultado" : " resultados"));
     count.id = "libraryResultsCount";
     count.setAttribute("aria-live", "polite");
     host.appendChild(count);
 
-    var hasFilters = !!(ctx.query || ctx.patron || ctx.grupo || ctx.equipo || ctx.favoritosOnly);
+    var hasFilters = !!(ctx.query || ctx.patron || ctx.grupo || ctx.equipo || ctx.favoritosOnly || ctx.recentOnly);
 
     if (!results.length) {
       App.states.empty(host, {
         title: "No hay ejercicios con esos filtros",
-        body: hasFilters
-          ? "Prueba a quitar algún filtro de búsqueda."
-          : "Todavía no hay ejercicios en el catálogo.",
+        body: ctx.recentOnly
+          ? "Todavía no tienes ejercicios recientes: aparecerán aquí en cuanto registres una sesión con ellos."
+          : hasFilters
+            ? "Prueba a quitar algún filtro de búsqueda."
+            : "Todavía no hay ejercicios en el catálogo.",
         actionLabel: hasFilters ? "Quitar filtros" : null,
         onAction: hasFilters ? function () {
-          ctx.query = ""; ctx.patron = ""; ctx.grupo = ""; ctx.equipo = ""; ctx.favoritosOnly = false;
+          ctx.query = ""; ctx.patron = ""; ctx.grupo = ""; ctx.equipo = ""; ctx.favoritosOnly = false; ctx.recentOnly = false;
           App.navigate("library", {}, { replace: true });
         } : null
       });
@@ -202,45 +271,67 @@
     return li;
   }
 
-  /* ---- Ficha de ejercicio y guía (nota 18) --------------------------------- */
-
-  function openDetailSheet(item, data, refresh) {
+  /* ---- Componente único de ficha de ejercicio (catalogo-visual-ejercicios-004) ----
+   * Usado desde Biblioteca (openDetailSheet, abajo) Y desde la sesión de
+   * fuerza (openGuideSheet en strength.js). Un solo marcado, una sola lógica
+   * de imagen/fallback: no existe una segunda implementación de sheet.
+   *
+   * spec = {
+   *   title,                  // nombre del ejercicio (título del sheet)
+   *   mediaId,                // exerciseId de catálogo para buscar ilustración
+   *                           // real vía data.exerciseMedia(); usar item.id
+   *                           // (catálogo) o ex.catalogId||ex.id (sesión)
+   *   patron, grupo, equipo,  // texto de cabecera; grupo/equipo son opcionales
+   *                           // (nota 08: "nivel" no existe como campo en el
+   *                           // dataset actual; patrón/grupo son la
+   *                           // aproximación visible aquí, no hay dificultad
+   *                           // clínica inventada)
+   *   objetivo,                // "3 × 10-12 reps" o similar
+   *   guide: { cues, muscles }, video,
+   *   onVariants,              // opcional: función al pulsar "Ver variantes"
+   *   renderReference,         // opcional: function(host) — bloque de referencia de carga
+   *   renderExtra              // opcional: function(body) — contenido adicional (ej. favorito)
+   * }
+   */
+  App.exerciseSheet = function (spec) {
+    var data = App.data;
     App.openSheet({
-      title: item.nombre,
+      title: spec.title,
       render: function (body) {
-        body.appendChild(App.el("p", "kicker", item.patron + " · " + item.equipo));
-        body.appendChild(App.el("p", "lede small", "Objetivo: " + item.objetivo));
+        var kickerParts = [spec.patron, spec.grupo, spec.equipo].filter(Boolean);
+        if (kickerParts.length) body.appendChild(App.el("p", "kicker", kickerParts.join(" · ")));
+        if (spec.objetivo) body.appendChild(App.el("p", "lede small", "Objetivo: " + spec.objetivo));
 
-        // ---- Medio bajo demanda (nota 09/18): placeholder visible, sin carga
-        // hasta una acción explícita; simula la espera con un breve retardo.
-        var mediaHost = App.el("div", "media-demand");
-        var placeholder = App.el("p", "media-demand__placeholder", "Ilustración no cargada todavía.");
-        placeholder.setAttribute("aria-live", "polite");
-        var showBtn = App.el("button", "btn btn--ghost btn--sm", "Mostrar ilustración");
-        showBtn.type = "button";
-        mediaHost.appendChild(placeholder);
-        mediaHost.appendChild(showBtn);
-        showBtn.addEventListener("click", function () {
-          showBtn.disabled = true;
-          placeholder.textContent = "Cargando ilustración…";
-          window.setTimeout(function () {
-            mediaHost.innerHTML = "";
-            var fig = App.el("div", "guide-figure");
-            fig.innerHTML = icon(item.icon);
-            mediaHost.appendChild(fig);
-          }, 300);
-        });
-        body.appendChild(mediaHost);
+        // ---- Ilustración real o fallback explícito (nunca <img> roto) -----
+        var media = App.el("div", "exercise-media");
+        var info = spec.mediaId ? data.exerciseMedia(spec.mediaId) : { available: false, alt: null };
+        if (info.available) {
+          var img = document.createElement("img");
+          img.className = "exercise-media__img";
+          img.src = info.src;
+          img.alt = info.alt || spec.title;
+          img.loading = "lazy";
+          img.decoding = "async";
+          img.width = 400;
+          img.height = 500;
+          media.appendChild(img);
+        } else {
+          media.classList.add("exercise-media--pending");
+          media.appendChild(App.el("p", "exercise-media__pending", "Ilustración próximamente"));
+        }
+        body.appendChild(media);
 
-        body.appendChild(App.el("p", "field__label", "Guía técnica"));
-        var cues = App.el("ul", "cues");
-        item.guide.cues.forEach(function (c) { cues.appendChild(App.el("li", null, c)); });
-        body.appendChild(cues);
+        if (spec.guide && spec.guide.cues && spec.guide.cues.length) {
+          body.appendChild(App.el("p", "field__label", "Guía técnica"));
+          var cues = App.el("ul", "cues");
+          spec.guide.cues.forEach(function (c) { cues.appendChild(App.el("li", null, c)); });
+          body.appendChild(cues);
+        }
 
-        if (item.guide.muscles.length) {
+        if (spec.guide && spec.guide.muscles && spec.guide.muscles.length) {
           body.appendChild(App.el("p", "field__label", "Músculos implicados"));
           var tags = App.el("div", "tags");
-          item.guide.muscles.forEach(function (m) { tags.appendChild(App.el("span", "tag", m)); });
+          spec.guide.muscles.forEach(function (m) { tags.appendChild(App.el("span", "tag", m)); });
           body.appendChild(tags);
         }
 
@@ -248,30 +339,69 @@
           "Guía informativa general de bienestar; no diagnostica, trata ni previene lesiones ni molestias, " +
           "y no sustituye la valoración de un profesional de salud."));
 
-        var videoLink = document.createElement("a");
-        videoLink.className = "chip";
-        videoLink.href = item.video;
-        videoLink.target = "_blank";
-        videoLink.rel = "noopener";
-        videoLink.textContent = "Vídeo en YouTube (se abre fuera de la app) ↗";
-        body.appendChild(videoLink);
+        if (spec.video) {
+          var videoLink = document.createElement("a");
+          videoLink.className = "chip";
+          videoLink.href = spec.video;
+          videoLink.target = "_blank";
+          videoLink.rel = "noopener";
+          videoLink.textContent = "Vídeo en YouTube (se abre fuera de la app) ↗";
+          body.appendChild(videoLink);
+        }
 
-        body.appendChild(App.el("p", "section-title", "Referencia de carga"));
-        var refHost = App.el("div");
-        body.appendChild(refHost);
-        renderReferenceBlock(refHost, item, data);
+        if (spec.onVariants) {
+          var variantsBtn = App.el("button", "chip", "Ver variantes");
+          variantsBtn.type = "button";
+          variantsBtn.addEventListener("click", function () {
+            App.closeSheet();
+            spec.onVariants();
+          });
+          body.appendChild(variantsBtn);
+        }
 
-        var favBtn = App.el("button", "btn btn--ghost btn--block", item.favorito ? "Quitar de favoritas" : "Marcar como favorita");
-        favBtn.type = "button";
-        favBtn.setAttribute("aria-pressed", String(item.favorito));
-        favBtn.addEventListener("click", function () {
+        if (spec.renderReference) {
+          body.appendChild(App.el("p", "section-title", "Referencia de carga"));
+          var refHost = App.el("div");
+          body.appendChild(refHost);
+          spec.renderReference(refHost);
+        }
+
+        if (spec.renderExtra) spec.renderExtra(body);
+      }
+    });
+  };
+
+  /* ---- Ficha de ejercicio y guía (nota 18) --------------------------------- */
+  // Abre el componente único de ficha de ejercicio (App.exerciseSheet, más
+  // arriba) a partir de un ítem de catálogo. La misma función la usa
+  // strength.js con un ejercicio de sesión (ver openGuideSheet en
+  // strength.js): un solo marcado, una sola lógica de imagen/fallback.
+
+  function openDetailSheet(item, data, refresh) {
+    var favBtnRef = null;
+    App.exerciseSheet({
+      title: item.nombre,
+      mediaId: item.id,
+      patron: item.patron,
+      grupo: item.grupo,
+      equipo: item.equipo,
+      objetivo: item.objetivo,
+      guide: item.guide,
+      video: item.video,
+      onVariants: function () { openVariantsSheet(item, data, refresh); },
+      renderReference: function (host) { renderReferenceBlock(host, item, data); },
+      renderExtra: function (body) {
+        favBtnRef = App.el("button", "btn btn--ghost btn--block", item.favorito ? "Quitar de favoritas" : "Marcar como favorita");
+        favBtnRef.type = "button";
+        favBtnRef.setAttribute("aria-pressed", String(item.favorito));
+        favBtnRef.addEventListener("click", function () {
           data.toggleFavorite(item.id);
-          favBtn.textContent = item.favorito ? "Quitar de favoritas" : "Marcar como favorita";
-          favBtn.setAttribute("aria-pressed", String(item.favorito));
+          favBtnRef.textContent = item.favorito ? "Quitar de favoritas" : "Marcar como favorita";
+          favBtnRef.setAttribute("aria-pressed", String(item.favorito));
           App.toast(item.favorito ? "Marcada como favorita." : "Ya no es favorita.");
           if (refresh) refresh();
         });
-        body.appendChild(favBtn);
+        body.appendChild(favBtnRef);
       }
     });
   }

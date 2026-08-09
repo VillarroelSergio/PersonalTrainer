@@ -42,7 +42,8 @@
     wrap.appendChild(App.el("h1", "view-title", "Elige un archivo"));
     wrap.appendChild(App.el("p", "lede small",
       "Prototipo sin parser real: elige uno de estos archivos ficticios para ver cómo se comportaría cada caso. " +
-      "Se admiten .FIT, .TCX, .GPX y CSV de intervalos."));
+      "Se admiten .FIT, .TCX, .GPX y CSV de intervalos. Este prototipo no procesa archivos reales: sirve para " +
+      "registrar el contexto de cardio que tu reloj (Garmin u otro) ya tiene, no para sustituirlo."));
 
     var list = App.el("ul", "import-filelist");
     data.IMPORT_FILES.forEach(function (file) {
