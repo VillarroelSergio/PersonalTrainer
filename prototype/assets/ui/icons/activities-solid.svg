@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" style="display:none">
+  <symbol id="strength" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M3 7a2 2 0 0 1 2-2h2v4h10V5h2a2 2 0 0 1 2 2v3h1a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-1v3a2 2 0 0 1-2 2h-2v-4H7v4H5a2 2 0 0 1-2-2v-3H2a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1h1V7Zm4 4v2h10v-2H7Z"/>
+  </symbol>
+  <symbol id="run" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M4.3 14.2c.8-1.8 2.1-3.1 4-3.8l3-1.1 1.8 1.4-2.7 1.2 2.2 1.1 3.8-.4c1.1-.1 1.9.9 1.4 1.9l-1.9 4.1a2.4 2.4 0 0 1-2.2 1.4H5.9a2.5 2.5 0 0 1-2.2-3.5l.6-1.3Zm4.3.1-2.3.8-.7 1.7c-.2.5.1 1 .6 1h7.5c.2 0 .4-.1.5-.3l1.3-2.8-3 .3a2 2 0 0 1-1.2-.2l-2.7-1.4Zm5.1-6.7a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6Z"/>
+    <circle cx="19" cy="6" r="2" fill="var(--icon-accent,#ff6b2c)"/>
+  </symbol>
+  <symbol id="bike" viewBox="0 0 24 24">
+    <path fill="currentColor" fill-rule="evenodd" d="M6 14a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm12-2a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z" clip-rule="evenodd"/>
+    <path fill="currentColor" d="M8.1 8.2h4.7a1 1 0 0 1 .8.4l1 1.4h2.1a1 1 0 1 1 0 2h-2.6a1 1 0 0 1-.8-.4l-1-1.4h-2l1.8 4.5a1 1 0 0 1-1.9.7l-2-5.1H6.6a1 1 0 1 1 0-2h1.5Zm8-2.2a1 1 0 0 1 1-1h2.2a1 1 0 1 1 0 2h-2.2a1 1 0 0 1-1-1Z"/>
+    <path fill="currentColor" d="m12.1 10.3 2.5 5a1 1 0 0 1-1.8.9l-2.5-5a1 1 0 1 1 1.8-.9Z"/>
+  </symbol>
+  <symbol id="treadmill" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M15.4 3a2 2 0 0 1 2 2v2.2h1.5a1 1 0 1 1 0 2h-2.5a1 1 0 0 1-1-1V5h-2.2a1 1 0 1 1 0-2h2.2Z"/>
+    <path fill="currentColor" d="M6 11h9.4l2.1 8H5.4A2.4 2.4 0 0 1 3 16.4V14a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v2.4c0 .3.2.6.4.6h9.5l-1.1-4H6Z"/>
+    <path fill="currentColor" d="M9.2 6.2a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6Zm-2.5 7.2 2.1-4.1 3.3.8a1 1 0 1 0 .5-2l-4-.9a1.7 1.7 0 0 0-1.8.9L5 11.6a1 1 0 1 0 1.7.9Z"/>
+  </symbol>
+  <symbol id="walk" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M4.5 11.5 9 7.7a2.2 2.2 0 0 1 2.1-.4l2.3.8 2.8 3.1a1 1 0 0 1-.7 1.7H12l-1.2 1.4 2.8 1.2 4.8-.2a2.2 2.2 0 0 1 2.3 2.2v.2a2.3 2.3 0 0 1-2.2 2.3H7.2a3.5 3.5 0 0 1-2.7-5.7v-2.8Zm3.3 4.5a1.5 1.5 0 0 0-1.1 2h11.8a.3.3 0 0 0 .2-.3.2.2 0 0 0-.2-.2l-5 .2a2 2 0 0 1-.9-.2l-4.8-2.1Z"/>
+  </symbol>
+  <symbol id="outdoor" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M3.5 19.5 9.7 8.7a1.4 1.4 0 0 1 2.4 0l2 3.4 1.2-2.1a1.4 1.4 0 0 1 2.4 0l3.8 6.7a1.8 1.8 0 0 1-1.6 2.8H5.1a1.8 1.8 0 0 1-1.6-2.8Zm5.7-1.9h7.2l-2.3-3.9-1.4 2.4a1.3 1.3 0 0 1-2.3 0l-.7-1.2-1.2 2.7h.7Z"/>
+    <circle cx="6.5" cy="6.5" r="2.5" fill="var(--icon-accent,#ff6b2c)"/>
+  </symbol>
+  <symbol id="recovery" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20.8 4.2c-6.8.2-11.7 2-14.6 5.3-2.5 2.8-3 6.2-3.1 8.5a1.8 1.8 0 0 0 1.8 1.8c2.3-.1 5.7-.6 8.5-3.1 3.3-2.9 5.1-7.8 5.3-14.6a1.5 1.5 0 0 0-1.5-1.6c-6.8.2-11.7 2-14.6 5.3-2.5 2.8-3 6.2-3.1 8.5a1.8 1.8 0 0 0 1.8 1.8c2.3-.1 5.7-.6 8.5-3.1 3.3-2.9 5.1-7.8 5.3-14.6a1.5 1.5 0 0 0-1.5-1.6Zm-3.9 1.3c-.6 4.3-2.1 7.3-4.8 9.5-1.4 1.2-3 1.8-4.5 2.1.3-1.5.9-3.1 2.1-4.5 2.2-2.7 5.2-4.2 9.5-4.8l-2.3-2.3ZM5.7 15.1c.3-1.3.9-2.6 1.9-3.7l1.4 1.4c-1.1 1-1.8 2.3-2.2 3.6l-1.1-.9Z"/>
+  </symbol>
+  <symbol id="watch" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M8.2 2h7.6l.8 3.2A4.7 4.7 0 0 1 19 9.4v5.2a4.7 4.7 0 0 1-2.4 4.2l-.8 3.2H8.2l-.8-3.2A4.7 4.7 0 0 1 5 14.6V9.4a4.7 4.7 0 0 1 2.4-4.2L8.2 2Zm.4 5A2.7 2.7 0 0 0 7 9.4v5.2A2.7 2.7 0 0 0 9.7 17h4.6a2.7 2.7 0 0 0 2.7-2.6V9.4A2.7 2.7 0 0 0 14.3 7H9.7Z"/>
+    <circle cx="12" cy="12" r="1.5" fill="var(--icon-accent,#ff6b2c)"/>
+  </symbol>
+  <symbol id="import-activity" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M6 2h8l4 4v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.8V7h3.2L13 3.8ZM6 12a1 1 0 0 0 1 1h3v4.6l-1.3-1.3a1 1 0 1 0-1.4 1.4l3 3a1 1 0 0 0 1.4 0l3-3a1 1 0 0 0-1.4-1.4L12 17.6V13h3a1 1 0 1 0 0-2h-3V9a1 1 0 1 0-2 0v2H7a1 1 0 0 0-1 1Z"/>
+    <circle cx="18" cy="18" r="2" fill="var(--icon-accent,#ff6b2c)"/>
+  </symbol>
+  <symbol id="route" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M6.5 2a4.5 4.5 0 0 1 3.7 7.1l-2.8 4a1.1 1.1 0 0 1-1.8 0l-2.8-4A4.5 4.5 0 0 1 6.5 2Zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Zm11 7a3.5 3.5 0 0 1 2.9 5.5L18.3 20a1 1 0 0 1-1.6 0l-2.1-3.5a3.5 3.5 0 0 1 2.9-5.5Zm0 2a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/>
+    <path fill="currentColor" d="M7.5 14.5c0-1.1.9-2 2-2h3a1 1 0 1 1 0 2h-3v2h2a1 1 0 1 1 0 2h-2a2 2 0 0 1-2-2v-2Z"/>
+    <circle cx="17.5" cy="14.5" r="1" fill="var(--icon-accent,#ff6b2c)"/>
+  </symbol>
+</svg>

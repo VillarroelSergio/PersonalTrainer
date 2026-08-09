@@ -50,7 +50,7 @@
     wrap.appendChild(App.el("h2", "section-title", "Plan de la semana"));
     wrap.appendChild(buildWeekRail(data));
     wrap.appendChild(App.el("p", "rail-legend",
-      "Relleno: completada · anillo naranja: hoy · anillo hueco: planificada · trazo discontinuo: día del que se movió una sesión · punto: descanso."));
+      "Relleno = completada · naranja = hoy · hueco = planificada · discontinuo = movida · punto = descanso."));
     var warn = data.weeklyLoadWarning();
     if (warn) wrap.appendChild(App.el("p", "notice notice--warn", loadWarningPhrase(warn, data)));
 

@@ -27,39 +27,39 @@
   // manifiesto. Si se añade un recurso nuevo, actualizar AMBOS: el manifest
   // (documentación/origen) y esta tabla (lo que de verdad usa la UI).
   var EXERCISE_MEDIA = {
-    "jalon-polea": { file: "illustrations/jalon-polea-agarre-ancho-v1.webp", status: "available", alt: "Persona sentada realizando un jalón al pecho en polea con agarre ancho." },
-    "dominada-asistida": { file: null, status: "pending" },
-    "dominada-libre": { file: null, status: "pending" },
-    "remo-sentado-maquina": { file: null, status: "pending" },
-    "remo-barra": { file: null, status: "pending" },
-    "remo-punta-t": { file: null, status: "pending" },
-    "face-pull-cuerda": { file: null, status: "pending" },
-    "pajaros-mancuerna": { file: null, status: "pending" },
-    "press-banca-barra": { file: null, status: "pending" },
-    "press-banca-mancuernas": { file: null, status: "pending" },
-    "press-maquina": { file: null, status: "pending" },
-    "press-militar-barra": { file: null, status: "pending" },
-    "press-militar-mancuernas": { file: null, status: "pending" },
-    "elevacion-lateral-mancuerna": { file: null, status: "pending" },
-    "fondos-maquina": { file: null, status: "pending" },
-    "extension-triceps-cuerda": { file: null, status: "pending" },
-    "press-frances": { file: null, status: "pending" },
-    "curl-biceps-barra": { file: null, status: "pending" },
-    "curl-biceps-mancuerna": { file: null, status: "pending" },
-    "curl-biceps-polea": { file: null, status: "pending" },
-    "sentadilla-barra": { file: null, status: "pending" },
-    "sentadilla-goblet": { file: null, status: "pending" },
-    "prensa-45": { file: null, status: "pending" },
-    "zancada-mancuernas": { file: null, status: "pending" },
-    "peso-muerto-rumano": { file: null, status: "pending" },
-    "curl-femoral-maquina": { file: null, status: "pending" },
-    "hip-thrust-barra": { file: null, status: "pending" },
-    "elevacion-gemelo-maquina": { file: null, status: "pending" },
-    "elevacion-gemelo-prensa": { file: null, status: "pending" },
-    "aductor-maquina": { file: null, status: "pending" },
-    "abductor-maquina": { file: null, status: "pending" },
-    "crunch-polea": { file: null, status: "pending" },
-    "plancha": { file: null, status: "pending" }
+    "jalon-polea": { file: "illustrations/jalon-polea-agarre-ancho-v2.webp", status: "available", alt: "Figura neutra realizando un jalón al pecho en polea con agarre ancho." },
+    "dominada-asistida": { file: "illustrations/dominada-asistida-v3.webp", status: "available", alt: "Figura neutra realizando una dominada asistida en máquina." },
+    "dominada-libre": { file: "illustrations/dominada-libre-v3.webp", status: "available", alt: "Figura neutra realizando una dominada libre." },
+    "remo-sentado-maquina": { file: "illustrations/remo-sentado-maquina-v2.webp", status: "available", alt: "Figura neutra realizando un remo sentado en máquina con apoyo de pecho." },
+    "remo-barra": { file: "illustrations/remo-barra-v3.webp", status: "available", alt: "Figura neutra realizando un remo inclinado con barra." },
+    "remo-punta-t": { file: "illustrations/remo-punta-t-v3.webp", status: "available", alt: "Figura neutra realizando un remo punta T." },
+    "face-pull-cuerda": { file: "illustrations/face-pull-cuerda-v3.webp", status: "available", alt: "Figura neutra realizando un face pull con cuerda en polea." },
+    "pajaros-mancuerna": { file: "illustrations/pajaros-mancuerna-v3.webp", status: "available", alt: "Figura neutra realizando pájaros con mancuernas." },
+    "press-banca-barra": { file: "illustrations/press-banca-barra-v2.webp", status: "available", alt: "Figura neutra realizando press de banca con barra en banco plano." },
+    "press-banca-mancuernas": { file: "illustrations/press-banca-mancuernas-v3.webp", status: "available", alt: "Figura neutra realizando press de banca con mancuernas." },
+    "press-maquina": { file: "illustrations/press-maquina-v3.webp", status: "available", alt: "Figura neutra realizando press de pecho en máquina." },
+    "press-militar-barra": { file: "illustrations/press-militar-barra-v3.webp", status: "available", alt: "Figura neutra realizando press militar con barra." },
+    "press-militar-mancuernas": { file: "illustrations/press-militar-mancuernas-v2.webp", status: "available", alt: "Figura neutra realizando press militar sentado con mancuernas." },
+    "elevacion-lateral-mancuerna": { file: "illustrations/elevacion-lateral-v3.webp", status: "available", alt: "Figura neutra realizando elevaciones laterales con mancuernas." },
+    "fondos-maquina": { file: "illustrations/fondos-maquina-v3.webp", status: "available", alt: "Figura neutra realizando fondos en máquina asistida." },
+    "extension-triceps-cuerda": { file: "illustrations/extension-triceps-cuerda-v2.webp", status: "available", alt: "Figura neutra realizando extensión de tríceps en polea con cuerda." },
+    "press-frances": { file: "illustrations/press-frances-v3.webp", status: "available", alt: "Figura neutra realizando press francés en banco." },
+    "curl-biceps-barra": { file: "illustrations/curl-biceps-barra-v3.webp", status: "available", alt: "Figura neutra realizando curl de bíceps con barra." },
+    "curl-biceps-mancuerna": { file: "illustrations/curl-biceps-mancuerna-v2.webp", status: "available", alt: "Figura neutra realizando curl de bíceps con mancuernas, mostrando inicio y final del movimiento." },
+    "curl-biceps-polea": { file: "illustrations/curl-biceps-polea-v3.webp", status: "available", alt: "Figura neutra realizando curl de bíceps en polea." },
+    "sentadilla-barra": { file: "illustrations/sentadilla-barra-v2.webp", status: "available", alt: "Figura neutra realizando sentadilla con barra." },
+    "sentadilla-goblet": { file: "illustrations/sentadilla-goblet-v3.webp", status: "available", alt: "Figura neutra realizando una sentadilla goblet." },
+    "prensa-45": { file: "illustrations/prensa-45-v2.webp", status: "available", alt: "Figura neutra realizando prensa de piernas a 45 grados." },
+    "zancada-mancuernas": { file: "illustrations/zancada-mancuernas-v3.webp", status: "available", alt: "Figura neutra realizando una zancada con mancuernas." },
+    "peso-muerto-rumano": { file: "illustrations/peso-muerto-rumano-v2.webp", status: "available", alt: "Figura neutra realizando peso muerto rumano con barra." },
+    "curl-femoral-maquina": { file: "illustrations/curl-femoral-maquina-v2.webp", status: "available", alt: "Figura neutra realizando curl femoral sentado en máquina." },
+    "hip-thrust-barra": { file: "illustrations/hip-thrust-barra-v2.webp", status: "available", alt: "Figura neutra realizando hip thrust con barra y banco." },
+    "elevacion-gemelo-maquina": { file: "illustrations/elevacion-gemelo-maquina-v2.webp", status: "available", alt: "Figura neutra realizando elevación de gemelos en máquina." },
+    "elevacion-gemelo-prensa": { file: "illustrations/elevacion-gemelo-prensa-v3.webp", status: "available", alt: "Figura neutra realizando elevación de gemelo en prensa." },
+    "aductor-maquina": { file: "illustrations/aductor-maquina-v3.webp", status: "available", alt: "Figura neutra realizando aductor en máquina." },
+    "abductor-maquina": { file: "illustrations/abductor-maquina-v3.webp", status: "available", alt: "Figura neutra realizando abductor en máquina." },
+    "crunch-polea": { file: "illustrations/crunch-polea-v3.webp", status: "available", alt: "Figura neutra realizando crunch en polea." },
+    "plancha": { file: "illustrations/plancha-v3.webp", status: "available", alt: "Figura neutra realizando una plancha." }
   };
 
   // ---- Helpers de dominio, reenganchados a cada copia de App.data --------
@@ -1551,10 +1551,10 @@
           id: "jalon", nombre: "Jalón al pecho", variante: "Polea (agarre ancho)",
           // Enlace explícito al catálogo (nota Opus, catalogo-visual-ejercicios-004):
           // los IDs de sesión y de catálogo no coinciden hoy ("jalon" vs.
-          // "jalon-polea"). Este es el único ejercicio de sesión con una
-          // contraparte de catálogo clara; el resto sigue sin catalogId y usa
-          // su propio id de sesión para buscar ilustración (mostrará
-          // "Ilustración próximamente" si no está en el manifest).
+          // "jalon-polea"). La mayoría de ejercicios de sesión ya declaran su
+          // catalogId (ver "remo", "curl", etc. más abajo); "pullover" es el
+          // único sin contraparte en EXERCISE_CATALOG y mostrará "Ilustración
+          // próximamente".
           catalogId: "jalon-polea",
           patron: "Tracción vertical", icon: "pull",
           objetivo: "3 × 10-12 reps", ultimoTexto: "52.5 kg × 11 reps",
@@ -1586,6 +1586,7 @@
         },
         {
           id: "remo", nombre: "Remo sentado", variante: "Máquina",
+          catalogId: "remo-sentado-maquina",
           patron: "Tracción horizontal", icon: "row",
           objetivo: "3 × 10-12 reps", ultimoTexto: "45 kg × 12 reps",
           restSeconds: 90, difficulty: null, included: true, omitido: false,
@@ -1613,6 +1614,7 @@
         },
         {
           id: "facepull", nombre: "Face pull", variante: "Polea con cuerda",
+          catalogId: "face-pull-cuerda",
           patron: "Rotación externa / deltoide posterior", icon: "facepull",
           objetivo: "3 × 15 reps", ultimoTexto: "17.5 kg × 15 reps",
           restSeconds: 60, difficulty: null, included: true, omitido: false,
@@ -1667,6 +1669,7 @@
         },
         {
           id: "curl", nombre: "Curl de bíceps", variante: "Barra Z",
+          catalogId: "curl-biceps-barra",
           patron: "Flexión de codo", icon: "curl",
           objetivo: "3 × 10-12 reps", ultimoTexto: "27.5 kg × 10 reps",
           restSeconds: 60, difficulty: null, included: true, omitido: false,
@@ -1700,6 +1703,7 @@
       PUSH_EXERCISES: [
         {
           id: "press-banca", nombre: "Press banca", variante: "Barra libre",
+          catalogId: "press-banca-barra",
           patron: "Empuje horizontal", icon: "press",
           objetivo: "3 × 8-10 reps", ultimoTexto: "60 kg × 9 reps",
           restSeconds: 100, difficulty: null, included: true, omitido: false,
@@ -1727,6 +1731,7 @@
         },
         {
           id: "press-militar", nombre: "Press militar", variante: "Mancuernas",
+          catalogId: "press-militar-mancuernas",
           patron: "Empuje vertical", icon: "shoulderpress",
           objetivo: "3 × 8-10 reps", ultimoTexto: "16 kg × 9 reps",
           restSeconds: 90, difficulty: null, included: true, omitido: false,
@@ -1748,6 +1753,7 @@
         },
         {
           id: "fondos", nombre: "Fondos en máquina", variante: "Máquina asistida",
+          catalogId: "fondos-maquina",
           patron: "Empuje horizontal/tríceps", icon: "dip",
           objetivo: "3 × 10-12 reps", ultimoTexto: "Asistencia 20 kg × 11 reps",
           restSeconds: 75, difficulty: null, included: true, omitido: false,
@@ -1769,6 +1775,7 @@
         },
         {
           id: "elevaciones-laterales", nombre: "Elevaciones laterales", variante: "Mancuernas",
+          catalogId: "elevacion-lateral-mancuerna",
           patron: "Abducción de hombro", icon: "lateral",
           objetivo: "3 × 12-15 reps", ultimoTexto: "8 kg × 14 reps",
           restSeconds: 60, difficulty: null, included: true, omitido: false,
@@ -1793,6 +1800,7 @@
       LEGS_EXERCISES: [
         {
           id: "sentadilla", nombre: "Sentadilla", variante: "Barra libre",
+          catalogId: "sentadilla-barra",
           patron: "Dominante de rodilla", icon: "squat",
           objetivo: "3 × 8-10 reps", ultimoTexto: "70 kg × 9 reps",
           restSeconds: 120, difficulty: null, included: true, omitido: false,
@@ -1814,6 +1822,7 @@
         },
         {
           id: "prensa", nombre: "Prensa", variante: "Máquina 45°",
+          catalogId: "prensa-45",
           patron: "Dominante de rodilla", icon: "legpress",
           objetivo: "3 × 10-12 reps", ultimoTexto: "140 kg × 11 reps",
           restSeconds: 100, difficulty: null, included: true, omitido: false,
@@ -1835,6 +1844,7 @@
         },
         {
           id: "curl-femoral", nombre: "Curl femoral", variante: "Máquina tumbado",
+          catalogId: "curl-femoral-maquina",
           patron: "Dominante de cadera", icon: "hamcurl",
           objetivo: "3 × 12-15 reps", ultimoTexto: "35 kg × 13 reps",
           restSeconds: 75, difficulty: null, included: true, omitido: false,
@@ -1856,6 +1866,7 @@
         },
         {
           id: "gemelo", nombre: "Elevación de gemelo", variante: "Máquina de pie",
+          catalogId: "elevacion-gemelo-maquina",
           patron: "Flexión plantar", icon: "calf",
           objetivo: "3 × 15 reps", ultimoTexto: "50 kg × 15 reps",
           restSeconds: 60, difficulty: null, included: true, omitido: false,

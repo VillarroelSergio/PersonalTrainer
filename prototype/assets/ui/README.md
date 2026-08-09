@@ -8,6 +8,31 @@ La interfaz usa iconos vectoriales para navegación, estados y acciones; las ilu
 
 Sprite local sin dependencias. Sus símbolos utilizan `viewBox="0 0 24 24"`, trazo heredable (`currentColor` cuando se integre) y no contienen texto. Iconos disponibles: home, plan, train, library, history, checkin, run, bike, recovery, swap, share, import, goal, rest, timer, chevron e info.
 
+## Sistema sólido geométrico
+
+`icons/` contiene la familia vigente para las nuevas superficies. Es un sistema
+de pictogramas sólidos, redondeados y compactos, basado en el estilo aprobado
+para la marca: forma principal heredable con `currentColor` y acento opcional
+`var(--icon-accent, #ff6b2c)`. Cada símbolo usa `viewBox="0 0 24 24"`.
+
+- `icons/navigation-solid.svg` — marca, Inicio, Plan, Ejercicios, Historial,
+  Perfil y tema.
+- `icons/library-solid.svg` — grupos de Biblioteca, favoritos, recientes y
+  filtros secundarios.
+- `icons/activities-solid.svg` — fuerza, carrera, bici, cinta, caminar,
+  exterior, recuperación, reloj e importación.
+- `icons/actions-solid.svg` — acciones de sesión y navegación contextual.
+- `icons/status-solid.svg` — check-in, estados, progreso, privacidad y avisos.
+
+No mezclar esta familia sólida con el sprite lineal `icons.svg` en una misma
+superficie. Antes de integrarla se decidirá una sustitución gradual y se
+conservará siempre un texto o `aria-label` para acciones ambiguas.
+
+Cada icono debe representar literalmente su referencia antes que una metáfora:
+las actividades muestran su actividad reconocible y los grupos corporales usan
+una silueta neutra con la zona relevante destacada. Si un pictograma necesita
+explicación para entenderse, se rediseña o se acompaña de texto.
+
 ## Ilustraciones editoriales
 
 - `illustrations/hybrid-training-editorial-v1.webp`: recurso de onboarding o estado vacío; 640 px máximo y carga diferida.

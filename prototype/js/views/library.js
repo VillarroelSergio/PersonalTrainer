@@ -10,6 +10,43 @@
 
   var App = window.App;
 
+  // ---- Nueve grupos musculares reconocibles con ilustración real
+  // (integracion-ilustraciones-biblioteca-009). El dataset no tiene un campo
+  // `grupo` separado para Cuádriceps/Isquios-glúteos: ambos viven bajo
+  // grupo "Piernas" o "Glúteo", así que el `match` distingue también por
+  // `patron` en vez de asumir una taxonomía que no existe en EXERCISE_CATALOG.
+  var GROUP_DEFS = [
+    { key: "pecho", label: "Pecho", image: "pecho-card-v1.webp",
+      match: function (item) { return item.grupo === "Pecho"; } },
+    { key: "espalda", label: "Espalda", image: "espalda-card-v1.webp",
+      match: function (item) { return item.grupo === "Espalda"; } },
+    { key: "hombros", label: "Hombros", image: "hombros-card-v1.webp",
+      match: function (item) { return item.grupo === "Hombro"; } },
+    { key: "biceps", label: "Bíceps", image: "biceps-card-v1.webp",
+      match: function (item) { return item.grupo === "Bíceps"; } },
+    { key: "triceps", label: "Tríceps", image: "triceps-card-v1.webp",
+      match: function (item) { return item.grupo === "Tríceps"; } },
+    { key: "cuadriceps", label: "Cuádriceps", image: "cuadriceps-card-v1.webp",
+      match: function (item) {
+        return item.grupo === "Piernas" && (item.patron === "Dominante de rodilla" || item.patron === "Aducción de cadera");
+      } },
+    { key: "isquios-gluteos", label: "Isquios y glúteos", image: "isquios-gluteos-card-v1.webp",
+      match: function (item) {
+        return item.grupo === "Glúteo" || (item.grupo === "Piernas" && item.patron === "Dominante de cadera");
+      } },
+    { key: "gemelos", label: "Gemelos", image: "gemelos-card-v1.webp",
+      match: function (item) { return item.grupo === "Pantorrilla"; } },
+    { key: "core", label: "Core", image: "core-card-v1.webp",
+      match: function (item) { return item.grupo === "Core"; } }
+  ];
+
+  function findGroupDef(key) {
+    for (var i = 0; i < GROUP_DEFS.length; i++) {
+      if (GROUP_DEFS[i].key === key) return GROUP_DEFS[i];
+    }
+    return null;
+  }
+
   /* ---- Entrada de la vista ------------------------------------------------ */
 
   function render(mount, params) {
@@ -21,6 +58,8 @@
     if (ctx.equipo === undefined) ctx.equipo = "";
     if (ctx.favoritosOnly === undefined) ctx.favoritosOnly = false;
     if (ctx.recentOnly === undefined) ctx.recentOnly = false;
+    if (ctx.grupoKey === undefined) ctx.grupoKey = null;
+    if (ctx.grupoLabel === undefined) ctx.grupoLabel = null;
     // "quick" = accesos rápidos (entrada por defecto); "all" = catálogo
     // completo/búsqueda, un camino explícito (nota 09 del encargo).
     if (ctx.mode === undefined) ctx.mode = "quick";
@@ -28,8 +67,8 @@
     var wrap = App.el("section", "view-library");
     wrap.appendChild(App.el("h1", "view-title", "Ejercicios"));
     wrap.appendChild(App.el("p", "lede small",
-      "Busca por nombre o filtra por patrón, músculo, equipamiento o favoritas. " +
-      "No modelamos el inventario exacto de tu gimnasio."));
+      "Busca por nombre o entra en un grupo. Dentro de cada grupo puedes filtrar por patrón, " +
+      "músculo o equipamiento. No modelamos el inventario exacto de tu gimnasio."));
 
     var searchField = App.el("div", "field");
     var searchLabel = App.el("label", "field__label", "Buscar ejercicio");
@@ -79,6 +118,13 @@
           query: ctx.query, patron: ctx.patron, grupo: ctx.grupo,
           equipo: ctx.equipo, favoritosOnly: ctx.favoritosOnly
         });
+      // Bloque muscular elegido desde accesos rápidos (nota "biblioteca
+      // agrupada"): filtro adicional por encima de los de la hoja "Filtros",
+      // no lo sustituye.
+      if (ctx.grupoKey) {
+        var groupDef = findGroupDef(ctx.grupoKey);
+        if (groupDef) results = results.filter(groupDef.match);
+      }
       renderResults(resultsHost, data, results, ctx, update);
     }
     update();
@@ -143,39 +189,102 @@
   function renderQuickAccess(host, data, ctx, goAll) {
     host.innerHTML = "";
 
-    var favCount = data.EXERCISE_CATALOG.filter(function (x) { return x.favorito; }).length;
-    var recentCount = data.RECENT_EXERCISE_IDS.length;
+    host.appendChild(App.el("p", "field__label", "Grupos musculares"));
+    var grid = App.el("div", "musclegrid");
 
-    var top = App.el("div", "quicklinks");
-    top.appendChild(quickLinkButton("★ Favoritos", favCount + (favCount === 1 ? " ejercicio guardado" : " ejercicios guardados"), function () {
-      ctx.favoritosOnly = true; ctx.recentOnly = false; goAll();
-    }));
-    top.appendChild(quickLinkButton("🕘 Recientes", recentCount + (recentCount === 1 ? " ejercicio usado" : " ejercicios usados"), function () {
-      ctx.recentOnly = true; ctx.favoritosOnly = false; goAll();
-    }));
-    host.appendChild(top);
-
-    host.appendChild(App.el("p", "field__label", "Por patrón de movimiento"));
-    var patternGroup = App.el("div", "quicklinks");
-    uniqueValues(data, "patron").forEach(function (p) {
-      var count = data.EXERCISE_CATALOG.filter(function (x) { return x.patron === p; }).length;
-      patternGroup.appendChild(quickLinkButton(p, count + (count === 1 ? " ejercicio" : " ejercicios"), function () {
-        ctx.patron = p; ctx.recentOnly = false; goAll();
+    GROUP_DEFS.forEach(function (g) {
+      var count = data.EXERCISE_CATALOG.filter(g.match).length;
+      grid.appendChild(muscleCardButton(g, count, function () {
+        ctx.grupoKey = g.key; ctx.grupoLabel = g.label; ctx.recentOnly = false; ctx.favoritosOnly = false; goAll();
       }));
     });
-    host.appendChild(patternGroup);
+    host.appendChild(grid);
+
+    host.appendChild(App.el("p", "field__label", "Accesos rápidos"));
+    var quick = App.el("div", "grouptiles");
+    var favCount = data.EXERCISE_CATALOG.filter(function (x) { return x.favorito; }).length;
+    var recentCount = data.RECENT_EXERCISE_IDS.length;
+    quick.appendChild(groupTileButton("favstar", "Favoritos y recientes",
+      favCount + " favoritos · " + recentCount + " recientes",
+      function () { openFavRecentSheet(ctx, goAll); }));
+    host.appendChild(quick);
 
     var allBtn = App.el("button", "btn btn--ghost btn--block", "Ver todo el catálogo");
     allBtn.type = "button";
-    allBtn.addEventListener("click", function () { ctx.recentOnly = false; goAll(); });
+    allBtn.addEventListener("click", function () { ctx.recentOnly = false; ctx.grupoKey = null; ctx.grupoLabel = null; goAll(); });
     host.appendChild(allBtn);
   }
 
-  function quickLinkButton(title, meta, onClick) {
-    var btn = App.el("button", "opt quicklink");
+  // Favoritos y recientes son listas distintas (una por marca manual, otra
+  // por uso reciente): un solo bloque de accesos rápidos con una hoja breve
+  // para elegir cuál, en vez de duplicar la fila de antes fuera del sistema
+  // de bloques.
+  function openFavRecentSheet(ctx, goAll) {
+    App.openSheet({
+      title: "Favoritos y recientes",
+      render: function (body) {
+        var favBtn = App.el("button", "opt");
+        favBtn.type = "button";
+        favBtn.appendChild(App.el("span", "opt__name", "★ Favoritos"));
+        favBtn.addEventListener("click", function () {
+          App.closeSheet();
+          ctx.favoritosOnly = true; ctx.recentOnly = false; ctx.grupoKey = null; ctx.grupoLabel = null;
+          goAll();
+        });
+        body.appendChild(favBtn);
+
+        var recBtn = App.el("button", "opt");
+        recBtn.type = "button";
+        recBtn.appendChild(App.el("span", "opt__name", "🕘 Recientes"));
+        recBtn.addEventListener("click", function () {
+          App.closeSheet();
+          ctx.recentOnly = true; ctx.favoritosOnly = false; ctx.grupoKey = null; ctx.grupoLabel = null;
+          goAll();
+        });
+        body.appendChild(recBtn);
+      }
+    });
+  }
+
+  // Tarjeta de grupo muscular con ilustración real local (240×300 webp),
+  // en vez del icono abstracto de cuerpo previo. Un solo botón, texto en
+  // capitalización normal (nota: "Isquios y glúteos", no mayúsculas).
+  function muscleCardButton(groupDef, count, onClick) {
+    var btn = App.el("button", "opt musclecard");
     btn.type = "button";
-    btn.appendChild(App.el("span", "opt__name", title));
-    btn.appendChild(App.el("span", "opt__meta", meta));
+    btn.setAttribute("aria-label", "Ver ejercicios de " + groupDef.label);
+
+    var media = App.el("span", "musclecard__media");
+    var img = document.createElement("img");
+    img.className = "musclecard__img";
+    img.src = "assets/library/groups/" + groupDef.image;
+    img.alt = "";
+    img.setAttribute("aria-hidden", "true");
+    img.loading = "lazy";
+    img.decoding = "async";
+    media.appendChild(img);
+    btn.appendChild(media);
+
+    var body = App.el("span", "musclecard__body");
+    body.appendChild(App.el("span", "musclecard__name", groupDef.label));
+    body.appendChild(App.el("span", "musclecard__meta", count + (count === 1 ? " ejercicio" : " ejercicios")));
+    btn.appendChild(body);
+
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
+
+  function groupTileButton(iconKind, title, meta, onClick) {
+    var btn = App.el("button", "opt quicklink grouptile");
+    btn.type = "button";
+    var thumb = App.el("span", "grouptile__icon");
+    thumb.setAttribute("aria-hidden", "true");
+    thumb.innerHTML = icon(iconKind);
+    btn.appendChild(thumb);
+    var body = App.el("span", "grouptile__body");
+    body.appendChild(App.el("span", "opt__name", title));
+    body.appendChild(App.el("span", "opt__meta", meta));
+    btn.appendChild(body);
     btn.addEventListener("click", onClick);
     return btn;
   }
@@ -220,17 +329,22 @@
     backBtn.addEventListener("click", function () {
       ctx.mode = "quick";
       ctx.query = ""; ctx.patron = ""; ctx.grupo = ""; ctx.equipo = "";
-      ctx.favoritosOnly = false; ctx.recentOnly = false;
+      ctx.favoritosOnly = false; ctx.recentOnly = false; ctx.grupoKey = null; ctx.grupoLabel = null;
       App.navigate("library", {}, { replace: true });
     });
     host.appendChild(backBtn);
+
+    // Recuerda en qué grupo sigue la persona mientras filtra o navega a la
+    // ficha y vuelve (nota revisión UX: sin esto, un resultado corto tras
+    // abrir "Filtros" dentro de un grupo era difícil de explicar).
+    if (ctx.grupoLabel) host.appendChild(App.el("p", "section-title", ctx.grupoLabel));
 
     var count = App.el("p", "small", results.length + (results.length === 1 ? " resultado" : " resultados"));
     count.id = "libraryResultsCount";
     count.setAttribute("aria-live", "polite");
     host.appendChild(count);
 
-    var hasFilters = !!(ctx.query || ctx.patron || ctx.grupo || ctx.equipo || ctx.favoritosOnly || ctx.recentOnly);
+    var hasFilters = !!(ctx.query || ctx.patron || ctx.grupo || ctx.equipo || ctx.favoritosOnly || ctx.recentOnly || ctx.grupoKey);
 
     if (!results.length) {
       App.states.empty(host, {
@@ -242,7 +356,7 @@
             : "Todavía no hay ejercicios en el catálogo.",
         actionLabel: hasFilters ? "Quitar filtros" : null,
         onAction: hasFilters ? function () {
-          ctx.query = ""; ctx.patron = ""; ctx.grupo = ""; ctx.equipo = ""; ctx.favoritosOnly = false; ctx.recentOnly = false;
+          ctx.query = ""; ctx.patron = ""; ctx.grupo = ""; ctx.equipo = ""; ctx.favoritosOnly = false; ctx.recentOnly = false; ctx.grupoKey = null; ctx.grupoLabel = null;
           App.navigate("library", {}, { replace: true });
         } : null
       });
@@ -765,7 +879,8 @@
       adductor: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v6m0 0l-6 10m6-10l6 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
       core: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M6 12h12" stroke="currentColor" stroke-width="1.6"/></svg>',
       plank: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3 17l6-9h6l6 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-      custom: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 5v14m-7-7h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
+      custom: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 5v14m-7-7h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+      favstar: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 3.5l2.4 5 5.4.7-4 3.8 1 5.4-4.8-2.6-4.8 2.6 1-5.4-4-3.8 5.4-.7 2.4-5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>'
     };
     return icons[kind] || icons.custom;
   }
