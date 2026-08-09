@@ -170,7 +170,6 @@ a.chip:active:not(:focus-visible) {
   flex-shrink: 0;
 }
 .sync-pill__icon { font-size: 0.85rem; line-height: 1; }
-.sync-pill__text { display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
 .sync-dot[data-state="sincronizado"] { background: var(--done); }
 .sync-dot[data-state="sincronizando"] { background: var(--cardio); }
@@ -513,6 +512,13 @@ a.chip:active:not(:focus-visible) {
 .state--rest      { background: none; color: var(--ink-3); border: 1px dashed var(--rule); }
 .state--sim       { background: none; color: var(--ink-3); border: 1px dashed var(--rule); }
 .state--adapted { background: var(--accent-wash); color: var(--accent); } /* alias vistas antiguas */
+
+/* ---- resistencia-reloj-importacion-007: estados propios de resistencia -- */
+.state--programada_reloj            { background: var(--cardio-wash); color: var(--cardio); }
+.state--realizada_pendiente_importar{ background: var(--warn-wash); color: var(--warn); }
+.state--importada_asociada          { background: var(--done-wash); color: var(--done); }
+.state--asociada_adaptacion         { background: var(--accent-wash); color: var(--accent); }
+.state--sin_resultado               { background: var(--paper-2); color: var(--ink-2); }
 
 .achievement {
   display: flex; gap: 10px; align-items: flex-start;
@@ -1382,15 +1388,18 @@ textarea {
   border-radius: var(--r-md);
   background: var(--paper);
 }
-.segment--en_curso { border-color: var(--accent); background: var(--accent-wash); }
-.segment--realizado { border-color: var(--done); }
-.segment--ajustado { border-color: var(--accent); }
-.segment--omitido { opacity: 0.6; }
+/* ---- resistencia-reloj-importacion-007: estructura de solo lectura, sin
+   estado de ejecución por tramo (ya no hay "en curso"/"realizado"). Color
+   por tipo de bloque, solo para orientar la lectura. -------------------- */
+.segment--trabajo, .segment--grupo { border-left: 3px solid var(--cardio); }
+.segment--recuperacion { border-left: 3px solid var(--ink-3); }
+.segment--calentamiento, .segment--vuelta_calma { border-style: dashed; }
 
 .segment__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .segment__name { font-weight: 700; font-size: 0.92rem; }
 .segment__meta { color: var(--ink-3); font-size: 0.8rem; margin-top: 4px; }
-.segment__actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+.import-compare { margin: 14px 0; padding: 14px; background: var(--paper-2); border-radius: var(--r-md); }
 
 .import-filelist { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 16px; }
 .import-file {

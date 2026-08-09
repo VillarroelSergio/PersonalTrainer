@@ -419,11 +419,26 @@
         });
       }
 
+      // Bloques del patrón (p. ej. Legs) que no caben esta semana con los
+      // días de fuerza elegidos. Nunca se eliminan en silencio: se nombran
+      // aquí y se explican como rotación a la semana siguiente, no como
+      // sesiones perdidas (criterio: "no puede eliminar Legs u otro bloque
+      // de fuerza silenciosamente").
+      var rotatedKinds = (strengthDayObjs.length > 0 && strengthDayObjs.length < pattern.length)
+        ? pattern.slice(strengthDayObjs.length)
+        : [];
+
       var explanationParts = [
         "Repartimos tus " + totalDays + " día" + (totalDays === 1 ? "" : "s") + " disponibles en " +
         strengthDayObjs.length + (strengthDayObjs.length === 1 ? " sesión" : " sesiones") + " de fuerza" +
         (cardioDayObjs.length ? " y " + cardioDayObjs.length + " de " + opts.cardioActividad.toLowerCase() + "." : ".")
       ];
+      if (rotatedKinds.length) {
+        explanationParts.push(
+          "Con estos días no entra " + rotatedKinds.join(" ni ") + " esta semana: no se elimina de tu plan, " +
+          "rota como primera" + (rotatedKinds.length > 1 ? "s sesiones" : " sesión") + " de la semana siguiente."
+        );
+      }
       if (cardioDayObjs.length) {
         explanationParts.push("Separamos, cuando ha sido posible, la sesión de resistencia más intensa de tus piernas pesadas para no acumular fatiga el mismo día.");
       }
@@ -433,6 +448,7 @@
         sessions: sessions,
         infeasible: false,
         totalDays: totalDays, freq: freq, strengthDays: strengthDayObjs.length,
+        rotatedKinds: rotatedKinds,
         explanation: explanationParts.join(" ")
       };
     };
@@ -478,8 +494,32 @@
 
     // ---- LOTE 3: check-in, molestias, recuperación y sesión de fuerza -------
 
+    // Sesiones semilla (push/pull/legs) resuelven por id de catálogo. Las
+    // sesiones generadas por onboarding/creador guiado usan ids sintéticos
+    // (gen-lunes-fuerza-0) que nunca coinciden con SESSION_EXERCISES: sin
+    // este fallback por tipo de bloque (session.nombre), quedaban con 0
+    // ejercicios (bug crítico, criterio "toda sesión de fuerza generada
+    // debe incluir ejercicios, series y repeticiones").
+    function exercisesForKind(kind) {
+      if (kind === "Push") return data.PUSH_EXERCISES || null;
+      if (kind === "Pull") return data.EXERCISES || null;
+      if (kind === "Legs") return data.LEGS_EXERCISES || null;
+      if (kind && kind.indexOf("Full body") === 0) {
+        // Sin catálogo propio de full body: combina un tramo distinto de
+        // push/pull/legs para cada letra (A/B/C) en vez de inventar
+        // ejercicios nuevos fuera de MVP-DEFINITION.md §9.
+        var idx = Math.max(0, kind.charCodeAt(kind.length - 1) - 65);
+        var pick = function (list) { return (list || []).slice(idx * 2, idx * 2 + 2); };
+        return pick(data.PUSH_EXERCISES).concat(pick(data.EXERCISES), pick(data.LEGS_EXERCISES));
+      }
+      return null;
+    }
+
     data.exercisesForSession = function (sessionId) {
-      return data.SESSION_EXERCISES && data.SESSION_EXERCISES[sessionId] || null;
+      var direct = data.SESSION_EXERCISES && data.SESSION_EXERCISES[sessionId];
+      if (direct) return direct;
+      var session = data.findSession(sessionId);
+      return (session && exercisesForKind(session.nombre)) || null;
     };
 
     data.sessionProgress = function (sessionId) {
@@ -826,10 +866,14 @@
     };
 
     // =====================================================================
-    // LOTE 5: resistencia — objetivos, ejecución por segmentos y cierre
-    // (notas 06 y 21). Todo vive en el propio objeto de sesión dentro de
-    // App.data, igual que SESSION_PROGRESS para fuerza: navegar fuera y
-    // volver a "Entrenar" recupera la sesión de resistencia en curso.
+    // resistencia-reloj-importacion-007: objetivos y transferencia al reloj.
+    // La app YA NO ejecuta la actividad (sustituye a la antigua ejecución por
+    // tramos de la nota 21): no hay tramo "en curso", pausa ni cronómetro.
+    // La sesión se prepara, se confirma como creada en el reloj y el
+    // resultado real llega por importación — ver data.saveImportedActivity.
+    // Los ajustes de propuesta (duración/repeticiones/entorno) viven como
+    // campos simples de la sesión (entorno, repeticionesExtra), sin una
+    // estructura de estado por tramo que sincronizar.
     // =====================================================================
 
     data.enduranceTemplate = function (key) {
@@ -839,116 +883,84 @@
       return null;
     };
 
-    // Clona la plantilla de tramos en la propia sesión la primera vez que se
-    // abre. `estado` de cada tramo: pendiente | realizado | ajustado | omitido.
-    // "próximo" / "en curso" son ESTADOS VISUALES calculados en la vista a
-    // partir del primer tramo "pendiente" (ver data.currentSegmentIndex):
-    // así no hay que sincronizar dos copias del mismo estado.
-    data.sessionSegments = function (session) {
+    function stripRepIndex(nombre) { return nombre.replace(/\s*\d+$/, "").trim(); }
+
+    // Estructura de SOLO LECTURA para la pantalla de sesión y para "Preparar
+    // en mi reloj": agrupa repeticiones consecutivas idénticas (trabajo +
+    // recuperación) en un único bloque "Repite N veces" en vez de listar cada
+    // repetición por separado (nota 31). session.repeticionesExtra (añadidas
+    // desde "Ajustar propuesta") se suman al primer grupo repetible.
+    // Devuelve null si el objetivo es continuo (sin tramos).
+    data.enduranceStructure = function (session) {
       var tmpl = data.enduranceTemplate(session.objetivo);
       if (!tmpl || !tmpl.segments) return null;
-      if (!session.segmentos) {
-        session.segmentos = tmpl.segments.map(function (seg) {
-          return { tipo: seg.tipo, nombre: seg.nombre, duracionTexto: seg.duracionTexto, objetivoTexto: seg.objetivoTexto, estado: "pendiente" };
-        });
+      var segments = tmpl.segments;
+      var out = [];
+      var extra = session.repeticionesExtra || 0;
+      var extraApplied = false;
+      var i = 0;
+      while (i < segments.length) {
+        var seg = segments[i], next = segments[i + 1];
+        if (seg.tipo === "trabajo" && next && next.tipo === "recuperacion") {
+          var count = 1, j = i + 2;
+          while (segments[j] && segments[j + 1] &&
+            segments[j].tipo === "trabajo" && segments[j].duracionTexto === seg.duracionTexto && segments[j].objetivoTexto === seg.objetivoTexto &&
+            segments[j + 1].tipo === "recuperacion" && segments[j + 1].duracionTexto === next.duracionTexto && segments[j + 1].objetivoTexto === next.objetivoTexto) {
+            count++; j += 2;
+          }
+          if (!extraApplied && extra) { count += extra; extraApplied = true; }
+          out.push({
+            tipo: "grupo", repeticiones: count,
+            nombre: stripRepIndex(seg.nombre), duracionTexto: seg.duracionTexto, objetivoTexto: seg.objetivoTexto,
+            recNombre: stripRepIndex(next.nombre), recDuracionTexto: next.duracionTexto, recObjetivoTexto: next.objetivoTexto
+          });
+          i = j;
+        } else {
+          out.push({ tipo: seg.tipo, nombre: seg.nombre, duracionTexto: seg.duracionTexto, objetivoTexto: seg.objetivoTexto });
+          i++;
+        }
       }
-      return session.segmentos;
+      return out;
     };
 
-    data.currentSegmentIndex = function (session) {
-      var list = session.segmentos || [];
-      for (var i = 0; i < list.length; i++) {
-        if (list[i].estado === "pendiente") return i;
-      }
-      return -1;
+    // ponytail: comprobación mínima de la agrupación (no una suite). Llamar a
+    // mano desde la consola con App.data.__enduranceStructureSelftest().
+    data.__enduranceStructureSelftest = function () {
+      var s1 = data.enduranceStructure({ objetivo: "intervalos", repeticionesExtra: 0 });
+      var okBase = s1.length === 3 && s1[1].tipo === "grupo" && s1[1].repeticiones === 4;
+      console.assert(okBase, "enduranceStructure: se esperaban 3 bloques con 4 repeticiones en 'intervalos'.");
+      var s2 = data.enduranceStructure({ objetivo: "intervalos", repeticionesExtra: 2 });
+      var okExtra = s2[1].repeticiones === 6;
+      console.assert(okExtra, "enduranceStructure: repeticionesExtra debía sumarse al grupo.");
+      var pass = okBase && okExtra;
+      console.log(pass ? "data.__enduranceStructureSelftest(): OK." : "data.__enduranceStructureSelftest(): FALLO.");
+      return pass;
     };
 
-    data.markSegmentDone = function (session, index) {
-      var list = session.segmentos || [];
-      if (!list[index]) return null;
-      list[index].estado = "realizado";
+    // Entorno elegido para la sesión: editable desde "Ajustar propuesta"
+    // (session.entorno); si no se ha tocado, un valor por defecto razonable
+    // según el objetivo. Nunca se exige ni se valida contra un dispositivo.
+    data.enduranceEnv = function (session) {
+      if (session.entorno) return session.entorno;
+      return session.objetivo === "bici" ? "Bici estática" : "Exterior";
+    };
+
+    // Transiciones de estado explícitas de resistencia (nota 31): la persona
+    // las confirma con un botón, nunca ocurren solas al abrir la pantalla.
+    data.markEnduranceScheduled = function (session) {
+      data.setSessionState(session.id, "programada_reloj");
       session.sync = "local";
-      return list[index];
+      return session;
     };
-
-    // modo: "reducir" | "repetir" | "recuperacion" | "omitir".
-    data.adjustSegment = function (session, index, modo) {
-      var list = session.segmentos || [];
-      var seg = list[index];
-      if (!seg) return null;
-      if (modo === "omitir") {
-        seg.estado = "omitido";
-      } else if (modo === "reducir") {
-        seg.nombre = seg.nombre + " (reducido)";
-        seg.estado = "ajustado";
-      } else if (modo === "repetir") {
-        seg.estado = "ajustado";
-        list.splice(index + 1, 0, { tipo: seg.tipo, nombre: seg.nombre.replace(/\s*\(reducido\)$/, "") + " (repetido)", duracionTexto: seg.duracionTexto, objetivoTexto: seg.objetivoTexto, estado: "pendiente" });
-      } else if (modo === "recuperacion") {
-        seg.tipo = "recuperacion";
-        seg.nombre = seg.nombre + " (pasado a recuperación)";
-        seg.estado = "ajustado";
-      }
-      session.esAdaptada = true;
+    data.markEnduranceAwaitingImport = function (session) {
+      data.setSessionState(session.id, "realizada_pendiente_importar");
       session.sync = "local";
-      return seg;
+      return session;
     };
-
-    // Abandonar guarda parcial: los tramos aún pendientes quedan "omitido"
-    // (nunca se inventan como realizados).
-    data.abandonEnduranceSession = function (session) {
-      (session.segmentos || []).forEach(function (seg) {
-        if (seg.estado === "pendiente") seg.estado = "omitido";
-      });
+    data.markEnduranceNoResult = function (session) {
+      data.setSessionState(session.id, "sin_resultado");
       session.sync = "local";
-    };
-
-    data.toggleEndurancePause = function (session) {
-      session.pausada = !session.pausada;
-      return session.pausada;
-    };
-
-    // Cierre de sesión de resistencia: completada/adaptada/parcial, minutos
-    // proporcionales a lo realmente realizado (mismo criterio que fuerza,
-    // nota 05, aplicado aquí a tramos en vez de series).
-    data.closeEnduranceSession = function (session, opts) {
-      opts = opts || {};
-      var list = session.segmentos;
-      var minutos = session.duracionPrevista;
-      if (list && list.length) {
-        var hechos = list.filter(function (s) { return s.estado === "realizado" || s.estado === "ajustado"; }).length;
-        minutos = opts.completa ? session.duracionPrevista : Math.max(5, Math.round(session.duracionPrevista * (hechos / list.length)));
-      } else if (!opts.completa) {
-        minutos = Math.max(5, Math.round(session.duracionPrevista * 0.5));
-      }
-      var estado = opts.completa ? (session.esAdaptada ? "adaptada" : "completada") : "parcial";
-      data.setSessionState(session.id, estado);
-      session.duracionPrevista = minutos;
-      session.sync = "local";
-      if (session.esAdaptada) session.procedencia = "adaptado";
-
-      var metaParts = ["Hoy", minutos + " min"];
-      if (list && list.length) {
-        var doneCount = list.filter(function (s) { return s.estado === "realizado" || s.estado === "ajustado"; }).length;
-        metaParts.push(doneCount + " de " + list.length + " tramos");
-      }
-      if (opts.esfuerzo) metaParts.push("esfuerzo " + opts.esfuerzo);
-      // ---- LOTE 6: mismos campos añadidos que en closeStrengthSession, con
-      // detalle de cardio (duración/distancia/ritmo/FC/carga cuando existan).
-      data.HISTORY.unshift({
-        id: "hist-" + Date.now(),
-        tipo: "resistencia",
-        fecha: "Hoy",
-        semanasAtras: 0,
-        nombre: session.nombre,
-        meta: metaParts.join(" · "),
-        estado: estado,
-        procedencia: session.esAdaptada ? "adaptado" : "local",
-        sync: "local",
-        detalle: { duracionMin: minutos, distanciaKm: null, ritmo: null, fcMedia: null, cargaEstimada: session.intense ? "alta" : "media" },
-        versions: []
-      });
-      return { session: session, minutos: minutos, estado: estado };
+      return session;
     };
 
     // =====================================================================
@@ -964,11 +976,17 @@
       return null;
     };
 
-    // Si se asocia a una sesión de resistencia planificada/en curso, esa
-    // sesión pasa a completada con procedencia "importado" (nota 29: el
-    // mismo registro no puede ser "completado" en el historial y aparecer
-    // aparte como planificado). Si no se asocia ninguna, solo entra en el
-    // historial como actividad suelta: el calendario no cambia.
+    // Si se asocia a una sesión de resistencia pendiente de resultado, esa
+    // sesión pasa a "importada_asociada" o "asociada_adaptacion" (nota 31).
+    // Criterio de adaptación, simple y explicable (sin umbral fijado por el
+    // encargo, decisión de prototipo): la propuesta ya llegaba adaptada
+    // (session.esAdaptada, por un "Ajustar propuesta" previo) o la duración
+    // real difiere de la prevista en más de un 20%. La duración PREVISTA
+    // nunca se sobrescribe con la real: se guarda aparte en
+    // `duracionRealizada` para que la comparación siga siendo posible
+    // después de guardar. Si no se asocia ninguna sesión, solo entra en el
+    // historial como actividad suelta: el calendario no cambia (verificado
+    // explícitamente: `linked` queda null y no se toca nada de SESSIONS).
     data.saveImportedActivity = function (file, edits) {
       edits = edits || {};
       var nombre = (edits.nombre || file.nombre).trim();
@@ -984,11 +1002,14 @@
       data.ACTIVITY_IMPORTS.push(record);
 
       var linked = edits.sessionId ? data.findSession(edits.sessionId) : null;
+      var esAdaptacion = false;
       if (linked && linked.tipo === "resistencia") {
-        linked.estado = "completada";
+        var previsto = linked.duracionPrevista;
+        var real = file.analisis && file.analisis.duracionMin;
+        esAdaptacion = !!linked.esAdaptada || !!(previsto && real && Math.abs(real - previsto) / previsto > 0.2);
+        linked.estado = esAdaptacion ? "asociada_adaptacion" : "importada_asociada";
         linked.procedencia = "importado";
-        linked.nombre = nombre;
-        if (file.analisis && file.analisis.duracionMin) linked.duracionPrevista = file.analisis.duracionMin;
+        if (real != null) linked.duracionRealizada = real;
         linked.sync = "local";
       }
 
@@ -1004,7 +1025,7 @@
         semanasAtras: 0,
         nombre: nombre,
         meta: metaParts.join(" · "),
-        estado: "completada",
+        estado: esAdaptacion ? "adaptada" : "completada",
         procedencia: "importado",
         sync: "local",
         detalle: file.analisis ? {

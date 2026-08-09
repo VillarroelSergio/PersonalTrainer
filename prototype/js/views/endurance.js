@@ -1,26 +1,26 @@
 /* =====================================================================
- * Vista: Resistencia planificada y ejecución por segmentos (LOTE 5)
- * Notas 06, 21 y 29. Sigue el mismo patrón que strength.js: el estado de
- * ejecución vive en el propio objeto de sesión dentro de App.data
- * (session.segmentos, session.pausada), nunca en variables locales de la
- * vista, para que "Entrenar" recupere la sesión en curso al volver.
- * Sin GPS, sin mapa, sin cronómetro dependiente de sensores (nota 99):
- * los tramos se marcan a mano.
+ * Vista: Resistencia planificada (resistencia-reloj-importacion-007)
+ * La app DISEÑA la sesión; la persona la CREA MANUALMENTE en su reloj y la
+ * REALIZA FUERA de la app. Aquí NUNCA hay ejecución en vivo: sin tramo "en
+ * curso", sin pausar/reanudar, sin "marcar tramo", sin cronómetro. El
+ * resultado real llega por importación (ver import.js). Reemplaza la
+ * ejecución por segmentos de la nota 21 (obsoleta).
  * ================================================================== */
 (function () {
   "use strict";
 
   var App = window.App;
 
-  var ESFUERZO_OPCIONES = ["Muy fácil", "Fácil", "Adecuado", "Duro", "Muy duro"];
-
-  var SEGMENT_STATE_LABEL = {
-    proximo: "Próximo",
-    en_curso: "En curso",
-    realizado: "Realizado ✓",
-    ajustado: "Ajustado",
-    omitido: "Omitido"
+  var ESTADO_LABEL = {
+    planificada: "Planificada",
+    programada_reloj: "Programada en reloj",
+    realizada_pendiente_importar: "Realizada, pendiente de importar",
+    importada_asociada: "Importada y asociada",
+    asociada_adaptacion: "Asociada con adaptación",
+    sin_resultado: "Sin resultado"
   };
+
+  var ENTORNOS = ["Exterior", "Cinta", "Bici estática", "Casa"];
 
   /* ---- Entrada de la vista ------------------------------------------------ */
 
@@ -42,7 +42,7 @@
         onAction: function () { openObjectivesSheet(data); }
       });
       wrap0.appendChild(body0);
-      wrap0.appendChild(buildImportEntry());
+      wrap0.appendChild(buildImportEntry(null));
       mount.appendChild(wrap0);
       return;
     }
@@ -62,10 +62,6 @@
       return;
     }
 
-    if (session.estado === "planificada") {
-      data.setSessionState(session.id, "en_curso");
-    }
-
     drawSession(mount, data, session);
   }
 
@@ -74,8 +70,6 @@
       var s = data.findSession(params.sessionId);
       if (s) return s;
     }
-    var enCurso = data.SESSIONS.filter(function (s) { return s.tipo === "resistencia" && s.estado === "en_curso"; })[0];
-    if (enCurso) return enCurso;
     var today = data.sessionOnDay(data.hoy);
     if (today && today.tipo === "resistencia") return today;
     return null;
@@ -110,48 +104,59 @@
 
   function drawSession(mount, data, session) {
     var tmpl = data.enduranceTemplate(session.objetivo);
-    var segments = data.sessionSegments(session);
+    var estadoLabel = ESTADO_LABEL[session.estado] || session.estado;
+    var pendienteDeResultado = session.estado === "planificada" || session.estado === "programada_reloj" ||
+      session.estado === "realizada_pendiente_importar" || session.estado === "sin_resultado";
 
     var wrap = App.el("section", "view-endurance");
-    wrap.appendChild(App.el("p", "kicker", "Resistencia · hoy" + (session.esAdaptada ? " · versión adaptada" : "")));
+    wrap.appendChild(App.el("p", "kicker", "Resistencia · " + estadoLabel + (session.esAdaptada ? " · versión adaptada" : "")));
     wrap.appendChild(App.el("h1", "view-title", session.nombre));
 
     var badges = App.el("div", "badge-row");
+    badges.appendChild(App.el("span", "state state--" + session.estado, estadoLabel));
     if (session.esAdaptada) badges.appendChild(App.el("span", "state state--adaptada", "Sesión adaptada"));
-    if (session.pausada) badges.appendChild(App.el("span", "state state--parcial", "Pausada"));
     badges.appendChild(App.sync.badge(session.sync || "local"));
     wrap.appendChild(badges);
 
     var loadMsg = data.loadContext();
     if (loadMsg) wrap.appendChild(App.el("p", "notice notice--info", loadMsg));
 
-    // ---- Briefing en lenguaje llano (nota 06) -------------------------------
+    // ---- Cabecera en lenguaje llano: propósito, entorno y duración total ---
     if (tmpl) {
       var brief = App.el("div", "endurance-brief");
-      brief.appendChild(App.el("p", "endurance-brief__line", "Duración: " + tmpl.duracionTexto));
+      brief.appendChild(App.el("p", "endurance-brief__line", "Entorno elegido: " + data.enduranceEnv(session)));
+      brief.appendChild(App.el("p", "endurance-brief__line", "Duración total estimada: " + (session.duracionPrevista || "—") + " min"));
       brief.appendChild(App.el("p", "endurance-brief__line", "Intensidad: " + tmpl.intensidadTexto));
-      brief.appendChild(App.el("p", "endurance-brief__line", "Estructura: " + tmpl.estructuraTexto));
       brief.appendChild(App.el("p", "endurance-brief__line", "Para qué sirve: " + tmpl.proposito));
       wrap.appendChild(brief);
     }
 
-    // ---- Ajuste explicable (nota 06): choque de carga con día adyacente ----
+    // ---- Ajuste explicable (nota 06): choque de carga con día adyacente,
+    // solo mientras la sesión sigue pendiente de realizarse. ------------------
     var conflict = data.findConflict(data.SESSIONS, session.day, session);
-    if (conflict && !session.esAdaptada) {
+    if (conflict && pendienteDeResultado && !session.esAdaptada) {
       var adjustNotice = App.el("div", "notice notice--warn");
       adjustNotice.appendChild(App.el("p", null,
         session.nombre + " es una sesión intensa y está junto a " + conflict.nombre.toLowerCase() +
         " (piernas), lo que puede sumar fatiga. Puedes ajustarla o seguir tal como está: tú decides."));
       var altBtn = App.el("button", "btn btn--ghost btn--block", "Ver alternativa explicada");
       altBtn.type = "button";
-      altBtn.addEventListener("click", function () { openAdjustProposalSheet(session, conflict, data, mount); });
+      altBtn.addEventListener("click", function () { openAdjustProposalSheet(session, data, conflict); });
       adjustNotice.appendChild(altBtn);
       wrap.appendChild(adjustNotice);
     }
 
+    // ---- Estructura de SOLO LECTURA: calentamiento, trabajo, recuperación,
+    // "repite N veces" y vuelta a la calma (nota 31). Nunca interactiva. -----
+    var structure = data.enduranceStructure(session);
+    if (structure) {
+      wrap.appendChild(buildStructureList(structure));
+    } else {
+      wrap.appendChild(buildContinuousBlock(session, tmpl));
+    }
+
     // ---- prioridad-hibrida-006: capas SECUNDARIAS y NUNCA obligatorias,
-    // después de la guía humana de arriba (nota: ninguna se exige para
-    // cerrar la sesión, ver openCloseSheet). Colapsadas por defecto. --------
+    // después de la guía humana de arriba. Colapsadas por defecto. ----------
     wrap.appendChild(buildOptionalLayers(session));
     wrap.appendChild(buildEnvAlternatives());
 
@@ -160,51 +165,26 @@
     objLink.addEventListener("click", function () { openObjectivesSheet(data); });
     wrap.appendChild(objLink);
 
-    // ---- LOTE 2 (mejoras-ux-ui-004): importar SIEMPRE visible aquí, no solo
-    // cuando no hay sesión de hoy (nota 07): es el sitio natural para traer
-    // el contexto de cardio de tu reloj mientras ves tu sesión planificada.
-    wrap.appendChild(buildImportEntry());
+    // ---- Importar SIEMPRE visible aquí (nota 07): sitio natural para traer
+    // el resultado real una vez hecha la actividad fuera de la app. ---------
+    wrap.appendChild(buildImportEntry(session.id));
 
-    if (segments) {
-      wrap.appendChild(buildSegmentList(segments, session, data, mount));
-    } else {
-      wrap.appendChild(buildContinuousBlock(session, tmpl));
-    }
-
-    var controls = App.el("div", "endurance-controls");
-    var pauseBtn = App.el("button", "btn btn--ghost btn--block", session.pausada ? "Reanudar" : "Pausar");
-    pauseBtn.type = "button";
-    pauseBtn.addEventListener("click", function () {
-      data.toggleEndurancePause(session);
-      App.navigate("endurance", { sessionId: session.id }, { replace: true });
-    });
-    controls.appendChild(pauseBtn);
-
-    var abandonBtn = App.el("button", "btn btn--ghost btn--block", "Abandonar guardando parcial");
-    abandonBtn.type = "button";
-    abandonBtn.addEventListener("click", function () { handleAbandon(session, data, mount); });
-    controls.appendChild(abandonBtn);
-    wrap.appendChild(controls);
-
-    var finishBtn = App.el("button", "btn btn--primary btn--block", "Terminar sesión");
-    finishBtn.type = "button";
-    finishBtn.addEventListener("click", function () { handleFinishClick(session, data, mount); });
-    wrap.appendChild(finishBtn);
+    wrap.appendChild(buildActions(session, data, tmpl, pendienteDeResultado));
 
     mount.appendChild(wrap);
   }
 
   // Botón + explicación reutilizados en el estado vacío y en una sesión real
-  // (nota 07/29): admite .FIT/.TCX/.GPX, sin parser real, y sirve para
-  // registrar el contexto de cardio que el reloj ya tiene.
-  function buildImportEntry() {
+  // (nota 07/29): admite .FIT/.TCX/.GPX, sin parser real. Si se pasa
+  // sessionId, la importación llega con la asociación ya sugerida.
+  function buildImportEntry(sessionId) {
     var box = App.el("div", "endurance-import-entry");
     var importLink = App.el("button", "btn btn--ghost btn--block", "Importar actividad");
     importLink.type = "button";
-    importLink.addEventListener("click", function () { App.navigate("import"); });
+    importLink.addEventListener("click", function () { App.navigate("import", sessionId ? { sessionId: sessionId } : {}); });
     box.appendChild(importLink);
     box.appendChild(App.el("p", "lede small",
-      "Admite .FIT, .TCX y .GPX de tu reloj. Este prototipo no procesa archivos reales: sirve para registrar el contexto de cardio que tu reloj ya tiene."));
+      "Admite .FIT, .TCX y .GPX de tu reloj. Este prototipo no procesa archivos reales: sirve para registrar el resultado real de una actividad ya hecha fuera de la app."));
     return box;
   }
 
@@ -264,131 +244,200 @@
     return block;
   }
 
-  /* ---- Lista de tramos, con los cinco estados requeridos (nota 21) --------- */
+  /* ---- Estructura cronológica de solo lectura (nota 31) --------------------- */
 
-  function buildSegmentList(segments, session, data, mount) {
+  var TIPO_LABEL = {
+    calentamiento: "Calentamiento",
+    trabajo: "Trabajo",
+    recuperacion: "Recuperación",
+    vuelta_calma: "Vuelta a la calma"
+  };
+
+  function buildStructureList(structure) {
     var host = App.el("div", "segment-list-host");
-    var currentIdx = data.currentSegmentIndex(session);
-
     var list = App.el("ol", "segments");
-    segments.forEach(function (seg, index) {
-      list.appendChild(buildSegmentRow(seg, index, currentIdx, session, data, mount));
-    });
+    structure.forEach(function (entry) { list.appendChild(buildStructureRow(entry)); });
     host.appendChild(list);
     return host;
   }
 
-  function displayStateFor(seg, index, currentIdx) {
-    if (seg.estado === "realizado" || seg.estado === "ajustado" || seg.estado === "omitido") return seg.estado;
-    if (index === currentIdx) return "en_curso";
-    return "proximo";
+  function buildStructureRow(entry) {
+    if (entry.tipo === "grupo") {
+      var li = App.el("li", "segment segment--grupo");
+      li.appendChild(App.el("p", "segment__name", "Repite " + entry.repeticiones + " veces"));
+      li.appendChild(App.el("p", "segment__meta", entry.nombre + ": " + entry.duracionTexto + " · " + entry.objetivoTexto));
+      li.appendChild(App.el("p", "segment__meta", entry.recNombre + ": " + entry.recDuracionTexto + " · " + entry.recObjetivoTexto));
+      return li;
+    }
+    var row = App.el("li", "segment segment--" + entry.tipo);
+    var head = App.el("div", "segment__head");
+    head.appendChild(App.el("span", "segment__name", entry.nombre));
+    head.appendChild(App.el("span", "tag", TIPO_LABEL[entry.tipo] || entry.tipo));
+    row.appendChild(head);
+    row.appendChild(App.el("p", "segment__meta", entry.duracionTexto + " · " + entry.objetivoTexto));
+    return row;
   }
 
-  function buildSegmentRow(seg, index, currentIdx, session, data, mount) {
-    var displayState = displayStateFor(seg, index, currentIdx);
-    var li = App.el("li", "segment segment--" + displayState);
+  /* ---- Acciones: ajustar, preparar en el reloj y confirmar (nota 31) ------- */
 
-    var head = App.el("div", "segment__head");
-    head.appendChild(App.el("span", "segment__name", seg.nombre));
-    head.appendChild(App.el("span", "state state--" + stateClassFor(displayState), SEGMENT_STATE_LABEL[displayState]));
-    li.appendChild(head);
+  function buildActions(session, data, tmpl, pendienteDeResultado) {
+    var box = App.el("div", "endurance-controls");
 
-    li.appendChild(App.el("p", "segment__meta", seg.duracionTexto + " · " + seg.objetivoTexto));
-
-    if (displayState === "en_curso" && !session.pausada) {
-      var actions = App.el("div", "segment__actions");
-      var doneBtn = App.el("button", "btn btn--primary btn--sm", "Marcar tramo");
-      doneBtn.type = "button";
-      doneBtn.addEventListener("click", function () {
-        data.markSegmentDone(session, index);
-        App.toast(seg.nombre + " marcado como realizado.");
-        App.navigate("endurance", { sessionId: session.id }, { replace: true });
-      });
-      actions.appendChild(doneBtn);
-
-      var adjustBtn = App.el("button", "btn btn--ghost btn--sm", "Ajustar");
-      adjustBtn.type = "button";
-      adjustBtn.addEventListener("click", function () { openAdjustSegmentSheet(session, index, seg, data, mount); });
-      actions.appendChild(adjustBtn);
-
-      li.appendChild(actions);
-    } else if (displayState === "en_curso" && session.pausada) {
-      li.appendChild(App.el("p", "lede small", "Sesión en pausa: reanuda para marcar este tramo."));
+    if (session.estado === "importada_asociada" || session.estado === "asociada_adaptacion") {
+      box.appendChild(App.el("p", "notice notice--info",
+        "Esta sesión ya tiene una actividad importada asociada. Consulta el resultado real desde el historial."));
+      var histBtn = App.el("button", "btn btn--ghost btn--block", "Ver en historial");
+      histBtn.type = "button";
+      histBtn.addEventListener("click", function () { App.navigate("history"); });
+      box.appendChild(histBtn);
+      return box;
     }
 
-    return li;
-  }
+    var adjustBtn = App.el("button", "btn btn--ghost btn--block", "Ajustar propuesta");
+    adjustBtn.type = "button";
+    adjustBtn.addEventListener("click", function () { openAdjustProposalSheet(session, data, null); });
+    box.appendChild(adjustBtn);
 
-  function stateClassFor(displayState) {
-    if (displayState === "realizado") return "completada";
-    if (displayState === "ajustado") return "adaptada";
-    if (displayState === "omitido") return "omitida";
-    if (displayState === "en_curso") return "en_curso";
-    return "planificada";
-  }
+    // ---- LOTE 4: "Preparar en mi reloj" es la CTA PRINCIPAL mientras la
+    // sesión sigue "planificada" (aún no preparada): nunca "empezar" nada,
+    // siempre preparar en el dispositivo externo primero. Una vez marcada
+    // como creada en el reloj, deja de ser la acción principal (ya se hizo).
+    var watchBtn = App.el("button", "btn " + (session.estado === "planificada" ? "btn--primary" : "btn--ghost") + " btn--block", "Preparar en mi reloj");
+    watchBtn.type = "button";
+    watchBtn.addEventListener("click", function () { openWatchInstructionsSheet(session, data, tmpl); });
+    box.appendChild(watchBtn);
 
-  /* ---- Ajustar un tramo: reducir, repetir, pasar a recuperación u omitir --- */
+    if (session.estado === "planificada") {
+      // Acción secundaria de confirmación posterior: se ofrece junto a
+      // "Preparar en mi reloj", pero ya no es la CTA principal.
+      var scheduledBtn = App.el("button", "btn btn--ghost btn--block", "Ya está creado en mi reloj");
+      scheduledBtn.type = "button";
+      scheduledBtn.addEventListener("click", function () {
+        data.markEnduranceScheduled(session);
+        App.persist();
+        App.toast("Marcada como creada en tu reloj.");
+        App.navigate("endurance", { sessionId: session.id }, { replace: true });
+      });
+      box.appendChild(scheduledBtn);
+    }
 
-  function openAdjustSegmentSheet(session, index, seg, data, mount) {
-    App.openSheet({
-      title: "Ajustar " + seg.nombre,
-      render: function (body) {
-        body.appendChild(App.el("p", "lede small", "Elige qué hacer con este tramo. Pide confirmación antes de aplicarse."));
+    if (session.estado === "programada_reloj") {
+      var doneBtn = App.el("button", "btn btn--primary btn--block", "Ya hice la actividad (aún sin importar)");
+      doneBtn.type = "button";
+      doneBtn.addEventListener("click", function () {
+        data.markEnduranceAwaitingImport(session);
+        App.persist();
+        App.toast("Marcada como realizada. Importa el archivo cuando lo tengas.");
+        App.navigate("endurance", { sessionId: session.id }, { replace: true });
+      });
+      box.appendChild(doneBtn);
+    }
 
-        var options = [
-          { key: "reducir", label: "Reducir el tramo", desc: "Se acorta y se cuenta como ajustado." },
-          { key: "repetir", label: "Repetir el tramo", desc: "Se añade una repetición extra a continuación." },
-          { key: "recuperacion", label: "Pasar a recuperación", desc: "Este tramo se convierte en recuperación suave." },
-          { key: "omitir", label: "Omitir el tramo", desc: "Se marca como omitido y se pasa al siguiente." }
-        ];
-        options.forEach(function (opt) {
-          var btn = App.el("button", "opt");
-          btn.type = "button";
-          btn.appendChild(App.el("span", "opt__name", opt.label));
-          btn.appendChild(App.el("span", "opt__meta", opt.desc));
-          btn.addEventListener("click", function () {
-            App.closeSheet();
-            App.confirmSheet({
-              title: "Confirmar: " + opt.label.toLowerCase(),
-              body: opt.desc,
-              confirmLabel: "Confirmar",
-              cancelLabel: "Cancelar",
-              onConfirm: function () {
-                data.adjustSegment(session, index, opt.key);
-                App.toast(seg.nombre + ": " + opt.label.toLowerCase() + ".");
-                App.navigate("endurance", { sessionId: session.id }, { replace: true });
-              }
-            });
-          });
-          body.appendChild(btn);
+    if (session.estado === "programada_reloj" || session.estado === "realizada_pendiente_importar") {
+      var noResultBtn = App.el("button", "btn btn--ghost btn--block", "Marcar sin resultado");
+      noResultBtn.type = "button";
+      noResultBtn.addEventListener("click", function () {
+        App.confirmSheet({
+          title: "Marcar sin resultado",
+          body: "Se registra que esta sesión no llegó a hacerse o no se pudo importar. El plan no cambia por esto: solo queda anotado.",
+          confirmLabel: "Marcar sin resultado",
+          cancelLabel: "Cancelar",
+          onConfirm: function () {
+            data.markEnduranceNoResult(session);
+            App.persist();
+            App.toast("Sesión marcada sin resultado.");
+            App.navigate("endurance", { sessionId: session.id }, { replace: true });
+          }
         });
+      });
+      box.appendChild(noResultBtn);
+    }
+
+    return box;
+  }
+
+  /* ---- Preparar en mi reloj: instrucciones de texto, sin dispositivo real -- */
+
+  function openWatchInstructionsSheet(session, data, tmpl) {
+    App.openSheet({
+      title: "Preparar en mi reloj",
+      render: function (body) {
+        body.appendChild(App.el("p", "lede small",
+          "Crea manualmente estos bloques en tu reloj (Garmin u otro), en este orden. Este prototipo no envía nada al dispositivo: es una guía de texto."));
+
+        var structure = data.enduranceStructure(session);
+        var list = App.el("ol", "cues");
+        if (structure) {
+          structure.forEach(function (entry) {
+            if (entry.tipo === "grupo") {
+              list.appendChild(App.el("li", null,
+                "Repite " + entry.repeticiones + " veces: " + entry.nombre.toLowerCase() + " (" + entry.duracionTexto + ", " + entry.objetivoTexto.toLowerCase() + ") + " +
+                entry.recNombre.toLowerCase() + " (" + entry.recDuracionTexto + ", " + entry.recObjetivoTexto.toLowerCase() + ")."));
+            } else {
+              list.appendChild(App.el("li", null, entry.nombre + ": " + entry.duracionTexto + ", " + entry.objetivoTexto.toLowerCase()));
+            }
+          });
+        } else {
+          list.appendChild(App.el("li", null, "Bloque único: " + (tmpl ? tmpl.duracionTexto + ", " + tmpl.intensidadTexto.toLowerCase() : "ritmo constante y cómodo.")));
+        }
+        body.appendChild(list);
+
+        body.appendChild(App.el("p", "lede small", "Entorno elegido: " + data.enduranceEnv(session) + " · Duración total estimada: " + (session.duracionPrevista || "—") + " min."));
       }
     });
   }
 
-  /* ---- Ajuste explicable por choque de carga (nota 06) ---------------------- */
+  /* ---- Ajustar propuesta: duración, repeticiones o entorno (nota 31) ------- */
 
-  function openAdjustProposalSheet(session, conflict, data, mount) {
+  function openAdjustProposalSheet(session, data, conflict) {
+    var tmpl = data.enduranceTemplate(session.objetivo);
+    var hasStructure = !!(tmpl && tmpl.segments);
+
     App.openSheet({
-      title: "Alternativa explicada",
+      title: "Ajustar propuesta",
       render: function (body) {
-        body.appendChild(App.el("p", "notice notice--warn",
-          session.nombre + " junto a " + conflict.nombre.toLowerCase() + " puede sumar fatiga a una de las dos sesiones."));
+        if (conflict) {
+          body.appendChild(App.el("p", "notice notice--warn",
+            session.nombre + " junto a " + conflict.nombre.toLowerCase() + " puede sumar fatiga a una de las dos sesiones."));
+        } else {
+          body.appendChild(App.el("p", "lede small", "Elige qué ajustar. El objetivo de la sesión se mantiene en todas las opciones salvo que cambies por recuperación."));
+        }
 
         var reduceBtn = App.el("button", "opt");
         reduceBtn.type = "button";
-        reduceBtn.appendChild(App.el("span", "opt__name", "Reducir a versión corta"));
-        reduceBtn.appendChild(App.el("span", "opt__meta", "Baja la duración prevista, mismo objetivo."));
+        reduceBtn.appendChild(App.el("span", "opt__name", "Reducir duración"));
+        reduceBtn.appendChild(App.el("span", "opt__meta", "Baja la duración prevista a ~60%. Se conserva el propósito."));
         reduceBtn.addEventListener("click", function () {
           App.closeSheet();
-          session.duracionPrevista = Math.max(10, Math.round(session.duracionPrevista * 0.6));
-          session.esAdaptada = true;
-          session.procedencia = "adaptado";
-          session.sync = "local";
-          App.toast("Versión corta aplicada: " + session.duracionPrevista + " min.");
+          session.duracionPrevista = Math.max(10, Math.round((session.duracionPrevista || 30) * 0.6));
+          markAdjusted(session);
+          App.toast("Duración reducida a " + session.duracionPrevista + " min.");
           App.navigate("endurance", { sessionId: session.id }, { replace: true });
         });
         body.appendChild(reduceBtn);
+
+        if (hasStructure) {
+          var repeatBtn = App.el("button", "opt");
+          repeatBtn.type = "button";
+          repeatBtn.appendChild(App.el("span", "opt__name", "Añadir una repetición más"));
+          repeatBtn.appendChild(App.el("span", "opt__meta", "Suma un ciclo de trabajo + recuperación (~5 min más)."));
+          repeatBtn.addEventListener("click", function () {
+            App.closeSheet();
+            session.repeticionesExtra = (session.repeticionesExtra || 0) + 1;
+            session.duracionPrevista = (session.duracionPrevista || 30) + 5;
+            markAdjusted(session);
+            App.toast("Repetición añadida: " + session.duracionPrevista + " min en total.");
+            App.navigate("endurance", { sessionId: session.id }, { replace: true });
+          });
+          body.appendChild(repeatBtn);
+        }
+
+        var envBtn = App.el("button", "opt");
+        envBtn.type = "button";
+        envBtn.appendChild(App.el("span", "opt__name", "Cambiar entorno"));
+        envBtn.appendChild(App.el("span", "opt__meta", "Mismo objetivo, distinto sitio: " + ENTORNOS.join(" · ") + "."));
+        envBtn.addEventListener("click", function () { App.closeSheet(); openEnvPickerSheet(session, data); });
+        body.appendChild(envBtn);
 
         var recoveryBtn = App.el("button", "opt");
         recoveryBtn.type = "button";
@@ -398,12 +447,10 @@
           App.closeSheet();
           session.nombre = "Recuperación activa";
           session.objetivo = "continua-suave";
-          session.segmentos = null;
+          session.repeticionesExtra = 0;
           session.duracionPrevista = 20;
           session.intense = false;
-          session.esAdaptada = true;
-          session.procedencia = "adaptado";
-          session.sync = "local";
+          markAdjusted(session);
           App.toast("Cambiada por una sesión de recuperación.");
           App.navigate("endurance", { sessionId: session.id }, { replace: true });
         });
@@ -427,95 +474,30 @@
     });
   }
 
-  /* ---- Abandonar guardando parcial ------------------------------------------ */
-
-  function handleAbandon(session, data, mount) {
-    App.confirmSheet({
-      title: "Abandonar y guardar parcial",
-      body: "Los tramos que no hayas realizado quedarán marcados como omitidos. La sesión se guardará como parcial.",
-      confirmLabel: "Abandonar y guardar",
-      cancelLabel: "Seguir en la sesión",
-      onConfirm: function () {
-        data.abandonEnduranceSession(session);
-        var result = data.closeEnduranceSession(session, { completa: false });
-        App.persist();
-        App.toast("Sesión guardada como parcial: " + result.minutos + " min.");
-        App.navigate("home", {}, { replace: true });
-      }
-    });
+  function markAdjusted(session) {
+    session.esAdaptada = true;
+    session.procedencia = "adaptado";
+    session.sync = "local";
   }
 
-  /* ---- Cierre: completada, adaptada o parcial (nota 21/29) ------------------ */
-
-  function handleFinishClick(session, data, mount) {
-    var segments = session.segmentos;
-    if (segments && segments.some(function (s) { return s.estado === "pendiente"; })) {
-      App.openSheet({
-        title: "Aún quedan tramos",
-        render: function (body) {
-          var pendientes = segments.filter(function (s) { return s.estado === "pendiente"; }).length;
-          body.appendChild(App.el("p", "lede",
-            "Quedan " + pendientes + " tramos sin marcar. Si guardas ahora se registrará como sesión parcial."));
-          var keep = App.el("button", "btn btn--primary btn--block", "Seguir en la sesión");
-          keep.type = "button";
-          keep.addEventListener("click", function () { App.closeSheet(); });
-          body.appendChild(keep);
-          var partial = App.el("button", "btn btn--ghost btn--block", "Guardar como parcial");
-          partial.type = "button";
-          partial.addEventListener("click", function () {
-            App.closeSheet();
-            data.abandonEnduranceSession(session);
-            openCloseSheet(session, data, false);
-          });
-          body.appendChild(partial);
-        }
-      });
-      return;
-    }
-    openCloseSheet(session, data, true);
-  }
-
-  function openCloseSheet(session, data, completa) {
-    var esfuerzo = null;
-
+  function openEnvPickerSheet(session, data) {
     App.openSheet({
-      title: completa ? "Terminar sesión" : "Guardar como parcial",
+      title: "Cambiar entorno",
       render: function (body) {
-        var summary = App.el("div", "closesummary" + (completa ? "" : " closesummary--partial"));
-        summary.appendChild(App.el("p", "closesummary__head", completa ? "Sesión completada" : "Se guardará como parcial"));
-        summary.appendChild(App.el("p", "closesummary__meta", session.nombre + (session.esAdaptada ? " · versión adaptada" : "")));
-        body.appendChild(summary);
-
-        body.appendChild(App.el("p", "field__label", "Esfuerzo global (opcional)"));
-        var effortGroup = App.el("div", "picker picker--wide");
-        effortGroup.setAttribute("role", "group");
-        effortGroup.setAttribute("aria-label", "Esfuerzo global");
-        ESFUERZO_OPCIONES.forEach(function (opt) {
-          var b = App.el("button", "picker__btn", opt);
-          b.type = "button";
-          b.setAttribute("aria-pressed", "false");
-          b.addEventListener("click", function () {
-            var was = esfuerzo === opt;
-            esfuerzo = was ? null : opt;
-            Array.prototype.forEach.call(effortGroup.children, function (c) { c.setAttribute("aria-pressed", "false"); });
-            if (!was) b.setAttribute("aria-pressed", "true");
+        body.appendChild(App.el("p", "lede small", "El objetivo se mantiene; solo cambia dónde la haces."));
+        ENTORNOS.forEach(function (env) {
+          var btn = App.el("button", "opt");
+          btn.type = "button";
+          btn.appendChild(App.el("span", "opt__name", env));
+          btn.addEventListener("click", function () {
+            App.closeSheet();
+            session.entorno = env;
+            markAdjusted(session);
+            App.toast("Entorno cambiado a " + env + ".");
+            App.navigate("endurance", { sessionId: session.id }, { replace: true });
           });
-          effortGroup.appendChild(b);
+          body.appendChild(btn);
         });
-        body.appendChild(effortGroup);
-
-        var saveBtn = App.el("button", "btn btn--primary btn--block", "Guardar sesión");
-        saveBtn.type = "button";
-        saveBtn.addEventListener("click", function () {
-          App.closeSheet();
-          var result = data.closeEnduranceSession(session, { completa: completa, esfuerzo: esfuerzo });
-          App.persist();
-          App.toast(completa
-            ? "Sesión guardada como " + (result.estado === "adaptada" ? "adaptada" : "completada") + "."
-            : "Sesión guardada como parcial: " + result.minutos + " min.");
-          App.navigate("home", {}, { replace: true });
-        });
-        body.appendChild(saveBtn);
       }
     });
   }

@@ -41,7 +41,11 @@
       recoverEmail: "", recoverSent: false,
       profileIndex: 0,
       profile: { deporte: null, objetivo: null, diasDisponibles: null, duracionHabitual: null, entornos: [] },
-      proposal: null
+      proposal: null,
+      // Reparto fuerza/resistencia editable en el resumen (criterio: el
+      // onboarding no puede depender solo de un total ambiguo sin forma de
+      // ajustarlo). null = usar el valor por defecto de DEPORTE_CARDIO_MAP.
+      cardioFreqOverride: null
     };
   }
 
@@ -406,19 +410,21 @@
   function buildOnboardingProposal(ctx) {
     var profile = ctx.form.profile;
     var map = App.data.DEPORTE_CARDIO_MAP[profile.deporte] || App.data.DEPORTE_CARDIO_MAP.Fuerza;
+    var cardioFrecuencia = ctx.form.cardioFreqOverride !== null ? String(ctx.form.cardioFreqOverride) : map.cardioFrecuencia;
     var opts = {
       modo: "plantilla", plantilla: map.plantilla,
       diasDisponibles: profile.diasDisponibles, duracionHabitual: profile.duracionHabitual,
-      cardioActividad: map.cardioActividad, cardioFrecuencia: map.cardioFrecuencia
+      cardioActividad: map.cardioActividad, cardioFrecuencia: cardioFrecuencia
     };
     var proposal = App.data.generatePlanWeek(opts);
     if (proposal.infeasible && proposal.suggestReduceFreq !== undefined) {
       opts.cardioFrecuencia = String(proposal.suggestReduceFreq);
       proposal = App.data.generatePlanWeek(opts);
       proposal.adjustedFreq = true;
+      ctx.form.cardioFreqOverride = parseInt(opts.cardioFrecuencia, 10);
     }
     ctx.form.proposal = proposal;
-    ctx.form.proposalMeta = { plantilla: map.plantilla, cardioActividad: map.cardioActividad };
+    ctx.form.proposalMeta = { plantilla: map.plantilla, cardioActividad: map.cardioActividad, cardioFrecuencia: parseInt(opts.cardioFrecuencia, 10) };
   }
 
   function renderSummary(mount, ctx) {
@@ -444,6 +450,42 @@
     if (proposal.adjustedFreq) {
       wrap.appendChild(App.el("p", "notice notice--info",
         "Ajustamos automáticamente la frecuencia de resistencia para dejar sitio a tu sesión de fuerza. Podrás cambiarlo después desde el calendario."));
+    }
+
+    // Reparto fuerza/resistencia editable antes de confirmar (criterio: no
+    // depender solo de un total ambiguo). Solo aplica si el deporte incluye
+    // resistencia; "Fuerza" a secas no tiene nada que repartir.
+    if (form.proposalMeta && form.proposalMeta.cardioActividad !== "Ninguna" && proposal.totalDays) {
+      var freq = form.proposalMeta.cardioFrecuencia;
+      var maxFreq = Math.max(0, proposal.totalDays - 1);
+      var stepperBox = App.el("div", "notice notice--info");
+      stepperBox.appendChild(App.el("p", "field__label", "Días de " + form.proposalMeta.cardioActividad.toLowerCase() + " esta semana"));
+      var row = App.el("div");
+      row.style.display = "flex";
+      row.style.alignItems = "center";
+      row.style.gap = "12px";
+      var minusBtn = App.el("button", "btn btn--ghost", "−");
+      minusBtn.type = "button";
+      minusBtn.disabled = freq <= 0;
+      minusBtn.setAttribute("aria-label", "Menos días de resistencia");
+      minusBtn.addEventListener("click", function () {
+        ctx.form.cardioFreqOverride = Math.max(0, freq - 1);
+        buildOnboardingProposal(ctx);
+        renderStep(mount, ctx);
+      });
+      var value = App.el("span", "dayrow__meta", freq + " de " + proposal.totalDays + " días · " + (proposal.totalDays - freq) + " para fuerza");
+      var plusBtn = App.el("button", "btn btn--ghost", "+");
+      plusBtn.type = "button";
+      plusBtn.disabled = freq >= maxFreq;
+      plusBtn.setAttribute("aria-label", "Más días de resistencia");
+      plusBtn.addEventListener("click", function () {
+        ctx.form.cardioFreqOverride = Math.min(maxFreq, freq + 1);
+        buildOnboardingProposal(ctx);
+        renderStep(mount, ctx);
+      });
+      row.appendChild(minusBtn); row.appendChild(value); row.appendChild(plusBtn);
+      stepperBox.appendChild(row);
+      wrap.appendChild(stepperBox);
     }
 
     if (proposal.sessions && proposal.sessions.length) {
