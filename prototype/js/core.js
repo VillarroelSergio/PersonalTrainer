@@ -461,13 +461,34 @@
     }
   };
 
+  // Las versiones nuevas del prototipo añaden campos al dataset de demostración
+  // (por ejemplo, deporte y entornos del onboarding). Un snapshot de
+  // localStorage creado por una versión anterior no los conoce. Antes de
+  // reenganchar los helpers, completamos únicamente las claves ausentes para
+  // conservar el progreso local ya registrado.
+  function hydrateMissingData(saved, defaults) {
+    if (saved === undefined || saved === null) return defaults;
+    if (defaults === null || typeof defaults !== "object") return saved;
+    if (Array.isArray(defaults)) return Array.isArray(saved) ? saved : defaults;
+    if (typeof saved !== "object" || Array.isArray(saved)) return defaults;
+
+    Object.keys(defaults).forEach(function (key) {
+      if (saved[key] === undefined || saved[key] === null) {
+        saved[key] = defaults[key];
+      } else {
+        saved[key] = hydrateMissingData(saved[key], defaults[key]);
+      }
+    });
+    return saved;
+  }
+
   App.load = function () {
     try {
       var raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return false;
       var snapshot = JSON.parse(raw);
       if (!snapshot || !snapshot.data) return false;
-      App.data = App._attachDataHelpers(snapshot.data);
+      App.data = App._attachDataHelpers(hydrateMissingData(snapshot.data, App.dataDefaults()));
       if (snapshot.theme === "light") document.documentElement.setAttribute("data-theme", "light");
       if (snapshot.sync) syncState = snapshot.sync;
       return true;
