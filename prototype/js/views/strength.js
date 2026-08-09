@@ -21,7 +21,14 @@
   var restTimerHandle = null;
   var restTimerRemaining = 0;
   var restTimerExerciseId = null;
-  var restAnchorId = null; // tras qué serie (id de set por índice) se dibuja el carril
+
+  // ---- Barra persistente de sesión (LOTE 3 mejoras-ux-ui-004): vive fuera
+  // de las tarjetas de ejercicio para sobrevivir al cambiar de ejercicio o
+  // volver a la lista. Se reconstruye en cada render de "train" (drawList/
+  // drawExercise) y se refresca a mano tras cualquier acción que cambie el
+  // progreso o el descanso, sin depender de una renavegación completa.
+  var sessionBarEl = null;
+  var sessionBarCtx = null; // { session, data, ex, mount }
 
   /* ---- Entrada de la vista ------------------------------------------------ */
 
@@ -138,6 +145,7 @@
     wrap.appendChild(finishBtn);
 
     mount.appendChild(wrap);
+    mountSessionBar(mount, session, data, null);
   }
 
   function buildExerciseRow(ex, index, list, session, data, mount) {
@@ -305,25 +313,9 @@
     backBtn.type = "button";
     backBtn.setAttribute("aria-label", "Volver a la lista de " + session.nombre);
     backBtn.addEventListener("click", function () {
-      // C2: salir sin avisar cancelaba en silencio un descanso en curso.
-      // Si no hay descanso corriendo para ESTE ejercicio, el comportamiento
-      // no cambia (nada de confirmaciones cuando no hay nada que perder).
-      var running = !!restTimerHandle && restTimerExerciseId === ex.id;
-      if (running) {
-        App.confirmSheet({
-          title: "Salir de " + ex.nombre,
-          body: "Al salir se detiene el descanso en curso. ¿Salir de todas formas?",
-          confirmLabel: "Salir",
-          cancelLabel: "Cancelar",
-          onConfirm: function () {
-            stopRestTimer();
-            progress.openExerciseId = null;
-            App.navigate("train", { sessionId: session.id }, { replace: true });
-          }
-        });
-        return;
-      }
-      stopRestTimer();
+      // El descanso ahora vive en la barra persistente (visible en la lista
+      // y en cualquier tarjeta de la misma sesión), así que salir de la
+      // tarjeta ya no lo cancela: no hace falta avisar ni detenerlo.
       progress.openExerciseId = null;
       App.navigate("train", { sessionId: session.id }, { replace: true });
     });
@@ -414,6 +406,53 @@
     renderLanes(lanesHost, data, session, ex, progress);
 
     mount.appendChild(wrap);
+    mountSessionBar(mount, session, data, ex);
+  }
+
+  /* ---- Barra persistente de sesión: progreso, ejercicio actual, cierre y
+   * descanso en curso (nota nueva del lote de mejoras). Se reconstruye por
+   * completo en cada render de la vista y se refresca a mano (refreshSessionBar)
+   * cada vez que cambia el progreso o el estado del descanso sin pasar por
+   * App.navigate, para no perder la posición de scroll del usuario. --------- */
+
+  function mountSessionBar(mount, session, data, ex) {
+    sessionBarCtx = { session: session, data: data, ex: ex, mount: mount };
+    sessionBarEl = App.el("div", "sessionbar");
+    sessionBarEl.setAttribute("role", "region");
+    sessionBarEl.setAttribute("aria-label", "Progreso de la sesión de fuerza");
+    mount.appendChild(sessionBarEl);
+    refreshSessionBar();
+  }
+
+  function refreshSessionBar() {
+    if (!sessionBarEl || !sessionBarCtx) return;
+    var session = sessionBarCtx.session, data = sessionBarCtx.data, ex = sessionBarCtx.ex, mount = sessionBarCtx.mount;
+    sessionBarEl.innerHTML = "";
+
+    var stats = data.sessionStats(session.id);
+    var top = App.el("div", "sessionbar__top");
+    var meta = App.el("div", "sessionbar__meta");
+    meta.appendChild(App.el("p", "sessionbar__progress", stats.setsDone + " de " + stats.setsTotal + " series"));
+    meta.appendChild(App.el("p", "sessionbar__current", ex ? "Ahora: " + ex.nombre : "Elige un ejercicio de la lista"));
+    top.appendChild(meta);
+
+    var finishBtn = App.el("button", "btn btn--primary btn--sm", "Terminar sesión");
+    finishBtn.type = "button";
+    finishBtn.addEventListener("click", function () { handleFinishClick(session, data, mount); });
+    top.appendChild(finishBtn);
+    sessionBarEl.appendChild(top);
+
+    var restEx = restExerciseFor(session, data);
+    if (restEx) sessionBarEl.appendChild(buildRestWidget(restEx));
+  }
+
+  function restExerciseFor(session, data) {
+    if (!restTimerExerciseId || restTimerRemaining <= 0) return null;
+    var list = data.exercisesForSession(session.id) || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === restTimerExerciseId) return list[i];
+    }
+    return null;
   }
 
   function renderLanes(host, data, session, ex, progress) {
@@ -436,11 +475,11 @@
         btn.addEventListener("click", function () {
           set.estado = done ? "pendiente" : "hecha";
           if (!done) {
-            restAnchorId = ex.id + "-" + index;
             restTimerExerciseId = ex.id;
             if (!restTimerHandle) restTimerRemaining = ex.restSeconds;
           }
           renderLanes(host, data, session, ex, progress);
+          refreshSessionBar();
         });
         state.appendChild(btn);
       } else {
@@ -457,8 +496,6 @@
         errLi.appendChild(err);
         list.appendChild(errLi);
       }
-
-      if (restAnchorId === ex.id + "-" + index) list.appendChild(buildRestLane(ex, host, data, session, progress));
     });
 
     host.appendChild(list);
@@ -480,10 +517,10 @@
         }
         host._pendingErrors = {};
         ex.sets.forEach(function (s) { s.estado = "hecha"; });
-        restAnchorId = ex.id + "-" + (ex.sets.length - 1);
         restTimerExerciseId = ex.id;
         if (!restTimerHandle) restTimerRemaining = ex.restSeconds;
         renderLanes(host, data, session, ex, progress);
+        refreshSessionBar();
         App.toast("Series de " + ex.nombre + " confirmadas.");
       });
       footer.appendChild(allBtn);
@@ -524,21 +561,26 @@
     return wrap;
   }
 
-  /* ---- Descanso: solo arranca por acción explícita (nota 19) --------------- */
+  /* ---- Descanso: solo arranca por acción explícita (nota 19). Vive en la
+   * barra persistente (no en la tarjeta) para seguir visible y contando al
+   * cambiar de ejercicio o volver a la lista de la misma sesión. ------------ */
 
-  function buildRestLane(ex, host, data, session, progress) {
+  function buildRestWidget(ex) {
     var running = !!restTimerHandle && restTimerExerciseId === ex.id;
-    var li = App.el("li", "restlane");
+    var paused = !running && restTimerRemaining < ex.restSeconds;
+    var wrap = App.el("div", "sessionbar__rest");
 
-    var clock = App.el("span", "restlane__clock", formatTime(restTimerRemaining));
+    var clock = App.el("span", "sessionbar__clock", formatTime(restTimerRemaining));
     clock.id = "restClock";
     clock.setAttribute("aria-live", "polite");
-    li.appendChild(clock);
+    wrap.appendChild(clock);
 
-    var body = App.el("div", "restlane__body");
-    body.appendChild(App.el("p", "restlane__label", running ? "Descansando" : "Descanso recomendado (no ha empezado)"));
+    var labelText = running ? "Descansando · " + ex.nombre
+      : paused ? "Descanso en pausa · " + ex.nombre
+      : "Descanso recomendado · " + ex.nombre;
+    wrap.appendChild(App.el("span", "sessionbar__restlabel", labelText));
 
-    var edit = App.el("span", "restlane__edit");
+    var edit = App.el("span", "sessionbar__restedit");
     var input = document.createElement("input");
     input.type = "number";
     input.id = "restSeconds";
@@ -547,7 +589,7 @@
     input.step = "5";
     input.value = ex.restSeconds;
     input.disabled = running;
-    input.setAttribute("aria-label", "Segundos de descanso recomendado");
+    input.setAttribute("aria-label", "Segundos de descanso recomendado para " + ex.nombre);
     input.addEventListener("input", function () {
       var v = parseInt(input.value, 10);
       if (isNaN(v)) return;
@@ -559,27 +601,19 @@
       }
     });
     edit.appendChild(input);
-    edit.appendChild(App.el("span", null, "s editables"));
-    body.appendChild(edit);
-    li.appendChild(body);
+    edit.appendChild(App.el("span", null, "s"));
+    wrap.appendChild(edit);
 
-    var action = App.el("span", "restlane__action");
-    if (running) {
-      var pauseBtn = App.el("button", "btn btn--ghost btn--sm", "Pausar");
-      pauseBtn.type = "button";
-      pauseBtn.addEventListener("click", function () { stopRestTimer(); renderLanes(host, data, session, ex, progress); });
-      action.appendChild(pauseBtn);
-    } else {
-      var startBtn = App.el("button", "btn btn--ghost btn--sm", restTimerRemaining < ex.restSeconds && restTimerExerciseId === ex.id ? "Reanudar" : "Iniciar");
-      startBtn.type = "button";
-      startBtn.addEventListener("click", function () {
-        startRestTimer(ex, host, data, session, progress);
-        renderLanes(host, data, session, ex, progress);
-      });
-      action.appendChild(startBtn);
-    }
-    li.appendChild(action);
-    return li;
+    var actionBtn = App.el("button", "btn btn--ghost btn--sm", running ? "Pausar" : (paused ? "Reanudar" : "Iniciar"));
+    actionBtn.type = "button";
+    actionBtn.addEventListener("click", function () {
+      if (running) stopRestTimer();
+      else startRestTimer(ex);
+      refreshSessionBar();
+    });
+    wrap.appendChild(actionBtn);
+
+    return wrap;
   }
 
   function formatTime(totalSeconds) {
@@ -590,7 +624,7 @@
   }
 
   // El temporizador SOLO arranca por esta acción explícita del usuario.
-  function startRestTimer(ex, host, data, session, progress) {
+  function startRestTimer(ex) {
     if (restTimerHandle) return;
     restTimerExerciseId = ex.id;
     if (!restTimerRemaining || restTimerRemaining <= 0) restTimerRemaining = parseInt(ex.restSeconds, 10) || 0;
@@ -602,7 +636,7 @@
       if (restTimerRemaining <= 0) {
         stopRestTimer();
         restTimerRemaining = ex.restSeconds;
-        renderLanes(host, data, session, ex, progress);
+        refreshSessionBar();
         App.toast("Descanso terminado.");
       }
     }, 1000);
@@ -655,25 +689,20 @@
     });
   }
 
+  // Usa el componente único de ficha de ejercicio (App.exerciseSheet,
+  // definido en library.js) para que "Ver guía" desde la sesión muestre el
+  // mismo marcado y la misma imagen que la ficha de Biblioteca. `catalogId`
+  // enlaza explícitamente con el catálogo cuando existe (hoy solo "jalon" →
+  // "jalon-polea", ver data.js); si no existe, mediaId cae al id de sesión y
+  // el componente muestra "Ilustración próximamente".
   function openGuideSheet(ex) {
-    App.openSheet({
-      title: "Guía · " + ex.nombre,
-      render: function (body) {
-        var figure = App.el("div", "guide-figure");
-        figure.innerHTML = icon(ex.icon);
-        body.appendChild(figure);
-        body.appendChild(App.el("p", "field__label", ex.nombre + " · " + ex.variante));
-        var cues = App.el("ul", "cues");
-        ex.guide.cues.forEach(function (c) { cues.appendChild(App.el("li", null, c)); });
-        body.appendChild(cues);
-        if (ex.guide.muscles.length) {
-          body.appendChild(App.el("p", "field__label", "Músculos implicados"));
-          var tags = App.el("div", "tags");
-          ex.guide.muscles.forEach(function (m) { tags.appendChild(App.el("span", "tag", m)); });
-          body.appendChild(tags);
-        }
-        body.appendChild(App.el("p", "lede small", "Guía informativa general, no sustituye la supervisión de un profesional."));
-      }
+    App.exerciseSheet({
+      title: ex.nombre,
+      mediaId: ex.catalogId || ex.id,
+      patron: ex.patron,
+      objetivo: ex.objetivo,
+      guide: ex.guide,
+      video: ex.video
     });
   }
 
@@ -770,8 +799,11 @@
         var saveBtn = App.el("button", "btn btn--primary btn--block", "Guardar sesión");
         saveBtn.type = "button";
         saveBtn.addEventListener("click", function () {
-          if (!esfuerzo) { App.toast("Indica el esfuerzo global antes de guardar."); return; }
+          // El esfuerzo global es opcional (igual que molestias y comentario):
+          // nada de lo que se pide al cerrar debe bloquear el guardado.
           App.closeSheet();
+          stopRestTimer();
+          restTimerExerciseId = null;
           var result = data.closeStrengthSession(session, { completa: completa, esfuerzo: esfuerzo, molestia: molestiaCierre, comentario: comentario });
           data.sessionProgress(session.id).openExerciseId = null;
           App.persist();

@@ -34,31 +34,46 @@
     var h1 = App.el("h1", "view-title", "Tu camino");
     wrap.appendChild(h1);
 
-    // 1) Sesión protagonista + 2) opciones subordinadas
+    // ---- prioridad-hibrida-006: exactamente 3 bloques antes de cualquier
+    // contenido secundario, en este orden fijo (criterio 3 del contrato):
+    // a) Entrenamiento de hoy  b) Plan de la semana  c) Cómo llegas hoy.
+    // Todo lo demás (progreso de bloque, evolución, actividad reciente,
+    // logro, enlaces) baja por debajo de los tres.
+
+    // a) Entrenamiento de hoy
+    wrap.appendChild(App.el("h2", "section-title", "Entrenamiento de hoy"));
     wrap.appendChild(buildHero(data));
+
+    // b) Plan de la semana: carril semanal + frase de relación de carga
+    wrap.appendChild(App.el("h2", "section-title", "Plan de la semana"));
+    wrap.appendChild(buildWeekRail(data));
+    wrap.appendChild(App.el("p", "rail-legend",
+      "Relleno: completada · anillo naranja: hoy · anillo hueco: planificada · trazo discontinuo: día del que se movió una sesión · punto: descanso."));
+    var warn = data.weeklyLoadWarning();
+    if (warn) wrap.appendChild(App.el("p", "notice notice--warn", loadWarningPhrase(warn, data)));
+
+    // c) Cómo llegas hoy: bloque propio hacia el check-in, opcional y rápido
+    wrap.appendChild(App.el("h2", "section-title", "Cómo llegas hoy"));
+    wrap.appendChild(buildCheckinBlock(data));
+
+    // ---- Contenido secundario, siempre por debajo de los 3 bloques --------
 
     // Progreso del bloque
     wrap.appendChild(App.el("h2", "section-title", data.plan.nombre));
     wrap.appendChild(buildBlockProgress(data.plan));
 
-    // Carril semanal (conservado del prototipo anterior)
-    wrap.appendChild(App.el("h2", "section-title", "Tu semana"));
-    wrap.appendChild(buildWeekRail(data));
-    wrap.appendChild(App.el("p", "rail-legend",
-      "Relleno: completada · anillo naranja: hoy · anillo hueco: planificada · trazo discontinuo: día del que se movió una sesión · punto: descanso."));
-
-    // 3) Estado semanal
+    // Estado semanal
     wrap.appendChild(buildWeekStats(data));
 
-    // 4) Evolución breve
+    // Evolución breve
     wrap.appendChild(App.el("h2", "section-title", "Cómo va"));
-    wrap.appendChild(buildEvolutionNote());
+    wrap.appendChild(buildEvolutionNote(data));
 
-    // 5) Actividad reciente
+    // Actividad reciente
     wrap.appendChild(App.el("h2", "section-title", "Actividad reciente"));
     wrap.appendChild(buildRecentActivity(data));
 
-    // 6) Un único logro
+    // Un único logro
     var achievement = pickAchievement(data.ACHIEVEMENTS);
     if (achievement) wrap.appendChild(buildAchievement(achievement));
 
@@ -168,6 +183,29 @@
     return block;
   }
 
+  // ---- b) frase de relación de carga concreta (usa data.weeklyLoadWarning,
+  // que reutiliza findConflict: no se reimplementa la regla de choque). -----
+  function loadWarningPhrase(warn, data) {
+    var cardioDay = data.dayByKey(warn.session.day);
+    var legsDay = data.dayByKey(warn.conflict.day);
+    return warn.session.nombre + " el " + (cardioDay ? cardioDay.nombre.toLowerCase() : warn.session.day) +
+      ": justo al lado de " + warn.conflict.nombre.toLowerCase() + " (" + (legsDay ? legsDay.nombre.toLowerCase() : warn.conflict.day) +
+      "). Puedes revisarlo desde Plan.";
+  }
+
+  // ---- c) Cómo llegas hoy: bloque propio, no un botón dentro de la tarjeta
+  // de hoy. Check-in es opcional y rápido (20 s), nunca obligatorio. --------
+  function buildCheckinBlock(data) {
+    var box = App.el("div", "note");
+    var today = data.sessionOnDay(data.hoy);
+    box.appendChild(App.el("p", null, "Opcional y rápido: cuéntanos cómo llegas hoy (20 s) para ajustar la sesión si hace falta."));
+    var btn = App.el("button", "btn btn--ghost btn--block", "Hacer check-in");
+    btn.type = "button";
+    btn.addEventListener("click", function () { App.navigate("checkin", today ? { sessionId: today.id } : {}); });
+    box.appendChild(btn);
+    return box;
+  }
+
   function buildAlt(kind, title, meta, onClick) {
     var btn = App.el("button", "alt alt--" + kind);
     btn.type = "button";
@@ -213,6 +251,9 @@
   }
 
   /* ---- Carril semanal (forma + color, nunca solo color) ------------------ */
+  /* LOTE 4: cada día es un control real (<button>) con nombre accesible que
+   * incluye el día y qué hay ese día; tocarlo abre el detalle de la sesión
+   * o del día de descanso, con teclado o con puntero. */
 
   function buildWeekRail(data) {
     var rail = App.el("ol", "weekrail");
@@ -223,45 +264,94 @@
       var ghost = s ? null : data.ghostOnDay(day.key);
       var isToday = day.key === data.hoy;
 
-      var li = App.el("li", "weekrail__day");
+      var li = App.el("li");
+      var btn = App.el("button", "weekrail__day");
+      btn.type = "button";
       var name = App.el("span", "weekrail__name");
       var described;
 
       if (s) {
-        if (s.tipo === "resistencia") li.classList.add("is-cardio");
+        if (s.tipo === "resistencia") btn.classList.add("is-cardio");
         name.textContent = s.nombre;
         if (s.estado === "completada" || s.estado === "adaptada") {
-          li.classList.add("is-done");
+          btn.classList.add("is-done");
           described = s.nombre + ", " + ESTADO_LABEL[s.estado].toLowerCase();
         } else if (isToday) {
-          li.classList.add("is-today");
+          btn.classList.add("is-today");
           described = s.nombre + ", hoy";
         } else if (s.estado === "omitida" || s.estado === "parcial") {
-          li.classList.add("is-skipped");
+          btn.classList.add("is-skipped");
           described = s.nombre + ", " + ESTADO_LABEL[s.estado].toLowerCase();
         } else {
-          li.classList.add("is-planned");
+          btn.classList.add("is-planned");
           described = s.nombre + ", planificada";
         }
         if (s.movedFrom) described += ", recolocada aquí";
       } else if (ghost) {
-        li.classList.add("is-moved");
+        btn.classList.add("is-moved");
         name.textContent = "movida";
         described = ghost.nombre + " se movió de este día";
       } else {
-        li.classList.add("is-rest");
+        btn.classList.add("is-rest");
         name.textContent = "descanso";
         described = "descanso";
       }
 
-      li.setAttribute("aria-label", day.nombre + ": " + described);
-      li.appendChild(App.el("span", "weekrail__label", day.abrev));
-      li.appendChild(App.el("span", "weekrail__mark"));
-      li.appendChild(name);
+      btn.setAttribute("aria-label", day.nombre + ": " + described);
+      btn.appendChild(App.el("span", "weekrail__label", day.abrev));
+      btn.appendChild(App.el("span", "weekrail__mark"));
+      btn.appendChild(name);
+      btn.addEventListener("click", function () { openDayDetailSheet(day, s, ghost, isToday); });
+      li.appendChild(btn);
       rail.appendChild(li);
     });
 
     return rail;
+  }
+
+  function openDayDetailSheet(day, session, ghost, isToday) {
+    App.openSheet({
+      title: day.nombre + (isToday ? " · hoy" : ""),
+      render: function (body) {
+        if (session) {
+          body.appendChild(App.el("p", "kicker", session.tipo === "resistencia" ? "Resistencia" : "Fuerza"));
+          body.appendChild(App.el("p", "lede", session.nombre));
+          body.appendChild(App.el("p", "small", "Estado: " + (ESTADO_LABEL[session.estado] || session.estado) +
+            (session.duracionPrevista ? " · " + session.duracionPrevista + " min aproximados" : "")));
+          if (session.movedFrom) body.appendChild(App.el("p", "small", "Recolocada aquí desde otro día."));
+
+          if (session.estado === "planificada" || session.estado === "en_curso") {
+            var startBtn = App.el("button", "btn btn--primary btn--block",
+              session.estado === "en_curso" ? "Continuar sesión" : "Empezar sesión");
+            startBtn.type = "button";
+            startBtn.addEventListener("click", function () {
+              App.closeSheet();
+              App.navigate("train", { sessionId: session.id });
+            });
+            body.appendChild(startBtn);
+          } else {
+            var historyBtn = App.el("button", "btn btn--ghost btn--block", "Ver en historial");
+            historyBtn.type = "button";
+            historyBtn.addEventListener("click", function () { App.closeSheet(); App.navigate("history"); });
+            body.appendChild(historyBtn);
+          }
+          return;
+        }
+
+        if (ghost) {
+          body.appendChild(App.el("p", "lede", "Sin sesión aquí"));
+          body.appendChild(App.el("p", "small", ghost.nombre + " se recolocó a otro día. Este día queda libre."));
+          return;
+        }
+
+        body.appendChild(App.el("p", "lede", "Día de descanso"));
+        body.appendChild(App.el("p", "small", "No hay ninguna sesión planificada. Puedes aprovecharlo para recuperar o dejarlo libre."));
+        var recoveryBtn = App.el("button", "btn btn--ghost btn--block", "Ver recuperación");
+        recoveryBtn.type = "button";
+        recoveryBtn.addEventListener("click", function () { App.closeSheet(); App.navigate("recovery"); });
+        body.appendChild(recoveryBtn);
+      }
+    });
   }
 
   /* ---- 3) Estado semanal --------------------------------------------------- */
@@ -300,9 +390,29 @@
   }
 
   /* ---- 4) Evolución breve --------------------------------------------------- */
+  /* LOTE 4: nunca se afirma una evolución que no existe. Sin historial
+   * previo, no se inventa una tendencia (nota: nunca se inventan datos que
+   * la persona no ha generado todavía, mismo criterio que history.js). */
 
-  function buildEvolutionNote() {
+  function buildEvolutionNote(data) {
     var note = App.el("div", "note");
+
+    if (!data.HISTORY || !data.HISTORY.length) {
+      note.appendChild(App.el("p", null,
+        "Todavía no hay sesiones registradas para mostrar una evolución. Aparecerá aquí en cuanto completes tu primera sesión."));
+      return note;
+    }
+
+    // No afirmar una tendencia positiva con datos insuficientes: hace falta
+    // más de un registro y que el más reciente sea completada/adaptada
+    // (una sesión parcial u omitida no sostiene "sube con constancia").
+    var last = data.HISTORY[0];
+    if (data.HISTORY.length < 2 || (last.estado !== "completada" && last.estado !== "adaptada")) {
+      note.appendChild(App.el("p", null,
+        "Todavía es pronto para mostrar una tendencia. Aparecerá en cuanto tengas más sesiones registradas."));
+      return note;
+    }
+
     var spark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     spark.setAttribute("class", "spark");
     spark.setAttribute("viewBox", "0 0 120 32");

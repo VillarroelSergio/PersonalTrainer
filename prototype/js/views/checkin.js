@@ -14,11 +14,17 @@
   var SAFETY_TEXT = "Molestia importante: esto no es un diagnóstico. Si la molestia persiste o es intensa, " +
     "considera detener o adaptar la sesión y consultar a un profesional de salud.";
 
+  var GENERAL_WELLNESS_TEXT = "Información orientativa de bienestar, no un diagnóstico: no identifica lesiones ni garantiza la recuperación. " +
+    "Sirve para explicar el ajuste de la sesión de hoy.";
+
+  var BODY_MAP_IMG = "assets/body-map/body-map-front-back-v1.webp";
+  var BODY_MAP_ALT = "Mapa corporal frontal y trasero con zonas amplias para registrar una molestia.";
+
   function freshCheckin() {
     return {
       stage: "form", // form | proposal
       energia: null, motivacion: null, tiempo: null, molestia: null,
-      zona: null, lado: null, zonaTexto: null, intensidadZona: null, tipoMolestia: null,
+      zona: null, lado: null, zonaTexto: null, intensidadZona: null, tipoMolestia: null, notaZona: "",
       bodySide: "frontal",
       reuseId: null,
       proposal: null
@@ -129,7 +135,7 @@
     if (active && !s.zona && !s.reuseId) {
       var panel = App.el("div", "notice notice--info");
       panel.appendChild(App.el("p", null,
-        "Tienes un aviso activo: " + active.zonaTexto + ", intensidad " + active.intensidad + ". Puedes reutilizarlo, editarlo o cerrarlo."));
+        "Tienes un aviso activo: " + active.zonaTexto + ", intensidad " + active.intensidad + ". Puedes reutilizarlo, editarlo o marcarlo como resuelto."));
       var actions = App.el("div", "dayrow__actions");
       var reuseBtn = App.el("button", "chip", "Reutilizar");
       reuseBtn.type = "button";
@@ -148,11 +154,15 @@
         redraw();
       });
       actions.appendChild(editBtn);
-      var closeBtn = App.el("button", "chip", "Cerrar aviso");
+      // La etiqueta describe lo que realmente hace data.closeDiscomfort:
+      // pone el aviso en estado "cerrado" para siempre (no reaparece como
+      // activo/reutilizable en ninguna sesión futura). No es "ocultar por
+      // hoy": por eso el texto es "Marcar como resuelta", no "Cerrar aviso".
+      var closeBtn = App.el("button", "chip", "Marcar como resuelta");
       closeBtn.type = "button";
       closeBtn.addEventListener("click", function () {
         data.closeDiscomfort(active.id);
-        App.toast("Aviso cerrado.");
+        App.toast("Molestia marcada como resuelta.");
         redraw();
       });
       actions.appendChild(closeBtn);
@@ -161,9 +171,10 @@
       return wrap;
     }
 
+    wrap.appendChild(App.el("p", "lede small bodymap__wellness", GENERAL_WELLNESS_TEXT));
     wrap.appendChild(App.el("p", "field__label", "¿En qué zona amplia lo notas?"));
 
-    var tabs = App.el("div", "tabs tabs--small");
+    var tabs = App.el("div", "tabs tabs--small bodymap__tabs");
     tabs.setAttribute("role", "tablist");
     tabs.setAttribute("aria-label", "Vista del cuerpo");
     ["frontal", "trasera"].forEach(function (side, i) {
@@ -173,7 +184,7 @@
       tab.id = "bodyTab-" + side;
       tab.setAttribute("role", "tab");
       tab.setAttribute("aria-selected", String(selected));
-      tab.setAttribute("aria-controls", "bodyPanel");
+      tab.setAttribute("aria-controls", "bodyPanel-" + side);
       tab.tabIndex = selected ? 0 : -1;
       tab.addEventListener("click", function () { s.bodySide = side; redraw(); });
       tab.addEventListener("keydown", function (e) {
@@ -191,40 +202,11 @@
     });
     wrap.appendChild(tabs);
 
-    var panel = App.el("div", "bodymap");
-    panel.id = "bodyPanel";
-    panel.setAttribute("role", "tabpanel");
-    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 120 220");
-    svg.setAttribute("class", "bodymap__svg");
-    svg.setAttribute("aria-hidden", "true");
-    if (s.bodySide === "frontal") {
-      svg.innerHTML = '<circle cx="60" cy="20" r="14"/><rect x="38" y="36" width="44" height="60" rx="10"/>' +
-        '<rect x="18" y="40" width="16" height="60" rx="7"/><rect x="86" y="40" width="16" height="60" rx="7"/>' +
-        '<rect x="40" y="96" width="18" height="80" rx="8"/><rect x="62" y="96" width="18" height="80" rx="8"/>';
-    } else {
-      svg.innerHTML = '<circle cx="60" cy="20" r="14"/><rect x="38" y="36" width="44" height="60" rx="10"/>' +
-        '<rect x="18" y="40" width="16" height="60" rx="7"/><rect x="86" y="40" width="16" height="60" rx="7"/>' +
-        '<rect x="40" y="96" width="18" height="80" rx="8"/><rect x="62" y="96" width="18" height="80" rx="8"/>';
-    }
-    panel.appendChild(svg);
-
-    var zones = data.BODY_ZONES[s.bodySide];
-    zones.forEach(function (z) {
-      var pressed = s.zona === z.zona && s.lado === z.lado;
-      var btn = App.el("button", "zone", z.texto);
-      btn.type = "button";
-      btn.style.top = z.top;
-      btn.style.left = z.left;
-      btn.setAttribute("aria-pressed", String(pressed));
-      btn.addEventListener("click", function () {
-        s.zona = z.zona; s.lado = z.lado; s.zonaTexto = z.texto;
-        if (!s.intensidadZona) s.intensidadZona = s.molestia;
-        redraw();
-      });
-      panel.appendChild(btn);
+    var dual = App.el("div", "bodymap-dual");
+    ["frontal", "trasera"].forEach(function (side) {
+      dual.appendChild(buildBodyPane(side, data, s, redraw));
     });
-    wrap.appendChild(panel);
+    wrap.appendChild(dual);
 
     wrap.appendChild(App.el("p", "lede small",
       s.zonaTexto ? "Zona seleccionada: " + s.zonaTexto + "." : "Ninguna zona seleccionada todavía."));
@@ -248,6 +230,21 @@
       wrap.appendChild(buildPickerField("Intensidad", "intensidadZona", ["leve", "moderada", "importante"], s, redraw));
       wrap.appendChild(buildPickerField("Tipo (opcional)", "tipoMolestia", ["dolor", "rigidez", "fatiga"], s, redraw));
 
+      var noteField = App.el("div", "field");
+      var noteLabel = App.el("label", "field__label", "Nota (opcional)");
+      noteLabel.htmlFor = "notaZona";
+      noteField.appendChild(noteLabel);
+      var noteInput = document.createElement("input");
+      noteInput.type = "text";
+      noteInput.id = "notaZona";
+      noteInput.className = "field__input";
+      noteInput.maxLength = 140;
+      noteInput.value = s.notaZona || "";
+      noteInput.placeholder = "Ej. aparece solo al final de la sesión";
+      noteInput.addEventListener("input", function () { s.notaZona = noteInput.value; });
+      noteField.appendChild(noteInput);
+      wrap.appendChild(noteField);
+
       if (s.intensidadZona === "importante") {
         wrap.appendChild(App.el("p", "notice notice--warn", SAFETY_TEXT));
       }
@@ -255,16 +252,55 @@
       var saveBtn = App.el("button", "btn btn--ghost btn--block", s.reuseId ? "Guardar cambios del aviso" : "Guardar aviso");
       saveBtn.type = "button";
       saveBtn.addEventListener("click", function () {
-        data.saveDiscomfort({
+        var saved = data.saveDiscomfort({
           zona: s.zona, lado: s.lado, zonaTexto: s.zonaTexto,
           intensidad: s.intensidadZona || s.molestia, tipo: s.tipoMolestia
         }, s.reuseId);
+        if (s.notaZona && s.notaZona.trim()) saved.nota = s.notaZona.trim();
         App.toast("Aviso guardado.");
       });
       wrap.appendChild(saveBtn);
     }
 
     return wrap;
+  }
+
+  /* ---- Panel visual de una vista (frontal/trasera) con imagen real + zonas - */
+
+  function buildBodyPane(side, data, s, redraw) {
+    var pane = App.el("div", "bodymap-pane" + (s.bodySide === side ? " is-active" : ""));
+    pane.id = "bodyPanel-" + side;
+    pane.setAttribute("role", "tabpanel");
+    pane.setAttribute("aria-labelledby", "bodyTab-" + side);
+    pane.dataset.side = side;
+
+    var crop = App.el("div", "bodymap-crop");
+    var img = document.createElement("img");
+    img.className = "bodymap-img";
+    img.src = BODY_MAP_IMG;
+    img.alt = BODY_MAP_ALT;
+    img.addEventListener("error", function () { img.classList.add("bodymap-img--broken"); });
+    crop.appendChild(img);
+
+    var zones = data.BODY_ZONES[side];
+    zones.forEach(function (z) {
+      var pressed = s.zona === z.zona && s.lado === z.lado;
+      var btn = App.el("button", "zone", z.texto);
+      btn.type = "button";
+      btn.style.top = z.top;
+      btn.style.left = z.left;
+      btn.setAttribute("aria-pressed", String(pressed));
+      btn.addEventListener("click", function () {
+        if (z.zona !== s.zona || z.lado !== s.lado) s.notaZona = "";
+        s.bodySide = side;
+        s.zona = z.zona; s.lado = z.lado; s.zonaTexto = z.texto;
+        if (!s.intensidadZona) s.intensidadZona = s.molestia;
+        redraw();
+      });
+      crop.appendChild(btn);
+    });
+    pane.appendChild(crop);
+    return pane;
   }
 
   /* ---- Regla de adaptación (caso literal del encargo incluido) ------------- */
@@ -325,6 +361,11 @@
       changes: changes,
       reason: reasonParts.length ? "Motivo: indicaste " + reasonParts.join(", ") + "." : "Sin señales declaradas: no hay motivo que explicar.",
       importantPain: s.molestia === "importante" || s.intensidadZona === "importante",
+      // C: si no hay ningún cambio real que aplicar (caso "no se detectan
+      // ajustes necesarios"), aplicar la propuesta no debe marcar la sesión
+      // como adaptada: al cerrarla se etiquetaría "adaptada" sin que nada
+      // se hubiese adaptado de verdad.
+      hasChanges: apply.length > 0,
       apply: function () { apply.forEach(function (fn) { fn(); }); }
     };
   }
@@ -355,9 +396,10 @@
     applyBtn.type = "button";
     applyBtn.addEventListener("click", function () {
       proposal.apply();
-      session.esAdaptada = true;
+      if (proposal.hasChanges) session.esAdaptada = true;
       if (s.zona) {
-        data.saveDiscomfort({ zona: s.zona, lado: s.lado, zonaTexto: s.zonaTexto, intensidad: s.intensidadZona || s.molestia, tipo: s.tipoMolestia }, s.reuseId);
+        var savedProposal = data.saveDiscomfort({ zona: s.zona, lado: s.lado, zonaTexto: s.zonaTexto, intensidad: s.intensidadZona || s.molestia, tipo: s.tipoMolestia }, s.reuseId);
+        if (s.notaZona && s.notaZona.trim()) savedProposal.nota = s.notaZona.trim();
       }
       App.toast("Versión adaptada aplicada.");
       App.viewContext("checkin").state = freshCheckin();

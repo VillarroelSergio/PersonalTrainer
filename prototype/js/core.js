@@ -61,14 +61,22 @@
   function updateNav(name) {
     var nav = App.$("mainNav");
     var buttons = document.querySelectorAll(".bottomnav__btn");
+    var isDestination = NAV_DESTINATIONS.indexOf(name) >= 0;
+    // "bare" es el criterio explícito de una vista para ocultar el chrome
+    // (acceso, recuperación, consentimiento y onboarding viven todos dentro
+    // de la vista "access" con chrome: "bare"). No basta con mirar si el
+    // nombre está fuera de NAV_DESTINATIONS: eso es un accidente de que hoy
+    // solo hay una vista así, no una regla declarada.
+    var def = views[name];
+    var isBare = !!(def && def.chrome === "bare");
     for (var i = 0; i < buttons.length; i++) {
-      if (NAV_DESTINATIONS.indexOf(name) >= 0 && buttons[i].getAttribute("data-nav") === name) {
+      if (isDestination && buttons[i].getAttribute("data-nav") === name) {
         buttons[i].setAttribute("aria-current", "page");
       } else {
         buttons[i].removeAttribute("aria-current");
       }
     }
-    if (nav) nav.hidden = NAV_DESTINATIONS.indexOf(name) < 0;
+    if (nav) nav.hidden = !isDestination || isBare;
   }
 
   function focusViewTitle(mount) {
@@ -305,10 +313,22 @@
     set: function (estado) {
       if (!SYNC_LABELS[estado]) return;
       syncState = estado;
+      var info = SYNC_LABELS[estado];
+      var btn = App.$("syncStatus");
       var pillText = App.$("syncStatusText");
+      var pillIcon = App.$("syncStatusIcon");
       var dot = document.querySelector(".sync-dot");
-      if (pillText) pillText.textContent = SYNC_LABELS[estado].icon + " " + SYNC_LABELS[estado].text;
+      // El texto largo solo se ve a partir de ~480px (ver styles.css); el
+      // icono y el punto de estado son siempre visibles, y el aria-label +
+      // title del control llevan el estado completo para lector de pantalla
+      // y hover, para no perder información al quedar solo-icono.
+      if (pillText) pillText.textContent = info.text;
+      if (pillIcon) pillIcon.textContent = info.icon;
       if (dot) dot.setAttribute("data-state", estado);
+      if (btn) {
+        btn.setAttribute("aria-label", "Estado de sincronización: " + info.text);
+        btn.title = info.text;
+      }
       App.persist();
     },
 
