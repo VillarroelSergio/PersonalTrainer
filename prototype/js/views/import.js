@@ -13,6 +13,19 @@
 
   var FORMATOS_ADMITIDOS = ["FIT", "TCX", "GPX", "CSV"];
 
+  // Estados de resistencia (resistencia-reloj-importacion-007) que aún no
+  // tienen un resultado real asociado: son los únicos que tiene sentido
+  // ofrecer en el selector de asociación. Mismo vocabulario que endurance.js.
+  var ASOCIABLES = ["planificada", "programada_reloj", "realizada_pendiente_importar", "sin_resultado"];
+  var RESISTENCIA_ESTADO_LABEL = {
+    planificada: "Planificada",
+    programada_reloj: "Programada en reloj",
+    realizada_pendiente_importar: "Realizada, pendiente de importar",
+    importada_asociada: "Importada y asociada",
+    asociada_adaptacion: "Asociada con adaptación",
+    sin_resultado: "Sin resultado"
+  };
+
   function freshImportState() {
     return { stage: "pick", fileId: null, nombre: "", tipo: "", sessionId: "" };
   }
@@ -239,7 +252,7 @@
     noneOpt.value = ""; noneOpt.textContent = "Ninguna";
     select.appendChild(noneOpt);
     data.SESSIONS.filter(function (sess) {
-      return sess.tipo === "resistencia" && (sess.estado === "planificada" || sess.estado === "en_curso");
+      return sess.tipo === "resistencia" && ASOCIABLES.indexOf(sess.estado) >= 0;
     }).forEach(function (sess) {
       var opt = document.createElement("option");
       opt.value = sess.id;
@@ -247,9 +260,40 @@
       if (sess.id === s.sessionId) opt.selected = true;
       select.appendChild(opt);
     });
-    select.addEventListener("change", function () { s.sessionId = select.value; });
     sessionField.appendChild(select);
     wrap.appendChild(sessionField);
+
+    // ---- Comparación honesta: se actualiza si cambia la sesión elegida.
+    // Antes de guardar, la persona puede corregir o quitar la asociación
+    // (el <select> de arriba sigue permitiéndolo). Nunca afirma coincidencia
+    // tramo a tramo: este dataset no trae vueltas ni bloques del archivo.
+    var compareBox = App.el("div", "import-compare");
+    function renderCompare() {
+      compareBox.innerHTML = "";
+      var sess = s.sessionId ? data.findSession(s.sessionId) : null;
+      if (!sess) {
+        compareBox.appendChild(App.el("p", "lede small", "Sin asociar: se guardará como actividad independiente. Ninguna sesión planificada cambia de estado."));
+        return;
+      }
+      compareBox.appendChild(App.el("p", "field__label", "Comparación con lo previsto (aproximada)"));
+      var rows = [];
+      var tmpl = data.enduranceTemplate ? data.enduranceTemplate(sess.objetivo) : null;
+      rows.push("Sesión prevista: " + sess.nombre + (tmpl ? " — " + tmpl.proposito : ""));
+      rows.push("Entorno previsto: " + (data.enduranceEnv ? data.enduranceEnv(sess) : "no indicado") + " · registrado: no disponible en este archivo.");
+      if (sess.duracionPrevista != null && a.duracionMin != null) {
+        var diff = a.duracionMin - sess.duracionPrevista;
+        rows.push("Duración prevista: " + sess.duracionPrevista + " min · real: " + a.duracionMin + " min (" +
+          (diff >= 0 ? "+" : "") + diff + " min).");
+      }
+      rows.push("Este archivo no incluye vueltas ni bloques: no se compara tramo a tramo.");
+      var list = App.el("ul", "cues");
+      rows.forEach(function (r) { list.appendChild(App.el("li", null, r)); });
+      compareBox.appendChild(list);
+    }
+    renderCompare();
+    wrap.appendChild(compareBox);
+
+    select.addEventListener("change", function () { s.sessionId = select.value; renderCompare(); });
 
     var saveBtn = App.el("button", "btn btn--primary btn--block", "Guardar actividad");
     saveBtn.type = "button";
@@ -275,38 +319,77 @@
     mount.appendChild(wrap);
   }
 
-  /* ---- Guardado: procedencia importado + impacto en contexto (nota 07/24) --- */
+  /* ---- Análisis breve tras guardar (nota 07/24/31): alimenta el plan sin
+   * reescribirlo solo. Nunca inventa datos que el archivo no trae. --------- */
 
   function drawSaved(mount, data, s) {
     var wrap = App.el("section", "view-import");
-    wrap.appendChild(App.el("h1", "view-title", "Actividad guardada"));
+    wrap.appendChild(App.el("h1", "view-title", "Análisis breve"));
+
+    var linked = s.savedRecord.sessionId ? data.findSession(s.savedRecord.sessionId) : null;
+    var a = s.savedRecord.analisis;
 
     var badges = App.el("div", "badge-row");
     badges.appendChild(App.el("span", "state state--completada", "Procedencia: importado"));
+    if (linked) badges.appendChild(App.el("span", "state state--" + linked.estado, RESISTENCIA_ESTADO_LABEL[linked.estado] || linked.estado));
     badges.appendChild(App.sync.badge("local"));
     wrap.appendChild(badges);
 
-    wrap.appendChild(App.el("p", "lede", s.savedRecord.nombre + " se guardó en tu historial."));
+    wrap.appendChild(App.el("p", "lede", s.savedRecord.nombre + " se guardó en tu historial." +
+      (linked ? " Queda asociada a " + linked.nombre + "." : " Se guardó como actividad independiente: ninguna sesión planificada cambia de estado.")));
 
-    var impact = data.loadContext();
-    wrap.appendChild(App.el("p", "notice notice--info",
-      impact || "Esta actividad no cambia tu plan automáticamente. Podrás verla en tu historial."));
+    // ---- Datos reales disponibles vs. no disponibles: nunca se inventa un
+    // valor que el archivo no trae.
+    var disponibles = [];
+    var noDisponibles = ["cadencia", "potencia", "desnivel", "vueltas", "superficie"];
+    if (a) {
+      if (a.duracionMin != null) disponibles.push("Duración: " + a.duracionMin + " min");
+      if (a.distanciaKm != null) disponibles.push("Distancia: " + a.distanciaKm + " km"); else noDisponibles.unshift("distancia");
+      if (a.ritmo) disponibles.push("Ritmo: " + a.ritmo); else noDisponibles.unshift("ritmo");
+      if (a.fcMedia != null) disponibles.push("FC media: " + a.fcMedia + " ppm · " + a.fcMax + " ppm máx."); else noDisponibles.unshift("frecuencia cardiaca");
+      if (a.zonas && a.zonas.length) disponibles.push("Zonas: " + a.zonas.map(function (z) { return z.zona + " " + z.min + " min"; }).join(" · ")); else noDisponibles.unshift("zonas de FC");
+      if (a.cargaEstimada) disponibles.push("Carga estimada: " + a.cargaEstimada);
+    }
 
-    var homeBtn = App.el("button", "btn btn--primary btn--block", "Volver a inicio");
-    homeBtn.type = "button";
-    homeBtn.addEventListener("click", function () {
+    wrap.appendChild(App.el("p", "field__label", "Datos de esta actividad"));
+    if (disponibles.length) {
+      var listOk = App.el("ul", "cues");
+      disponibles.forEach(function (d) { listOk.appendChild(App.el("li", null, d)); });
+      wrap.appendChild(listOk);
+    } else {
+      wrap.appendChild(App.el("p", "lede small", "Este archivo no trae datos analizables."));
+    }
+    wrap.appendChild(App.el("p", "lede small", "No disponibles en este archivo: " + noDisponibles.join(", ") + ". No se muestran valores inventados."));
+
+    // ---- Conclusión breve, no médica.
+    var conclusion = a && a.cargaEstimada
+      ? "Conclusión: actividad de carga estimada " + a.cargaEstimada + ". Señal informativa, no un diagnóstico."
+      : "Conclusión: no hay carga estimada disponible para valorar esta actividad.";
+    wrap.appendChild(App.el("p", "notice notice--info", conclusion));
+
+    // ---- Propuesta futura NO automática: nunca reescribe el plan sola.
+    var propuesta = linked
+      ? (linked.estado === "asociada_adaptacion"
+        ? "La sesión quedó asociada con adaptación: el resultado real se apartó de lo previsto. La semana no cambia automáticamente; revísala si quieres ajustar algo."
+        : "La sesión quedó asociada tal como estaba prevista. La semana no cambia automáticamente.")
+      : (data.loadContext() || "Esta actividad no cambia tu plan automáticamente. Podrás verla en tu historial.");
+    wrap.appendChild(App.el("p", "notice notice--info", propuesta));
+
+    var understoodBtn = App.el("button", "btn btn--primary btn--block", "Entendido");
+    understoodBtn.type = "button";
+    understoodBtn.addEventListener("click", function () {
       App.viewContext("import").state = freshImportState();
-      App.navigate("home", {}, { replace: true });
+      App.navigate(linked ? "history" : "home", {}, { replace: true });
     });
-    wrap.appendChild(homeBtn);
+    wrap.appendChild(understoodBtn);
 
-    var anotherBtn = App.el("button", "btn btn--ghost btn--block", "Importar otro archivo");
-    anotherBtn.type = "button";
-    anotherBtn.addEventListener("click", function () {
+    var reviewBtn = App.el("button", "btn btn--ghost btn--block", "Revisar plan");
+    reviewBtn.type = "button";
+    reviewBtn.addEventListener("click", function () {
       App.viewContext("import").state = freshImportState();
-      App.navigate("import", {}, { replace: true });
+      App.navigate("plan");
     });
-    wrap.appendChild(anotherBtn);
+    wrap.appendChild(reviewBtn);
 
     mount.appendChild(wrap);
   }

@@ -1,0 +1,6 @@
+# Solo el prototipo debe subirse a git. Todo lo demás en la raíz (docs de
+# producto, notas de Obsidian, trazas de agentes, config de herramientas)
+# queda fuera por defecto; solo se permite explícitamente prototype/.
+/*
+!/prototype/
+!/.gitignore

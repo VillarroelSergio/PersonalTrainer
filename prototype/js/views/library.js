@@ -43,26 +43,13 @@
     searchField.appendChild(input);
     wrap.appendChild(searchField);
 
-    var patrones = uniqueValues(data, "patron");
-    var grupos = uniqueValues(data, "grupo");
-    var equipos = uniqueValues(data, "equipo");
-
-    wrap.appendChild(buildSelect("Patrón de movimiento", patrones, ctx.patron, function (v) { ctx.patron = v; ctx.mode = "all"; ctx.recentOnly = false; update(); }));
-    wrap.appendChild(buildSelect("Grupo muscular", grupos, ctx.grupo, function (v) { ctx.grupo = v; ctx.mode = "all"; ctx.recentOnly = false; update(); }));
-    wrap.appendChild(buildSelect("Equipamiento", equipos, ctx.equipo, function (v) { ctx.equipo = v; ctx.mode = "all"; ctx.recentOnly = false; update(); }));
-
-    var favBtn = App.el("button", "picker__btn", (ctx.favoritosOnly ? "★" : "☆") + " Solo favoritas");
-    favBtn.type = "button";
-    favBtn.setAttribute("aria-pressed", String(ctx.favoritosOnly));
-    favBtn.addEventListener("click", function () {
-      ctx.favoritosOnly = !ctx.favoritosOnly;
-      ctx.mode = "all";
-      ctx.recentOnly = false;
-      favBtn.setAttribute("aria-pressed", String(ctx.favoritosOnly));
-      favBtn.textContent = (ctx.favoritosOnly ? "★" : "☆") + " Solo favoritas";
-      update();
-    });
-    wrap.appendChild(favBtn);
+    // ---- LOTE 3b: Patrón/Grupo/Equipamiento/Solo favoritas ya no están
+    // inline: viven en una hoja modal ("Filtros"). La entrada por defecto
+    // (accesos rápidos) queda sin ellos delante.
+    var filtersBtn = App.el("button", "btn btn--ghost", filtersButtonLabel(ctx));
+    filtersBtn.type = "button";
+    filtersBtn.addEventListener("click", function () { openFiltersSheet(data, ctx, update); });
+    wrap.appendChild(filtersBtn);
 
     var resultsHost = App.el("div", "library-results");
     wrap.appendChild(resultsHost);
@@ -81,6 +68,7 @@
     function goAll() { ctx.mode = "all"; update(); }
 
     function update() {
+      filtersBtn.textContent = filtersButtonLabel(ctx);
       if (ctx.mode !== "all") {
         renderQuickAccess(resultsHost, data, ctx, goAll);
         return;
@@ -94,6 +82,60 @@
       renderResults(resultsHost, data, results, ctx, update);
     }
     update();
+  }
+
+  /* ---- LOTE 3b: filtros avanzados en hoja modal ----------------------------- */
+  /* Patrón, Grupo muscular, Equipamiento y "Solo favoritas" ya no están
+   * inline en la vista: viven en App.openSheet, con el mismo comportamiento
+   * de antes (cada cambio aplica al momento, sin botón "Aplicar" que
+   * imponga un paso extra). El botón "Filtros" muestra cuántos están
+   * activos para que el estado no quede oculto tras el ⋯. */
+
+  function filtersButtonLabel(ctx) {
+    var count = (ctx.patron ? 1 : 0) + (ctx.grupo ? 1 : 0) + (ctx.equipo ? 1 : 0) + (ctx.favoritosOnly ? 1 : 0);
+    return count ? "Filtros (" + count + ")" : "Filtros";
+  }
+
+  function openFiltersSheet(data, ctx, update) {
+    App.openSheet({
+      title: "Filtros",
+      render: function (body) {
+        var patrones = uniqueValues(data, "patron");
+        var grupos = uniqueValues(data, "grupo");
+        var equipos = uniqueValues(data, "equipo");
+
+        body.appendChild(buildSelect("Patrón de movimiento", patrones, ctx.patron, function (v) { ctx.patron = v; ctx.mode = "all"; ctx.recentOnly = false; update(); }));
+        body.appendChild(buildSelect("Grupo muscular", grupos, ctx.grupo, function (v) { ctx.grupo = v; ctx.mode = "all"; ctx.recentOnly = false; update(); }));
+        body.appendChild(buildSelect("Equipamiento", equipos, ctx.equipo, function (v) { ctx.equipo = v; ctx.mode = "all"; ctx.recentOnly = false; update(); }));
+
+        var favBtn = App.el("button", "picker__btn", (ctx.favoritosOnly ? "★" : "☆") + " Solo favoritas");
+        favBtn.type = "button";
+        favBtn.setAttribute("aria-pressed", String(ctx.favoritosOnly));
+        favBtn.addEventListener("click", function () {
+          ctx.favoritosOnly = !ctx.favoritosOnly;
+          ctx.mode = "all";
+          ctx.recentOnly = false;
+          favBtn.setAttribute("aria-pressed", String(ctx.favoritosOnly));
+          favBtn.textContent = (ctx.favoritosOnly ? "★" : "☆") + " Solo favoritas";
+          update();
+        });
+        body.appendChild(favBtn);
+
+        var clearBtn = App.el("button", "btn btn--ghost btn--block", "Quitar filtros");
+        clearBtn.type = "button";
+        clearBtn.addEventListener("click", function () {
+          ctx.patron = ""; ctx.grupo = ""; ctx.equipo = ""; ctx.favoritosOnly = false;
+          App.closeSheet();
+          update();
+        });
+        body.appendChild(clearBtn);
+
+        var doneBtn = App.el("button", "btn btn--primary btn--block", "Ver resultados");
+        doneBtn.type = "button";
+        doneBtn.addEventListener("click", function () { App.closeSheet(); });
+        body.appendChild(doneBtn);
+      }
+    });
   }
 
   /* ---- Accesos rápidos: entrada por defecto (nota 09) ---------------------- */

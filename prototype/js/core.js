@@ -11,8 +11,12 @@
 
   var STORAGE_KEY = "trainer-demo-v3";
 
-  // Los 5 destinos de la navegación principal (bottomnav).
-  var NAV_DESTINATIONS = ["home", "plan", "train", "library", "history"];
+  // Los 4 destinos de la navegación principal (bottomnav). "Entrenar" no es
+  // un destino: es una acción contextual (desde Hoy, Plan o el check-in)
+  // que navega a la vista "train", que por eso queda fuera de esta lista y
+  // oculta el bottomnav mientras está activa, igual que "endurance" o
+  // "checkin".
+  var NAV_DESTINATIONS = ["home", "plan", "library", "history"];
 
   /* =====================================================================
    * Helpers DOM
@@ -318,10 +322,11 @@
       var pillText = App.$("syncStatusText");
       var pillIcon = App.$("syncStatusIcon");
       var dot = document.querySelector(".sync-dot");
-      // El texto largo solo se ve a partir de ~480px (ver styles.css); el
-      // icono y el punto de estado son siempre visibles, y el aria-label +
-      // title del control llevan el estado completo para lector de pantalla
-      // y hover, para no perder información al quedar solo-icono.
+      // Sin texto permanente en la cabecera (Lote 2): solo icono y punto de
+      // estado, siempre visibles. El aria-label + title del control llevan
+      // el estado completo para lector de pantalla y hover. `pillText` ya
+      // no existe en el DOM; el guard de abajo es solo por si algún markup
+      // antiguo lo reintroduce.
       if (pillText) pillText.textContent = info.text;
       if (pillIcon) pillIcon.textContent = info.icon;
       if (dot) dot.setAttribute("data-state", estado);

@@ -1,9 +1,10 @@
 /* =====================================================================
- * Vista: Tu camino (LOTE 1)
- * Orden de contenido según nota 28 (fuente de verdad, prevalece sobre
- * MVP-DEFINITION.md §6 en caso de conflicto):
- * 1) sesión protagonista  2) opciones subordinadas  3) estado semanal
- * 4) evolución breve  5) actividad reciente  6) un único logro.
+ * Vista: Tu camino (LOTE 1, recortada en LOTE 2d)
+ * Home contiene SOLO los 3 bloques de prioridad-hibrida-006 (criterio 3):
+ * a) entrenamiento de hoy  b) plan de la semana (carril compacto)
+ * c) cómo llegas hoy (check-in opcional). El resto (progreso de bloque,
+ * estado semanal, evolución, actividad reciente, logro) vive ahora en la
+ * vista Plan, sección "Tu progreso" (ver plan.js).
  * ================================================================== */
 (function () {
   "use strict";
@@ -16,13 +17,14 @@
     completada: "Completada",
     adaptada: "Adaptada",
     parcial: "Parcial",
-    omitida: "Omitida"
-  };
-
-  var PROCEDENCIA_LABEL = {
-    local: "Local",
-    importado: "Importado",
-    adaptado: "Adaptado por ti"
+    omitida: "Omitida",
+    // ---- resistencia-reloj-importacion-007: estados propios de resistencia
+    // (nunca usados por sesiones de fuerza; fallback seguro más abajo).
+    programada_reloj: "Programada en reloj",
+    realizada_pendiente_importar: "Realizada, pendiente de importar",
+    importada_asociada: "Importada y asociada",
+    asociada_adaptacion: "Asociada con adaptación",
+    sin_resultado: "Sin resultado"
   };
 
   function render(mount) {
@@ -56,49 +58,12 @@
     wrap.appendChild(App.el("h2", "section-title", "Cómo llegas hoy"));
     wrap.appendChild(buildCheckinBlock(data));
 
-    // ---- Contenido secundario, siempre por debajo de los 3 bloques --------
-
-    // Progreso del bloque
-    wrap.appendChild(App.el("h2", "section-title", data.plan.nombre));
-    wrap.appendChild(buildBlockProgress(data.plan));
-
-    // Estado semanal
-    wrap.appendChild(buildWeekStats(data));
-
-    // Evolución breve
-    wrap.appendChild(App.el("h2", "section-title", "Cómo va"));
-    wrap.appendChild(buildEvolutionNote(data));
-
-    // Actividad reciente
-    wrap.appendChild(App.el("h2", "section-title", "Actividad reciente"));
-    wrap.appendChild(buildRecentActivity(data));
-
-    // Un único logro
-    var achievement = pickAchievement(data.ACHIEVEMENTS);
-    if (achievement) wrap.appendChild(buildAchievement(achievement));
-
-    var quickNav = App.el("div", "quick-nav");
-    var planLink = App.el("button", "link-btn", "Ver plan →");
-    planLink.type = "button";
-    planLink.addEventListener("click", function () { App.navigate("plan"); });
-    quickNav.appendChild(planLink);
-    var historyLink = App.el("button", "link-btn", "Ver historial →");
-    historyLink.type = "button";
-    historyLink.addEventListener("click", function () { App.navigate("history"); });
-    quickNav.appendChild(historyLink);
-    // ---- LOTE 6: puntos de enganche a Perfil y Compartir. Home no tiene
-    // otro punto de entrada a estas vistas (el icono de perfil de la
-    // cabecera abre la hoja ligera de core.js, que no se toca en este
-    // lote); se añaden aquí, en el mismo quick-nav ya existente.
-    var profileLink = App.el("button", "link-btn", "Perfil →");
-    profileLink.type = "button";
-    profileLink.addEventListener("click", function () { App.navigate("profile"); });
-    quickNav.appendChild(profileLink);
-    var shareLink = App.el("button", "link-btn", "Compartir rutina →");
-    shareLink.type = "button";
-    shareLink.addEventListener("click", function () { App.navigate("share"); });
-    quickNav.appendChild(shareLink);
-    wrap.appendChild(quickNav);
+    // ---- Contenido secundario (progreso de bloque, estado semanal,
+    // evolución, actividad reciente, logro) ya NO vive en Home: se movió a
+    // la vista Plan ("Tu progreso", al final) para que Home se quede en los
+    // 3 bloques 1-3 de prioridad-hibrida-006. Plan y Perfil ya son
+    // alcanzables desde la cabecera/bottomnav; Compartir se mueve al menú
+    // "⋯" a nivel de plan (ver plan.js, lote 3).
 
     mount.appendChild(wrap);
   }
@@ -110,7 +75,12 @@
     var block = App.el("article", "today");
     block.setAttribute("aria-labelledby", "todayTitle");
 
-    if (todaySession && todaySession.estado === "en_curso") {
+    if (!todaySession) return buildRestHero(block, data);
+
+    // ---- resistencia-reloj-importacion-007: "en_curso" ya no se alcanza
+    // nunca para resistencia (no hay ejecución en la app); esta rama sigue
+    // aplicando solo a fuerza.
+    if (todaySession.tipo === "fuerza" && todaySession.estado === "en_curso") {
       block.classList.add("today--fuerza");
       block.appendChild(App.el("p", "today__eyebrow", "Hoy · sesión en curso"));
       var t1 = App.el("h2", "today__title", todaySession.nombre);
@@ -124,7 +94,7 @@
       return block;
     }
 
-    if (todaySession && (todaySession.estado === "completada" || todaySession.estado === "adaptada" || todaySession.estado === "parcial")) {
+    if (todaySession.estado === "completada" || todaySession.estado === "adaptada" || todaySession.estado === "parcial") {
       block.classList.add("today--done");
       var eyebrow = App.el("p", "today__eyebrow",
         todaySession.estado === "completada" ? "Hoy · sesión completada"
@@ -142,9 +112,8 @@
       return block;
     }
 
-    if (todaySession && todaySession.estado === "planificada") {
-      if (todaySession.tipo === "resistencia") block.classList.add("today--cardio");
-      block.appendChild(App.el("p", "today__eyebrow", "Hoy · " + (todaySession.tipo === "resistencia" ? "resistencia" : "fuerza")));
+    if (todaySession.tipo === "fuerza" && todaySession.estado === "planificada") {
+      block.appendChild(App.el("p", "today__eyebrow", "Hoy · fuerza"));
       var t3 = App.el("h2", "today__title", todaySession.nombre);
       t3.id = "todayTitle";
       block.appendChild(t3);
@@ -163,7 +132,69 @@
       return block;
     }
 
-    // Sin sesión hoy: mostrar la próxima y acciones de plan.
+    if (todaySession.tipo === "resistencia") return buildEnduranceHero(block, data, todaySession);
+
+    return buildRestHero(block, data);
+  }
+
+  // ---- resistencia-reloj-importacion-007: la app diseña, nunca ejecuta.
+  // Ningún botón de este bloque implica "empezar" una actividad controlada
+  // por la app: navega a la propuesta, a importar o al historial. ----------
+  function buildEnduranceHero(block, data, session) {
+    block.classList.add("today--cardio");
+
+    if (session.estado === "importada_asociada" || session.estado === "asociada_adaptacion" || session.estado === "sin_resultado") {
+      block.classList.add("today--done");
+      block.appendChild(App.el("p", "today__eyebrow", "Hoy · " + ESTADO_LABEL[session.estado].toLowerCase()));
+      var tDone = App.el("h2", "today__title", session.nombre);
+      tDone.id = "todayTitle";
+      block.appendChild(tDone);
+      block.appendChild(App.el("p", "today__why",
+        session.estado === "sin_resultado"
+          ? "Sin actividad importada para esta sesión."
+          : "Actividad importada y asociada a esta sesión."));
+      var histBtn = App.el("button", "btn btn--ghost btn--block", "Ver en historial");
+      histBtn.type = "button";
+      histBtn.addEventListener("click", function () { App.navigate("history"); });
+      block.appendChild(histBtn);
+      return block;
+    }
+
+    block.appendChild(App.el("p", "today__eyebrow", "Hoy · resistencia"));
+    var t = App.el("h2", "today__title", session.nombre);
+    t.id = "todayTitle";
+    block.appendChild(t);
+
+    if (session.estado === "planificada") {
+      block.appendChild(App.el("p", "today__why",
+        "Prevista para hoy · " + (session.duracionPrevista || "—") + " min aproximados. Prepárala y créala manualmente en tu reloj."));
+      var viewBtn = App.el("button", "btn btn--primary btn--block", "Ver sesión y preparar en el reloj");
+      viewBtn.type = "button";
+      viewBtn.addEventListener("click", function () { App.navigate("train", { sessionId: session.id }); });
+      block.appendChild(viewBtn);
+    } else if (session.estado === "programada_reloj") {
+      block.appendChild(App.el("p", "today__why", "Ya la tienes creada en tu reloj. Cuando la hagas, importa el resultado."));
+      var importBtn = App.el("button", "btn btn--primary btn--block", "Importar actividad");
+      importBtn.type = "button";
+      importBtn.addEventListener("click", function () { App.navigate("import", { sessionId: session.id }); });
+      block.appendChild(importBtn);
+    } else {
+      // realizada_pendiente_importar
+      block.appendChild(App.el("p", "today__why", "Registrada como realizada. Importa el archivo para ver el resultado."));
+      var importBtn2 = App.el("button", "btn btn--primary btn--block", "Importar actividad");
+      importBtn2.type = "button";
+      importBtn2.addEventListener("click", function () { App.navigate("import", { sessionId: session.id }); });
+      block.appendChild(importBtn2);
+    }
+
+    var alts2 = App.el("div", "today__alts");
+    alts2.appendChild(buildAlt("adapt", "Ajustar a cómo llego hoy", "Check-in de 20 s · propone y confirmas", function () { App.navigate("checkin", { sessionId: session.id }); }));
+    alts2.appendChild(buildAlt("recovery", "Cambiar a recuperación", "Movilidad suave, 10–15 min", function () { App.navigate("recovery"); }));
+    block.appendChild(alts2);
+    return block;
+  }
+
+  function buildRestHero(block, data) {
     var next = findNextSession(data);
     block.classList.add("today--recovery");
     block.appendChild(App.el("p", "today__eyebrow", "Hoy · descanso"));
@@ -232,24 +263,6 @@
     return null;
   }
 
-  /* ---- Progreso del bloque ------------------------------------------------ */
-
-  function buildBlockProgress(plan) {
-    var wrap = App.el("div", "blockprog");
-    var track = App.el("div", "blockprog__track");
-    track.setAttribute("role", "img");
-    track.setAttribute("aria-label", "Semana " + plan.semanaActual + " de " + plan.semanasTotales + " del " + plan.nombre.toLowerCase());
-    var fill = App.el("div", "blockprog__fill");
-    fill.style.width = Math.round((plan.semanaActual / plan.semanasTotales) * 100) + "%";
-    track.appendChild(fill);
-    wrap.appendChild(track);
-    var label = App.el("p", "blockprog__label");
-    label.appendChild(App.el("b", null, "Semana " + plan.semanaActual));
-    label.appendChild(document.createTextNode(" de " + plan.semanasTotales));
-    wrap.appendChild(label);
-    return wrap;
-  }
-
   /* ---- Carril semanal (forma + color, nunca solo color) ------------------ */
   /* LOTE 4: cada día es un control real (<button>) con nombre accesible que
    * incluye el día y qué hay ese día; tocarlo abre el detalle de la sesión
@@ -273,18 +286,18 @@
       if (s) {
         if (s.tipo === "resistencia") btn.classList.add("is-cardio");
         name.textContent = s.nombre;
-        if (s.estado === "completada" || s.estado === "adaptada") {
+        if (s.estado === "completada" || s.estado === "adaptada" || s.estado === "importada_asociada" || s.estado === "asociada_adaptacion") {
           btn.classList.add("is-done");
-          described = s.nombre + ", " + ESTADO_LABEL[s.estado].toLowerCase();
+          described = s.nombre + ", " + (ESTADO_LABEL[s.estado] || s.estado).toLowerCase();
         } else if (isToday) {
           btn.classList.add("is-today");
           described = s.nombre + ", hoy";
-        } else if (s.estado === "omitida" || s.estado === "parcial") {
+        } else if (s.estado === "omitida" || s.estado === "parcial" || s.estado === "sin_resultado") {
           btn.classList.add("is-skipped");
-          described = s.nombre + ", " + ESTADO_LABEL[s.estado].toLowerCase();
+          described = s.nombre + ", " + (ESTADO_LABEL[s.estado] || s.estado).toLowerCase();
         } else {
           btn.classList.add("is-planned");
-          described = s.nombre + ", planificada";
+          described = s.nombre + ", " + (ESTADO_LABEL[s.estado] || "planificada").toLowerCase();
         }
         if (s.movedFrom) described += ", recolocada aquí";
       } else if (ghost) {
@@ -320,6 +333,30 @@
             (session.duracionPrevista ? " · " + session.duracionPrevista + " min aproximados" : "")));
           if (session.movedFrom) body.appendChild(App.el("p", "small", "Recolocada aquí desde otro día."));
 
+          // ---- resistencia-reloj-importacion-007: para resistencia nunca se
+          // ofrece "Empezar/Continuar sesión" (implicaría ejecución en vivo).
+          // Se navega a la propuesta de solo lectura o a importar el
+          // resultado, según en qué estado esté.
+          if (session.tipo === "resistencia") {
+            if (session.estado === "importada_asociada" || session.estado === "asociada_adaptacion" || session.estado === "sin_resultado") {
+              var histBtnR = App.el("button", "btn btn--ghost btn--block", "Ver en historial");
+              histBtnR.type = "button";
+              histBtnR.addEventListener("click", function () { App.closeSheet(); App.navigate("history"); });
+              body.appendChild(histBtnR);
+            } else if (session.estado === "programada_reloj" || session.estado === "realizada_pendiente_importar") {
+              var importBtnR = App.el("button", "btn btn--primary btn--block", "Importar actividad");
+              importBtnR.type = "button";
+              importBtnR.addEventListener("click", function () { App.closeSheet(); App.navigate("import", { sessionId: session.id }); });
+              body.appendChild(importBtnR);
+            } else {
+              var viewBtnR = App.el("button", "btn btn--primary btn--block", "Ver sesión");
+              viewBtnR.type = "button";
+              viewBtnR.addEventListener("click", function () { App.closeSheet(); App.navigate("train", { sessionId: session.id }); });
+              body.appendChild(viewBtnR);
+            }
+            return;
+          }
+
           if (session.estado === "planificada" || session.estado === "en_curso") {
             var startBtn = App.el("button", "btn btn--primary btn--block",
               session.estado === "en_curso" ? "Continuar sesión" : "Empezar sesión");
@@ -352,125 +389,6 @@
         body.appendChild(recoveryBtn);
       }
     });
-  }
-
-  /* ---- 3) Estado semanal --------------------------------------------------- */
-
-  function buildWeekStats(data) {
-    var stats = data.weekStats();
-    var figures = App.el("div", "figures");
-    figures.setAttribute("aria-label", "Resumen de la semana");
-
-    var f1 = App.el("div", "figure");
-    var num1 = App.el("p", "figure__num");
-    num1.appendChild(document.createTextNode(String(stats.hechas)));
-    var of1 = App.el("span", "figure__of", "/" + stats.previstas);
-    num1.appendChild(of1);
-    f1.appendChild(num1);
-    f1.appendChild(App.el("p", "figure__label", "sesiones"));
-    figures.appendChild(f1);
-
-    var f2 = App.el("div", "figure");
-    var num2 = App.el("p", "figure__num");
-    num2.appendChild(document.createTextNode(String(stats.minutos)));
-    num2.appendChild(App.el("span", "figure__unit", "min"));
-    f2.appendChild(num2);
-    f2.appendChild(App.el("p", "figure__label", "activos"));
-    figures.appendChild(f2);
-
-    var f3 = App.el("div", "figure");
-    var num3 = App.el("p", "figure__num");
-    num3.appendChild(document.createTextNode(String(stats.constancia)));
-    num3.appendChild(App.el("span", "figure__unit", "sem"));
-    f3.appendChild(num3);
-    f3.appendChild(App.el("p", "figure__label", "de constancia"));
-    figures.appendChild(f3);
-
-    return figures;
-  }
-
-  /* ---- 4) Evolución breve --------------------------------------------------- */
-  /* LOTE 4: nunca se afirma una evolución que no existe. Sin historial
-   * previo, no se inventa una tendencia (nota: nunca se inventan datos que
-   * la persona no ha generado todavía, mismo criterio que history.js). */
-
-  function buildEvolutionNote(data) {
-    var note = App.el("div", "note");
-
-    if (!data.HISTORY || !data.HISTORY.length) {
-      note.appendChild(App.el("p", null,
-        "Todavía no hay sesiones registradas para mostrar una evolución. Aparecerá aquí en cuanto completes tu primera sesión."));
-      return note;
-    }
-
-    // No afirmar una tendencia positiva con datos insuficientes: hace falta
-    // más de un registro y que el más reciente sea completada/adaptada
-    // (una sesión parcial u omitida no sostiene "sube con constancia").
-    var last = data.HISTORY[0];
-    if (data.HISTORY.length < 2 || (last.estado !== "completada" && last.estado !== "adaptada")) {
-      note.appendChild(App.el("p", null,
-        "Todavía es pronto para mostrar una tendencia. Aparecerá en cuanto tengas más sesiones registradas."));
-      return note;
-    }
-
-    var spark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    spark.setAttribute("class", "spark");
-    spark.setAttribute("viewBox", "0 0 120 32");
-    spark.setAttribute("aria-hidden", "true");
-    spark.setAttribute("preserveAspectRatio", "none");
-    var poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    poly.setAttribute("points", "2,26 22,22 42,23 62,16 82,12 102,9 118,6");
-    poly.setAttribute("fill", "none");
-    poly.setAttribute("stroke", "currentColor");
-    poly.setAttribute("stroke-width", "2.5");
-    poly.setAttribute("stroke-linecap", "round");
-    poly.setAttribute("stroke-linejoin", "round");
-    spark.appendChild(poly);
-    note.appendChild(spark);
-    note.appendChild(App.el("p", null,
-      "Tu fuerza en tracción sube con constancia y la carga semanal se mantiene estable. La carrera suave del martes ayudó a recuperar sin restar piernas."));
-    return note;
-  }
-
-  /* ---- 5) Actividad reciente --------------------------------------------- */
-
-  function buildRecentActivity(data) {
-    var list = App.el("ul", "log");
-    data.HISTORY.slice(0, 3).forEach(function (item) { list.appendChild(buildLogItem(item)); });
-    return list;
-  }
-
-  function buildLogItem(item) {
-    var li = App.el("li", "log__item");
-    li.appendChild(App.el("span", "log__bar log__bar--" + item.estado));
-    var body = App.el("div", "log__body");
-    body.appendChild(App.el("p", "log__title", item.nombre));
-    var meta = item.meta + " · " + PROCEDENCIA_LABEL[item.procedencia];
-    body.appendChild(App.el("p", "log__meta", meta));
-    li.appendChild(body);
-    li.appendChild(App.el("span", "state state--" + item.estado, ESTADO_LABEL[item.estado] || item.estado));
-    return li;
-  }
-
-  /* ---- 6) Un único logro --------------------------------------------------- */
-
-  function pickAchievement(list) {
-    if (!list || !list.length) return null;
-    var nearest = null;
-    for (var i = 0; i < list.length; i++) {
-      if (!list[i].alcanzado) { nearest = list[i]; break; }
-    }
-    return nearest || list[list.length - 1];
-  }
-
-  function buildAchievement(achievement) {
-    var p = App.el("p", "achievement");
-    var mark = App.el("span", "achievement__mark");
-    mark.setAttribute("aria-hidden", "true");
-    mark.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3l2.5 5.6 6.1.6-4.6 4.1 1.4 6-5.4-3-5.4 3 1.4-6L3.4 9.2l6.1-.6L12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
-    p.appendChild(mark);
-    p.appendChild(document.createTextNode(achievement.titulo + ". Logro privado, solo lo ves tú."));
-    return p;
   }
 
   App.registerView("home", { title: "Tu camino", render: render });

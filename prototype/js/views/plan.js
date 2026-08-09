@@ -19,7 +19,14 @@
     completada: "Completada",
     adaptada: "Adaptada",
     parcial: "Parcial",
-    omitida: "Omitida"
+    omitida: "Omitida",
+    // ---- resistencia-reloj-importacion-007: estados propios de resistencia
+    // (fuerza nunca los usa; fallback seguro donde se lea ESTADO_LABEL).
+    programada_reloj: "Programada en reloj",
+    realizada_pendiente_importar: "Realizada, pendiente de importar",
+    importada_asociada: "Importada y asociada",
+    asociada_adaptacion: "Asociada con adaptación",
+    sin_resultado: "Sin resultado"
   };
 
   var PROCEDENCIA_LABEL = {
@@ -57,6 +64,16 @@
     var wrap = App.el("section", "view-plan");
     wrap.appendChild(App.el("p", "kicker", data.plan.nombre));
     wrap.appendChild(App.el("h1", "view-title", "Tu plan"));
+
+    // ---- LOTE 3a: "Compartir" es una acción a nivel de PLAN (no de sesión),
+    // en la cabecera de la vista. Reutiliza tal cual la vista "share" (nota
+    // 10, share.js): no se reimplementa el enlace simulado ni la copia
+    // independiente aquí.
+    var shareBtn = App.el("button", "btn btn--ghost btn--sm", "Compartir plan");
+    shareBtn.type = "button";
+    shareBtn.addEventListener("click", function () { App.navigate("share"); });
+    wrap.appendChild(shareBtn);
+
     wrap.appendChild(buildPlanStatus(data.plan));
     wrap.appendChild(buildTabs(ctx, mount));
 
@@ -69,6 +86,13 @@
     else if (ctx.tab === "fases") renderFases(panel, data);
     else renderGestion(panel, data);
     wrap.appendChild(panel);
+
+    // ---- LOTE 2d: "Tu progreso" (progreso de bloque, estado semanal,
+    // evolución, actividad reciente, logro) se movió aquí desde Home
+    // (prioridad-hibrida-006, criterio 3: Home se queda en sus 3 bloques).
+    // Visible al final de la vista Plan, sea cual sea la pestaña activa.
+    wrap.appendChild(App.el("h2", "section-title", "Tu progreso"));
+    wrap.appendChild(buildProgressSection(data));
 
     mount.appendChild(wrap);
   }
@@ -208,17 +232,31 @@
 
     if (session && isActive) {
       var actions = App.el("div", "dayrow__actions");
+      // ---- LOTE 3a: una sola acción principal visible; Editar/Omitir/
+      // Recolocar se agrupan detrás de "⋯" (App.openSheet). "Deshacer…" se
+      // mantiene visible aparte: es transitoria (solo tras la acción que
+      // deshace) y no forma parte del grupo de gestión de la sesión.
+      var menuActions = [];
       if (session.estado === "planificada") {
-        actions.appendChild(buildActionBtn("Iniciar", function () {
-          data.setSessionState(session.id, "en_curso");
-          App.navigate("train", { sessionId: session.id });
-        }));
-        actions.appendChild(buildActionBtn("Editar", function () { openEditSheet(session, data); }));
-        actions.appendChild(buildActionBtn("Omitir", function () { openSkipSheet(session, data); }));
-        actions.appendChild(buildActionBtn("Recolocar", function () { openMoveSheet(session, data); }));
+        // ---- resistencia-reloj-importacion-007: resistencia nunca pasa a
+        // "en_curso" (no hay ejecución en la app); solo fuerza lo hace.
+        // Resistencia navega directo a su propuesta de solo lectura.
+        if (session.tipo === "resistencia") {
+          actions.appendChild(buildActionBtn("Ver sesión", function () {
+            App.navigate("train", { sessionId: session.id });
+          }));
+        } else {
+          actions.appendChild(buildActionBtn("Iniciar", function () {
+            data.setSessionState(session.id, "en_curso");
+            App.navigate("train", { sessionId: session.id });
+          }));
+        }
+        menuActions.push(["Editar", function () { openEditSheet(session, data); }]);
+        menuActions.push(["Omitir", function () { openSkipSheet(session, data); }]);
+        menuActions.push(["Recolocar", function () { openMoveSheet(session, data); }]);
       } else if (session.estado === "omitida") {
-        actions.appendChild(buildActionBtn("Editar", function () { openEditSheet(session, data); }));
-        actions.appendChild(buildActionBtn("Recolocar", function () { openMoveSheet(session, data); }));
+        menuActions.push(["Editar", function () { openEditSheet(session, data); }]);
+        menuActions.push(["Recolocar", function () { openMoveSheet(session, data); }]);
         if (isUndoable(data, "omitir", session.id)) {
           actions.appendChild(buildActionBtn("Deshacer omisión", function () { runUndo(data, "Omisión deshecha."); }));
         }
@@ -226,10 +264,180 @@
       if (session.movedFrom && isUndoable(data, "recolocar", session.id)) {
         actions.appendChild(buildActionBtn("Deshacer recolocación", function () { runUndo(data, "Recolocación deshecha."); }));
       }
+      if (menuActions.length) {
+        var moreBtn = buildActionBtn("⋯", function () { openSessionMenuSheet(session, menuActions); });
+        moreBtn.setAttribute("aria-label", "Más acciones para " + session.nombre);
+        actions.appendChild(moreBtn);
+      }
       if (actions.childNodes.length) row.appendChild(actions);
     }
 
     return row;
+  }
+
+  // Hoja "⋯" con las acciones secundarias de gestión de una sesión
+  // (Editar/Omitir/Recolocar). Cada opción cierra la hoja antes de abrir su
+  // propio flujo, igual que el resto de hojas de este archivo.
+  function openSessionMenuSheet(session, menuActions) {
+    App.openSheet({
+      title: session.nombre,
+      render: function (body) {
+        menuActions.forEach(function (pair) {
+          var btn = App.el("button", "opt");
+          btn.type = "button";
+          btn.appendChild(App.el("span", "opt__name", pair[0]));
+          btn.addEventListener("click", function () { App.closeSheet(); pair[1](); });
+          body.appendChild(btn);
+        });
+      }
+    });
+  }
+
+  /* ---- "Tu progreso" (movido desde home.js, LOTE 2d) --------------------- */
+  /* Mismo contenido y orden que antes en Home: progreso de bloque, estado
+   * semanal, evolución breve (nunca inventa una tendencia sin datos) y un
+   * único logro. Reutiliza data.ACHIEVEMENTS/data.HISTORY tal cual. */
+
+  function buildProgressSection(data) {
+    var host = App.el("div", "plan-progress");
+
+    host.appendChild(App.el("p", "field__label", data.plan.nombre));
+    host.appendChild(buildBlockProgress(data.plan));
+    host.appendChild(buildWeekStats(data));
+
+    host.appendChild(App.el("p", "field__label", "Cómo va"));
+    host.appendChild(buildEvolutionNote(data));
+
+    host.appendChild(App.el("p", "field__label", "Actividad reciente"));
+    host.appendChild(buildRecentActivity(data));
+
+    var achievement = pickAchievement(data.ACHIEVEMENTS);
+    if (achievement) host.appendChild(buildAchievement(achievement));
+
+    return host;
+  }
+
+  function buildBlockProgress(plan) {
+    var wrap = App.el("div", "blockprog");
+    var track = App.el("div", "blockprog__track");
+    track.setAttribute("role", "img");
+    track.setAttribute("aria-label", "Semana " + plan.semanaActual + " de " + plan.semanasTotales + " del " + plan.nombre.toLowerCase());
+    var fill = App.el("div", "blockprog__fill");
+    fill.style.width = Math.round((plan.semanaActual / plan.semanasTotales) * 100) + "%";
+    track.appendChild(fill);
+    wrap.appendChild(track);
+    var label = App.el("p", "blockprog__label");
+    label.appendChild(App.el("b", null, "Semana " + plan.semanaActual));
+    label.appendChild(document.createTextNode(" de " + plan.semanasTotales));
+    wrap.appendChild(label);
+    return wrap;
+  }
+
+  function buildWeekStats(data) {
+    var stats = data.weekStats();
+    var figures = App.el("div", "figures");
+    figures.setAttribute("aria-label", "Resumen de la semana");
+
+    var f1 = App.el("div", "figure");
+    var num1 = App.el("p", "figure__num");
+    num1.appendChild(document.createTextNode(String(stats.hechas)));
+    var of1 = App.el("span", "figure__of", "/" + stats.previstas);
+    num1.appendChild(of1);
+    f1.appendChild(num1);
+    f1.appendChild(App.el("p", "figure__label", "sesiones"));
+    figures.appendChild(f1);
+
+    var f2 = App.el("div", "figure");
+    var num2 = App.el("p", "figure__num");
+    num2.appendChild(document.createTextNode(String(stats.minutos)));
+    num2.appendChild(App.el("span", "figure__unit", "min"));
+    f2.appendChild(num2);
+    f2.appendChild(App.el("p", "figure__label", "activos"));
+    figures.appendChild(f2);
+
+    var f3 = App.el("div", "figure");
+    var num3 = App.el("p", "figure__num");
+    num3.appendChild(document.createTextNode(String(stats.constancia)));
+    num3.appendChild(App.el("span", "figure__unit", "sem"));
+    f3.appendChild(num3);
+    f3.appendChild(App.el("p", "figure__label", "de constancia"));
+    figures.appendChild(f3);
+
+    return figures;
+  }
+
+  // LOTE 4 (home.js original): nunca se afirma una evolución que no existe.
+  // Sin historial previo, no se inventa una tendencia.
+  function buildEvolutionNote(data) {
+    var note = App.el("div", "note");
+
+    if (!data.HISTORY || !data.HISTORY.length) {
+      note.appendChild(App.el("p", null,
+        "Todavía no hay sesiones registradas para mostrar una evolución. Aparecerá aquí en cuanto completes tu primera sesión."));
+      return note;
+    }
+
+    var last = data.HISTORY[0];
+    if (data.HISTORY.length < 2 || (last.estado !== "completada" && last.estado !== "adaptada")) {
+      note.appendChild(App.el("p", null,
+        "Todavía es pronto para mostrar una tendencia. Aparecerá en cuanto tengas más sesiones registradas."));
+      return note;
+    }
+
+    var spark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    spark.setAttribute("class", "spark");
+    spark.setAttribute("viewBox", "0 0 120 32");
+    spark.setAttribute("aria-hidden", "true");
+    spark.setAttribute("preserveAspectRatio", "none");
+    var poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    poly.setAttribute("points", "2,26 22,22 42,23 62,16 82,12 102,9 118,6");
+    poly.setAttribute("fill", "none");
+    poly.setAttribute("stroke", "currentColor");
+    poly.setAttribute("stroke-width", "2.5");
+    poly.setAttribute("stroke-linecap", "round");
+    poly.setAttribute("stroke-linejoin", "round");
+    spark.appendChild(poly);
+    note.appendChild(spark);
+    note.appendChild(App.el("p", null,
+      "Tu fuerza en tracción sube con constancia y la carga semanal se mantiene estable. La carrera suave del martes ayudó a recuperar sin restar piernas."));
+    return note;
+  }
+
+  function buildRecentActivity(data) {
+    var list = App.el("ul", "log");
+    data.HISTORY.slice(0, 3).forEach(function (item) { list.appendChild(buildLogItem(item)); });
+    return list;
+  }
+
+  function buildLogItem(item) {
+    var li = App.el("li", "log__item");
+    li.appendChild(App.el("span", "log__bar log__bar--" + item.estado));
+    var body = App.el("div", "log__body");
+    body.appendChild(App.el("p", "log__title", item.nombre));
+    var meta = item.meta + " · " + PROCEDENCIA_LABEL[item.procedencia];
+    body.appendChild(App.el("p", "log__meta", meta));
+    li.appendChild(body);
+    li.appendChild(App.el("span", "state state--" + item.estado, ESTADO_LABEL[item.estado] || item.estado));
+    return li;
+  }
+
+  function pickAchievement(list) {
+    if (!list || !list.length) return null;
+    var nearest = null;
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i].alcanzado) { nearest = list[i]; break; }
+    }
+    return nearest || list[list.length - 1];
+  }
+
+  function buildAchievement(achievement) {
+    var p = App.el("p", "achievement");
+    var mark = App.el("span", "achievement__mark");
+    mark.setAttribute("aria-hidden", "true");
+    mark.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3l2.5 5.6 6.1.6-4.6 4.1 1.4 6-5.4-3-5.4 3 1.4-6L3.4 9.2l6.1-.6L12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+    p.appendChild(mark);
+    p.appendChild(document.createTextNode(achievement.titulo + ". Logro privado, solo lo ves tú."));
+    return p;
   }
 
   function isUndoable(data, type, sessionId) {
