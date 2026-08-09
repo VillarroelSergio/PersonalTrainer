@@ -20,6 +20,48 @@
 
   var App = (window.App = window.App || {});
 
+  // ---- Ficha de ejercicio (catalogo-visual-ejercicios-004) ---------------
+  // Transcripción literal de prototype/assets/exercises/manifest.json. No se
+  // lee con fetch (el prototipo debe seguir abriendo con file://): es una
+  // constante local que replica los mismos exerciseId/file/status/alt del
+  // manifiesto. Si se añade un recurso nuevo, actualizar AMBOS: el manifest
+  // (documentación/origen) y esta tabla (lo que de verdad usa la UI).
+  var EXERCISE_MEDIA = {
+    "jalon-polea": { file: "illustrations/jalon-polea-agarre-ancho-v1.webp", status: "available", alt: "Persona sentada realizando un jalón al pecho en polea con agarre ancho." },
+    "dominada-asistida": { file: null, status: "pending" },
+    "dominada-libre": { file: null, status: "pending" },
+    "remo-sentado-maquina": { file: null, status: "pending" },
+    "remo-barra": { file: null, status: "pending" },
+    "remo-punta-t": { file: null, status: "pending" },
+    "face-pull-cuerda": { file: null, status: "pending" },
+    "pajaros-mancuerna": { file: null, status: "pending" },
+    "press-banca-barra": { file: null, status: "pending" },
+    "press-banca-mancuernas": { file: null, status: "pending" },
+    "press-maquina": { file: null, status: "pending" },
+    "press-militar-barra": { file: null, status: "pending" },
+    "press-militar-mancuernas": { file: null, status: "pending" },
+    "elevacion-lateral-mancuerna": { file: null, status: "pending" },
+    "fondos-maquina": { file: null, status: "pending" },
+    "extension-triceps-cuerda": { file: null, status: "pending" },
+    "press-frances": { file: null, status: "pending" },
+    "curl-biceps-barra": { file: null, status: "pending" },
+    "curl-biceps-mancuerna": { file: null, status: "pending" },
+    "curl-biceps-polea": { file: null, status: "pending" },
+    "sentadilla-barra": { file: null, status: "pending" },
+    "sentadilla-goblet": { file: null, status: "pending" },
+    "prensa-45": { file: null, status: "pending" },
+    "zancada-mancuernas": { file: null, status: "pending" },
+    "peso-muerto-rumano": { file: null, status: "pending" },
+    "curl-femoral-maquina": { file: null, status: "pending" },
+    "hip-thrust-barra": { file: null, status: "pending" },
+    "elevacion-gemelo-maquina": { file: null, status: "pending" },
+    "elevacion-gemelo-prensa": { file: null, status: "pending" },
+    "aductor-maquina": { file: null, status: "pending" },
+    "abductor-maquina": { file: null, status: "pending" },
+    "crunch-polea": { file: null, status: "pending" },
+    "plancha": { file: null, status: "pending" }
+  };
+
   // ---- Helpers de dominio, reenganchados a cada copia de App.data --------
   function attachDataHelpers(data) {
     // ---- LOTE 3: reconstruye el mapa sessionId -> ejercicios en CADA
@@ -69,6 +111,19 @@
     // Busca en todas las sesiones de fuerza conocidas (nota: un id de
     // ejercicio puede vivir en pull, push o legs; ya no asumimos que todo
     // está en data.EXERCISES).
+    // Resuelve la ilustración real de un ejercicio a partir de su
+    // exerciseId de catálogo (nota: NO uses el id de sesión aquí si difiere
+    // del id de catálogo; usa exercise.catalogId cuando exista). Devuelve
+    // siempre un objeto: { available: false, alt } cuando no hay recurso
+    // (o el exerciseId no está en el manifest), nunca un src inválido.
+    data.exerciseMedia = function (exerciseId) {
+      var entry = EXERCISE_MEDIA[exerciseId];
+      if (!entry || entry.status !== "available" || !entry.file) {
+        return { available: false, alt: (entry && entry.alt) || null };
+      }
+      return { available: true, src: "assets/exercises/" + entry.file, alt: entry.alt || "" };
+    };
+
     data.findExercise = function (id) {
       var lists = data.SESSION_EXERCISES ? Object.keys(data.SESSION_EXERCISES).map(function (k) { return data.SESSION_EXERCISES[k]; }) : [data.EXERCISES];
       for (var l = 0; l < lists.length; l++) {
@@ -158,6 +213,23 @@
       return data.findConflict(data.SESSIONS, targetDayKey, session);
     };
 
+    // ---- prioridad-hibrida-006: guardarraíl de carga para la semana activa.
+    // Reutiliza findConflict (ya detecta el choque piernas/cardio intenso) en
+    // vez de reimplementar la regla; solo recorre las sesiones de resistencia
+    // para devolver siempre { session: <resistencia>, conflict: <fuerza> },
+    // así home.js y plan.js pueden construir la misma frase sin duplicar
+    // lógica. Devuelve el primer choque encontrado (ponytail: un aviso a la
+    // vez basta para el prototipo, igual que findActiveDiscomfort).
+    data.weeklyLoadWarning = function () {
+      for (var i = 0; i < data.SESSIONS.length; i++) {
+        var s = data.SESSIONS[i];
+        if (s.tipo !== "resistencia") continue;
+        var conflict = data.findConflict(data.SESSIONS, s.day, s);
+        if (conflict) return { session: s, conflict: conflict };
+      }
+      return null;
+    };
+
     data.moveSession = function (id, targetDayKey) {
       var s = data.findSession(id);
       if (!s) return null;
@@ -225,11 +297,37 @@
       });
     };
 
-    // ---- LOTE 2: generación de semana para el creador guiado ---------------
+    // ---- LOTE 2 (mejoras-ux-ui-004): generación de semana para el creador
+    // guiado, REALMENTE híbrida. Antes, la resistencia solo se colocaba en
+    // días que quedaran totalmente libres tras poner la fuerza, así que con
+    // pocos días libres podía acabar en 0 sesiones de resistencia pese a que
+    // la persona pidió correr/bici/andar (bug diagnosticado). Ahora
+    // `diasDisponibles` es el total de días CON sesión (fuerza + resistencia
+    // juntas), nunca solo los de fuerza: se reparte ese cupo entre ambas en
+    // vez de añadir resistencia por encima.
+    // Mapea actividad + intensidad a una clave YA existente de
+    // ENDURANCE_OBJECTIVES (no se crea catálogo nuevo). Trail/Senderismo/
+    // Andar intensos son una tirada larga y dura, no series de pista, así que
+    // van a "fondo-tirada-larga" en vez de "intervalos".
+    var ENDURANCE_OBJETIVO_POR_ACTIVIDAD = {
+      "Correr": { intense: "intervalos", suave: "continua-suave" },
+      "Bici": { intense: "intervalos", suave: "bici" },
+      "Andar": { intense: "fondo-tirada-larga", suave: "caminata" },
+      "Trail": { intense: "fondo-tirada-larga", suave: "caminata" },
+      "Senderismo": { intense: "fondo-tirada-larga", suave: "caminata" }
+    };
+    function enduranceObjetivoFor(cardioActividad, isIntense) {
+      var pair = ENDURANCE_OBJETIVO_POR_ACTIVIDAD[cardioActividad] || ENDURANCE_OBJETIVO_POR_ACTIVIDAD.Correr;
+      return isIntense ? pair.intense : pair.suave;
+    }
+
+    // Devuelve { sessions, infeasible, explanation, totalDays, freq,
+    // strengthDays, suggestReduceFreq, suggestExtraDay }. `sessions` es la
+    // lista a usar (vacía si infeasible); `explanation` es siempre texto
+    // llano listo para mostrar en el paso 7.
     data.generatePlanWeek = function (opts) {
       var minutosPorDuracion = { "20 min": 20, "40 min": 40, "60 min": 60, "90+ min": 90 };
       var minutos = minutosPorDuracion[opts.duracionHabitual] || 40;
-      var sessions = [];
       var pattern, proposito;
 
       if (opts.modo === "cero") {
@@ -242,15 +340,39 @@
         proposito = tmpl.proposito;
       }
 
-      var trainingDays = Math.min(Math.max(parseInt(opts.diasDisponibles, 10) || 3, 1), 6);
-      // Reparte los días de entreno a lo largo de la semana en vez de agruparlos.
-      var step = Math.max(1, Math.floor(7 / trainingDays));
-      var dayIdx = 0;
-      for (var i = 0; i < trainingDays; i++) {
-        var day = data.DAYS[dayIdx % 7];
-        var kind = pattern[i % pattern.length];
+      var totalDays = Math.min(Math.max(parseInt(opts.diasDisponibles, 10) || 3, 1), 6);
+      var cardioOn = !!(opts.cardioActividad && opts.cardioActividad !== "Ninguna");
+      var freq = cardioOn ? Math.min(Math.max(parseInt(opts.cardioFrecuencia, 10) || 0, 0), 3) : 0;
+      var strengthDays = totalDays - freq;
+
+      // Caso imposible: no queda ni un día para la sesión de fuerza/base.
+      // Nunca se ignora en silencio la elección de resistencia: se explica y
+      // se ofrece una alternativa concreta y reaplicable.
+      if (freq > 0 && strengthDays < 1) {
+        return {
+          sessions: [],
+          infeasible: true,
+          totalDays: totalDays, freq: freq, strengthDays: 0,
+          suggestReduceFreq: Math.max(1, totalDays - 1),
+          suggestExtraDay: Math.min(6, totalDays + 1),
+          explanation: "Con " + totalDays + " día" + (totalDays === 1 ? "" : "s") + " disponible" + (totalDays === 1 ? "" : "s") +
+            " y " + freq + (freq === 1 ? " sesión" : " sesiones") + " de " + opts.cardioActividad.toLowerCase() +
+            " a la semana no queda ningún día para tu sesión de fuerza. Reduce las sesiones de resistencia o añade un día disponible."
+        };
+      }
+
+      // Reparte los días elegidos a lo largo de la semana en vez de agruparlos.
+      var step = Math.max(1, Math.floor(7 / totalDays));
+      var chosenDays = [];
+      for (var i = 0; i < totalDays; i++) chosenDays.push(data.DAYS[(i * step) % 7]);
+      var strengthDayObjs = chosenDays.slice(0, strengthDays);
+      var cardioDayObjs = chosenDays.slice(strengthDays);
+
+      var sessions = [];
+      strengthDayObjs.forEach(function (day, idx) {
+        var kind = pattern[idx % pattern.length];
         sessions.push({
-          id: "gen-" + day.key + "-fuerza-" + i,
+          id: "gen-" + day.key + "-fuerza-" + idx,
           tipo: opts.modo === "cero" ? opts.primeraSesionTipo : "fuerza",
           nombre: kind,
           day: day.key,
@@ -262,37 +384,96 @@
           proposito: proposito[kind] || "Sesión de fuerza.",
           intense: /legs/i.test(kind)
         });
-        dayIdx += step;
-      }
+      });
 
-      var freq = parseInt(opts.cardioFrecuencia, 10) || 0;
-      if (opts.cardioActividad && opts.cardioActividad !== "Ninguna" && freq > 0) {
-        var placed = 0;
-        for (var d = 0; d < 7 && placed < freq; d++) {
-          var dayKey = data.DAYS[d].key;
-          var already = sessions.some(function (s) { return s.day === dayKey; });
-          if (already) continue;
-          var isFirst = placed === 0;
-          var candidate = { id: "gen-" + dayKey + "-resistencia-" + placed, tipo: "resistencia", intense: isFirst };
-          if (isFirst && data.findConflict(sessions, dayKey, candidate)) continue;
+      if (cardioDayObjs.length) {
+        // Elige qué día de resistencia lleva la sesión intensa: preferimos
+        // uno que NO quede junto a una sesión de piernas pesada. Si todos
+        // chocan, se coloca igual (nunca se descarta la elección de la
+        // persona) y el aviso notice--warn por día ya existente lo explica.
+        var intenseIdx = 0;
+        for (var c = 0; c < cardioDayObjs.length; c++) {
+          var probe = { id: "probe", tipo: "resistencia", intense: true };
+          if (!data.findConflict(sessions, cardioDayObjs[c].key, probe)) { intenseIdx = c; break; }
+        }
+        cardioDayObjs.forEach(function (day, idx) {
+          var isIntense = idx === intenseIdx;
           sessions.push({
-            id: candidate.id,
+            id: "gen-" + day.key + "-resistencia-" + idx,
             tipo: "resistencia",
-            nombre: opts.cardioActividad + (isFirst ? " intensa" : " suave"),
-            day: dayKey,
+            nombre: opts.cardioActividad + (isIntense ? " intensa" : " suave"),
+            day: day.key,
             estado: "planificada",
-            duracionPrevista: isFirst ? 45 : 30,
+            duracionPrevista: isIntense ? 45 : 30,
             movedFrom: null,
             procedencia: "local",
             sync: "local",
-            proposito: isFirst ? "Estímulo cardiovascular más exigente de la semana." : "Resistencia suave: ayuda a recuperar sin sumar fatiga.",
-            intense: isFirst
+            proposito: isIntense ? "Estímulo cardiovascular más exigente de la semana." : "Resistencia suave: ayuda a recuperar sin sumar fatiga.",
+            intense: isIntense,
+            // ---- corrección bloqueante (revisora, criterio 4): sin `objetivo`
+            // data.enduranceTemplate() devuelve null y endurance.js no puede
+            // mostrar la guía sin reloj. Reutiliza las claves YA existentes en
+            // ENDURANCE_OBJECTIVES (ninguna plantilla nueva).
+            objetivo: enduranceObjetivoFor(opts.cardioActividad, isIntense)
           });
-          placed++;
-        }
+        });
       }
 
-      return sessions;
+      var explanationParts = [
+        "Repartimos tus " + totalDays + " día" + (totalDays === 1 ? "" : "s") + " disponibles en " +
+        strengthDayObjs.length + (strengthDayObjs.length === 1 ? " sesión" : " sesiones") + " de fuerza" +
+        (cardioDayObjs.length ? " y " + cardioDayObjs.length + " de " + opts.cardioActividad.toLowerCase() + "." : ".")
+      ];
+      if (cardioDayObjs.length) {
+        explanationParts.push("Separamos, cuando ha sido posible, la sesión de resistencia más intensa de tus piernas pesadas para no acumular fatiga el mismo día.");
+      }
+      explanationParts.push("Puedes editar, mover u omitir cualquier sesión después desde el calendario.");
+
+      return {
+        sessions: sessions,
+        infeasible: false,
+        totalDays: totalDays, freq: freq, strengthDays: strengthDayObjs.length,
+        explanation: explanationParts.join(" ")
+      };
+    };
+
+    // ponytail: comprobación mínima de generatePlanWeek (no una suite). No se
+    // ejecuta sola al cargar la página: llamar a mano desde la consola con
+    // App.data.__selftest(). Cubre el bug real diagnosticado (Correr con
+    // pocos días libres podía acabar sin ninguna sesión de resistencia) y el
+    // límite de días elegidos.
+    data.__selftest = function () {
+      var diasList = ["3", "4", "5", "6"];
+      var freqList = ["1", "2", "3"];
+      var pass = true;
+      diasList.forEach(function (d) {
+        freqList.forEach(function (f) {
+          var totalDays = parseInt(d, 10);
+          var freq = parseInt(f, 10);
+          var result = data.generatePlanWeek({
+            modo: "plantilla", plantilla: "ppl",
+            diasDisponibles: d, duracionHabitual: "40 min",
+            cardioActividad: "Correr", cardioFrecuencia: f
+          });
+          var label = d + " días / " + f + "x correr";
+          if (totalDays - freq < 1) {
+            var okInfeasible = result.infeasible === true;
+            console.assert(okInfeasible, label + ": debía marcarse infeasible.");
+            pass = pass && okInfeasible;
+            return;
+          }
+          var cardioCount = result.sessions.filter(function (s) { return s.tipo === "resistencia"; }).length;
+          var okFeasible = result.infeasible === false;
+          var okCardio = cardioCount >= 1;
+          var okBudget = result.sessions.length <= totalDays;
+          console.assert(okFeasible, label + ": no debía marcarse infeasible.");
+          console.assert(okCardio, label + ": se esperaba >=1 sesión de resistencia, hubo " + cardioCount + ".");
+          console.assert(okBudget, label + ": " + result.sessions.length + " sesiones exceden los " + totalDays + " días elegidos.");
+          pass = pass && okFeasible && okCardio && okBudget;
+        });
+      });
+      console.log(pass ? "data.__selftest(): OK, todos los casos límite pasan." : "data.__selftest(): FALLO, revisa los console.assert anteriores.");
+      return pass;
     };
 
     // ---- LOTE 3: check-in, molestias, recuperación y sesión de fuerza -------
@@ -854,6 +1035,25 @@
       return null;
     };
 
+    // ---- prioridad-hibrida-006: resumen de bienestar general (nunca
+    // diagnóstico) a partir de HISTORY, con solo tres estados posibles.
+    // Reutilizable desde recovery.js y como frase de home.js. Basado en lo
+    // que ya hay registrado, nunca en algo inferido más allá del dato.
+    data.readinessSummary = function () {
+      var recent = data.HISTORY.filter(function (h) { return (h.semanasAtras || 0) === 0; });
+      var recentStruggle = recent.filter(function (h) { return h.estado === "parcial" || h.estado === "omitida"; });
+      var recentIntense = recent.filter(function (h) {
+        return (h.estado === "completada" || h.estado === "adaptada") && /intervalos|larga|sprint|legs/i.test(h.nombre);
+      });
+      if (recentStruggle.length) {
+        return { estado: "recuperacion", texto: "Recuperación recomendada: tu registro más reciente (" + recentStruggle[0].nombre + ") quedó " + recentStruggle[0].estado + ". Señal de bienestar general, no un diagnóstico." };
+      }
+      if (recentIntense.length >= 2) {
+        return { estado: "carga", texto: "Carga acumulada: has encadenado varias sesiones exigentes esta semana. Nada clínico, solo para que dosifiques si te apetece." };
+      }
+      return { estado: "fresco", texto: "Fresco: tu carga reciente ha sido moderada." };
+    };
+
     // =====================================================================
     // LOTE 6: historial/filtros/versionado, adherencia y logros, métricas
     // personales, compartir/copia independiente y plataforma (PWA/estados
@@ -1068,6 +1268,12 @@
         diasDisponibles: null,
         duracionHabitual: null,
         entorno: null,
+        // ---- prioridad-hibrida-006: deporte principal/combinación elegido en
+        // el onboarding nuevo (ver DEPORTES) y entornos habituales en
+        // multi-selección (ver ENTORNOS_ONBOARDING). `entorno` (singular) se
+        // conserva para no romper el creador guiado / Perfil existentes.
+        deporte: null,
+        entornos: [],
         unidades: "kg",
         consentimiento: { aceptado: false, fecha: null },
         // ---- LOTE 6: contraseña simulada (nota 24) para poder validar el
@@ -1103,6 +1309,29 @@
       // data.plan ES el mismo objeto que la entrada "activo" de PLANS: no hay
       // dos copias que sincronizar. Duplicar clona en JSON aparte.
       PLANS: [],
+
+      // ---- prioridad-hibrida-006: fuente única de deporte/entorno, reusada
+      // por access.js (onboarding) y plan-builder.js (creador guiado), en vez
+      // de duplicar estas listas en cada vista.
+      DEPORTES: ["Fuerza", "Fuerza + correr", "Fuerza + bici", "Trail", "Senderismo"],
+
+      // Cada deporte mapea a los mismos parámetros que ya entiende
+      // generatePlanWeek (cardioActividad/cardioFrecuencia/plantilla). Trail y
+      // senderismo llevan más días de resistencia por defecto para que la
+      // propuesta no se vea como un PPL disfrazado (nota del contrato).
+      DEPORTE_CARDIO_MAP: {
+        "Fuerza": { cardioActividad: "Ninguna", cardioFrecuencia: "0", plantilla: "ppl" },
+        "Fuerza + correr": { cardioActividad: "Correr", cardioFrecuencia: "2", plantilla: "hibrido" },
+        "Fuerza + bici": { cardioActividad: "Bici", cardioFrecuencia: "2", plantilla: "hibrido" },
+        "Trail": { cardioActividad: "Trail", cardioFrecuencia: "3", plantilla: "hibrido" },
+        "Senderismo": { cardioActividad: "Senderismo", cardioFrecuencia: "2", plantilla: "hibrido" }
+      },
+
+      CARDIO_ACTIVIDADES: ["Ninguna", "Correr", "Bici", "Andar", "Trail", "Senderismo"],
+
+      // Seis entornos habituales (multi-selección en el onboarding, selección
+      // única en el paso de entorno del creador guiado).
+      ENTORNOS_ONBOARDING: ["Gimnasio", "Casa", "Parque", "Cinta", "Exterior", "Viaje"],
 
       PLAN_TEMPLATES: {
         ppl: {
@@ -1299,6 +1528,13 @@
       EXERCISES: [
         {
           id: "jalon", nombre: "Jalón al pecho", variante: "Polea (agarre ancho)",
+          // Enlace explícito al catálogo (nota Opus, catalogo-visual-ejercicios-004):
+          // los IDs de sesión y de catálogo no coinciden hoy ("jalon" vs.
+          // "jalon-polea"). Este es el único ejercicio de sesión con una
+          // contraparte de catálogo clara; el resto sigue sin catalogId y usa
+          // su propio id de sesión para buscar ilustración (mostrará
+          // "Ilustración próximamente" si no está en el manifest).
+          catalogId: "jalon-polea",
           patron: "Tracción vertical", icon: "pull",
           objetivo: "3 × 10-12 reps", ultimoTexto: "52.5 kg × 11 reps",
           restSeconds: 90, difficulty: null, included: true, omitido: false,
@@ -1684,6 +1920,25 @@
             "Ritmo cómodo: debes poder mantener una conversación.",
             "Bici, elíptica o caminar rápido, lo que tengas a mano.",
             "Termina con 2-3 min aún más suaves para bajar el ritmo."
+          ]
+        },
+        // ---- prioridad-hibrida-006: alternativas por entorno (nota 17
+        // ampliada). caminata para quien declaró exterior/parque, cinta para
+        // días de lluvia o entorno "Cinta". Mismo esquema que movilidad/cardio.
+        caminata: {
+          nombre: "Caminata suave", duracion: "15-25 min", esfuerzoEsperado: "Muy bajo · exterior",
+          guia: [
+            "Paso cómodo, sin buscar ritmo.",
+            "Aprovecha para respirar y despejarte, no es un entrenamiento.",
+            "Termina cuando quieras: no hay un mínimo obligatorio."
+          ]
+        },
+        cinta: {
+          nombre: "Cinta suave (si llueve)", duracion: "15-20 min", esfuerzoEsperado: "Bajo · bajo techo",
+          guia: [
+            "Velocidad de paseo o trote muy suave.",
+            "Sin inclinación o mínima: el objetivo es moverte, no fatigarte.",
+            "Buena alternativa cuando el exterior no es una opción."
           ]
         }
       },

@@ -140,6 +140,14 @@
     panel.appendChild(App.el("p", "lede small",
       "Total previsto: " + data.SESSIONS.length + " sesiones · " + data.weekPlannedMinutes() + " min previstos esta semana."));
 
+    // ---- prioridad-hibrida-006: aviso PROACTIVO de guardarraíl (no solo
+    // reactivo al intentar mover). Reutiliza data.weeklyLoadWarning(), que a
+    // su vez reutiliza findConflict: nunca cambia el plan por sí solo.
+    if (isActive) {
+      var warn = data.weeklyLoadWarning();
+      if (warn) panel.appendChild(buildLoadWarningBanner(warn, data));
+    }
+
     var list = App.el("ol", "daylist");
     data.DAYS.forEach(function (day) {
       list.appendChild(buildDayRow(day, data, isActive));
@@ -246,6 +254,83 @@
     return btn;
   }
 
+  /* ---- prioridad-hibrida-006: guardarraíl de carga con 4 salidas --------- */
+  /* Nunca bloquea ni cambia el plan sin confirmación explícita: cada opción
+   * exige tocar su propio botón. Reutilizado tanto por el aviso proactivo de
+   * esta pestaña como por el flujo reactivo de recolocar (openConflictSheet). */
+
+  function buildLoadWarningBanner(warn, data) {
+    var box = App.el("div", "notice notice--warn");
+    box.appendChild(App.el("p", null,
+      warn.session.nombre + " queda junto a " + warn.conflict.nombre.toLowerCase() +
+      ": puedes llegar con más fatiga a una de las dos sesiones. Tú decides qué hacer."));
+    var btn = App.el("button", "btn btn--ghost btn--block", "Ver opciones");
+    btn.type = "button";
+    btn.addEventListener("click", function () { openGuardrailSheet(warn.session, warn.conflict, data); });
+    box.appendChild(btn);
+    return box;
+  }
+
+  function openGuardrailSheet(session, conflict, data) {
+    App.openSheet({
+      title: "Choque de carga: " + session.nombre + " y " + conflict.nombre,
+      render: function (body) {
+        body.appendChild(App.el("p", "lede small",
+          session.nombre + " y " + conflict.nombre.toLowerCase() + " quedan en días seguidos. Ninguna opción se aplica sola: eliges tú."));
+
+        var keepBtn = App.el("button", "opt");
+        keepBtn.type = "button";
+        keepBtn.appendChild(App.el("span", "opt__name", "Mantener"));
+        keepBtn.appendChild(App.el("span", "opt__meta", "Dejar el plan tal como está."));
+        keepBtn.addEventListener("click", function () { App.closeSheet(); App.toast("Mantienes el plan tal como está."); });
+        body.appendChild(keepBtn);
+
+        var moveBtn = App.el("button", "opt");
+        moveBtn.type = "button";
+        moveBtn.appendChild(App.el("span", "opt__name", "Mover"));
+        moveBtn.appendChild(App.el("span", "opt__meta", "Elegir otro día para " + session.nombre.toLowerCase() + "."));
+        moveBtn.addEventListener("click", function () { App.closeSheet(); openMoveSheet(session, data); });
+        body.appendChild(moveBtn);
+
+        var softBtn = App.el("button", "opt");
+        softBtn.type = "button";
+        softBtn.appendChild(App.el("span", "opt__name", "Hacer versión suave"));
+        softBtn.appendChild(App.el("span", "opt__meta", "Reduce la intensidad sin cambiarla de día."));
+        softBtn.addEventListener("click", function () { App.closeSheet(); applySoftVersion(session, data); });
+        body.appendChild(softBtn);
+
+        var envBtn = App.el("button", "opt");
+        envBtn.type = "button";
+        envBtn.appendChild(App.el("span", "opt__name", "Cambiar de entorno"));
+        envBtn.appendChild(App.el("span", "opt__meta", "Sustituye por una alternativa de bajo impacto (cinta, casa, bici estática)."));
+        envBtn.addEventListener("click", function () { App.closeSheet(); applyEnvChange(session, data); });
+        body.appendChild(envBtn);
+      }
+    });
+  }
+
+  // "Hacer versión suave": mismo criterio que endurance.js (reducir a ~60%
+  // de la duración prevista, marcar adaptada). Aplica también a fuerza.
+  function applySoftVersion(session, data) {
+    session.duracionPrevista = Math.max(10, Math.round((session.duracionPrevista || 30) * 0.6));
+    session.esAdaptada = true;
+    session.procedencia = "adaptado";
+    session.sync = "local";
+    App.toast(session.nombre + ": versión suave aplicada (" + session.duracionPrevista + " min).");
+    App.navigate("plan", {}, { replace: true });
+  }
+
+  function applyEnvChange(session, data) {
+    if (session.nombre.indexOf("(entorno de bajo impacto)") < 0) {
+      session.nombre = session.nombre + " (entorno de bajo impacto)";
+    }
+    session.esAdaptada = true;
+    session.procedencia = "adaptado";
+    session.sync = "local";
+    App.toast("Cambiada a un entorno de bajo impacto (cinta, casa o bici estática).");
+    App.navigate("plan", {}, { replace: true });
+  }
+
   /* ---- Hoja: recolocar sesión -------------------------------------------- */
 
   function openMoveSheet(session, data) {
@@ -318,7 +403,20 @@
         confirmBtn.addEventListener("click", function () { App.closeSheet(); confirmMove(session, day, data); });
         body.appendChild(confirmBtn);
 
-        var cancelBtn = App.el("button", "btn btn--ghost btn--block", "Cancelar");
+        // ---- prioridad-hibrida-006: mismas 4 salidas del guardarraíl,
+        // también accesibles desde el flujo reactivo de recolocar. "Mantener"
+        // aquí equivale a cancelar (el día de origen no cambia).
+        var softBtn = App.el("button", "btn btn--ghost btn--block", "Hacer versión suave en vez de mover");
+        softBtn.type = "button";
+        softBtn.addEventListener("click", function () { App.closeSheet(); applySoftVersion(session, data); });
+        body.appendChild(softBtn);
+
+        var envBtn = App.el("button", "btn btn--ghost btn--block", "Cambiar de entorno en vez de mover");
+        envBtn.type = "button";
+        envBtn.addEventListener("click", function () { App.closeSheet(); applyEnvChange(session, data); });
+        body.appendChild(envBtn);
+
+        var cancelBtn = App.el("button", "btn btn--ghost btn--block", "Mantener (cancelar)");
         cancelBtn.type = "button";
         cancelBtn.addEventListener("click", function () { App.closeSheet(); });
         body.appendChild(cancelBtn);
@@ -555,7 +653,7 @@
           duracionHabitual: "40 min",
           cardioActividad: "Ninguna",
           cardioFrecuencia: "0"
-        });
+        }).sessions;
         data.SESSIONS.length = 0;
         Array.prototype.push.apply(data.SESSIONS, generated);
         plan.estado = "activo";

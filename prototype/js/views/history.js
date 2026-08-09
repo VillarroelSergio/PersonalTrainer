@@ -47,6 +47,17 @@
     wrap.appendChild(App.el("p", "lede small",
       "Tu evolución en resúmenes concretos, sin panel analítico denso."));
 
+    // ---- LOTE 2 (mejoras-ux-ui-004): acción de importar SIEMPRE visible
+    // aquí, no solo cuando el historial está vacío (nota 07): este es el
+    // sitio donde ya se ve la actividad de cardio importada, así que es
+    // natural poder añadir más desde el mismo lugar.
+    var importBtn = App.el("button", "btn btn--ghost btn--block", "Importar actividad");
+    importBtn.type = "button";
+    importBtn.addEventListener("click", function () { App.navigate("import"); });
+    wrap.appendChild(importBtn);
+    wrap.appendChild(App.el("p", "lede small",
+      "Admite .FIT, .TCX y .GPX de tu reloj. Este prototipo no procesa archivos reales: sirve para registrar el contexto de cardio que tu reloj ya tiene."));
+
     if (ctx.forceError) {
       // App.states.error() limpia el contenedor que recibe: se dibuja en un
       // `body` aparte para no perder el <h1> de la vista (nota 12), igual

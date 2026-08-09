@@ -16,9 +16,10 @@
     <span class="topbar__title">Tu camino</span>
   </div>
   <div class="topbar__tools">
-    <button type="button" class="sync-pill" id="syncStatus">
+    <button type="button" class="sync-pill" id="syncStatus" aria-label="Estado de sincronización: sin conexión · simulado" title="Sin conexión · simulado">
       <span class="sync-dot" aria-hidden="true"></span>
-      <span id="syncStatusText">Sin conexión · simulado</span>
+      <span class="sync-pill__icon" id="syncStatusIcon" aria-hidden="true">○</span>
+      <span class="sync-pill__text" id="syncStatusText">Sin conexión · simulado</span>
     </button>
     <button type="button" class="icon-btn" id="btnProfile" aria-label="Perfil y demo">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.6"/><path d="M5 20c1.5-4 4.2-6 7-6s5.5 2 7 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>

@@ -14,17 +14,19 @@
 
   var STEP_TITLES = ["Cómo empezar", "Tu objetivo", "Tu experiencia", "Tu disponibilidad", "Tu entorno", "Tu resistencia", "Tu propuesta"];
 
-  var OBJETIVOS = ["Ganar músculo", "Mejorar resistencia", "Mantener forma", "Rendimiento combinado"];
+  var OBJETIVOS = ["Ganar músculo", "Perder grasa", "Mejorar resistencia", "Mantener forma", "Rendimiento combinado"];
   var EXPERIENCIAS = ["Principiante", "Intermedia", "Avanzada"];
   var CARGAS = ["Ligera", "Moderada", "Alta"];
   var DIAS_OPCIONES = ["3", "4", "5", "6"];
   var DURACIONES = ["20 min", "40 min", "60 min", "90+ min"];
-  var ENTORNOS = ["Gimnasio completo", "Gimnasio básico", "Casa", "Exterior"];
-  var CARDIO_ACTIVIDADES = ["Ninguna", "Correr", "Bici", "Andar"];
+  // ---- prioridad-hibrida-006: entorno y actividades de resistencia viven en
+  // data.js (ENTORNOS_ONBOARDING / CARDIO_ACTIVIDADES) y se comparten con el
+  // onboarding de access.js, en vez de mantener dos listas por separado.
   var CARDIO_FRECUENCIAS = ["1", "2", "3"];
 
   var OBJETIVO_EXPLAIN = {
     "Ganar músculo": "Prioriza volumen moderado-alto y progresión constante de carga en tus sesiones de fuerza.",
+    "Perder grasa": "Mantiene la fuerza como base y añade densidad: más actividad regular y sesiones sostenibles en el tiempo, semana tras semana.",
     "Mejorar resistencia": "Da más peso a las sesiones de resistencia y cuida la recuperación entre sesiones de fuerza.",
     "Mantener forma": "Reparte el esfuerzo de forma sostenible, sin buscar máximos.",
     "Rendimiento combinado": "Equilibra fuerza y resistencia para que ninguna le reste a la otra."
@@ -40,7 +42,7 @@
       diasDisponibles: null, duracionHabitual: null,
       entorno: null,
       cardioActividad: null, cardioFrecuencia: null,
-      customSessions: null, signature: null
+      proposal: null, signature: null
     };
   }
 
@@ -214,7 +216,7 @@
   function renderEntornoStep(wrap, mount, ctx) {
     var w = ctx.wizard;
     wrap.appendChild(App.el("p", "lede small", "Solo para priorizar variantes compatibles: no pedimos tu inventario exacto de máquinas."));
-    wrap.appendChild(buildPicker(ENTORNOS, w.entorno, "Entorno habitual", function (opt) { w.entorno = opt; renderStep(mount, ctx); }));
+    wrap.appendChild(buildPicker(App.data.ENTORNOS_ONBOARDING, w.entorno, "Entorno habitual", function (opt) { w.entorno = opt; renderStep(mount, ctx); }));
     appendNext(wrap, mount, ctx, !!w.entorno);
   }
 
@@ -223,7 +225,7 @@
   function renderCardioStep(wrap, mount, ctx) {
     var w = ctx.wizard;
     wrap.appendChild(App.el("p", "field__label", "Actividad de resistencia"));
-    wrap.appendChild(buildPicker(CARDIO_ACTIVIDADES, w.cardioActividad, "Actividad de resistencia", function (opt) {
+    wrap.appendChild(buildPicker(App.data.CARDIO_ACTIVIDADES, w.cardioActividad, "Actividad de resistencia", function (opt) {
       w.cardioActividad = opt;
       if (opt === "Ninguna") w.cardioFrecuencia = "0";
       renderStep(mount, ctx);
@@ -237,11 +239,14 @@
 
   /* ---- Paso 7: propuesta --------------------------------------------------- */
 
-  function getSessionsPreview(ctx) {
+  // Devuelve el resultado COMPLETO de data.generatePlanWeek (sessions +
+  // infeasible + explanation), no solo la lista de sesiones: el paso 7
+  // necesita poder mostrar el caso imposible y su alternativa.
+  function getProposal(ctx) {
     var w = ctx.wizard;
     var sig = JSON.stringify([w.modo, w.plantilla, w.primeraSesionNombre, w.primeraSesionTipo, w.diasDisponibles, w.duracionHabitual, w.cardioActividad, w.cardioFrecuencia]);
-    if (!w.customSessions || w.signature !== sig) {
-      w.customSessions = App.data.generatePlanWeek({
+    if (!w.proposal || w.signature !== sig) {
+      w.proposal = App.data.generatePlanWeek({
         modo: w.modo, plantilla: w.plantilla,
         primeraSesionNombre: w.primeraSesionNombre, primeraSesionTipo: w.primeraSesionTipo,
         diasDisponibles: w.diasDisponibles, duracionHabitual: w.duracionHabitual,
@@ -249,7 +254,11 @@
       });
       w.signature = sig;
     }
-    return w.customSessions;
+    return w.proposal;
+  }
+
+  function getSessionsPreview(ctx) {
+    return getProposal(ctx).sessions;
   }
 
   function proposalName(w) {
@@ -261,13 +270,52 @@
   function renderProposalStep(wrap, mount, ctx) {
     var data = App.data;
     var w = ctx.wizard;
-    var sessions = getSessionsPreview(ctx);
+    var proposal = getProposal(ctx);
 
     wrap.appendChild(App.el("p", "lede", OBJETIVO_EXPLAIN[w.objetivo] || "Semana propuesta según tus respuestas."));
     if (w.entorno) {
       wrap.appendChild(App.el("p", "lede small",
         "Entorno " + w.entorno.toLowerCase() + ": se priorizan variantes compatibles con ese entorno, no un inventario exacto."));
     }
+
+    // Caso imposible (nota nueva): nunca se ignora en silencio la elección de
+    // resistencia. Se explica el porqué y se ofrecen alternativas concretas
+    // y reaplicables, sin lista de días ni fases ni botón de activar.
+    if (proposal.infeasible) {
+      wrap.appendChild(App.el("p", "notice notice--warn", proposal.explanation));
+
+      var reduceBtn = App.el("button", "btn btn--primary btn--block",
+        "Reducir a " + proposal.suggestReduceFreq + (proposal.suggestReduceFreq === 1 ? " sesión" : " sesiones") + " de resistencia");
+      reduceBtn.type = "button";
+      reduceBtn.addEventListener("click", function () {
+        w.cardioFrecuencia = String(proposal.suggestReduceFreq);
+        renderStep(mount, ctx);
+      });
+      wrap.appendChild(reduceBtn);
+
+      if (proposal.suggestExtraDay > proposal.totalDays) {
+        var addDayBtn = App.el("button", "btn btn--ghost btn--block",
+          "Añadir un día disponible (" + proposal.suggestExtraDay + ")");
+        addDayBtn.type = "button";
+        addDayBtn.addEventListener("click", function () {
+          w.diasDisponibles = String(proposal.suggestExtraDay);
+          renderStep(mount, ctx);
+        });
+        wrap.appendChild(addDayBtn);
+      }
+
+      var backBtnInfeasible = App.el("button", "btn btn--quiet", "Volver a cambiar tus respuestas");
+      backBtnInfeasible.type = "button";
+      backBtnInfeasible.addEventListener("click", function () { ctx.wizard.step = 1; renderStep(mount, ctx); });
+      wrap.appendChild(backBtnInfeasible);
+      return;
+    }
+
+    var sessions = proposal.sessions;
+    var whyBlock = App.el("div", "notice notice--info");
+    whyBlock.appendChild(App.el("p", "field__label", "Por qué esta semana"));
+    whyBlock.appendChild(App.el("p", "lede small", proposal.explanation));
+    wrap.appendChild(whyBlock);
 
     wrap.appendChild(App.el("h2", "section-title", "Tu semana propuesta"));
     var list = App.el("ol", "daylist");
