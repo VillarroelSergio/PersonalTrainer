@@ -30,16 +30,24 @@
     { key: "metricas", label: "Métricas" }
   ];
 
+  // ---- LOTE 3c: entrar en Historial (vía App.navigate, router) SIEMPRE
+  // muestra la línea temporal, nunca la última pestaña que se hubiera
+  // dejado activa. El cambio de pestaña DENTRO de la vista sigue siendo un
+  // re-render local (draw), que no vuelve a pasar por aquí, así que
+  // conserva la pestaña elegida mientras la persona sigue en la vista.
   function render(mount) {
     var ctx = App.viewContext("history");
-    if (!ctx.tab) ctx.tab = "registro";
+    ctx.tab = "registro";
     if (ctx.periodo === undefined) ctx.periodo = "";
     if (ctx.tipo === undefined) ctx.tipo = "";
     if (ctx.estado === undefined) ctx.estado = "";
+    draw(mount, ctx);
+  }
 
-    // Cambiar de pestaña llama a render(mount) directamente (sin pasar por
-    // App.navigate, igual que plan.js): hay que limpiar el contenedor aquí
-    // o el contenido se apila en vez de sustituirse.
+  function draw(mount, ctx) {
+    // Cambiar de pestaña llama a draw(mount, ctx) directamente (sin pasar
+    // por App.navigate, igual que plan.js): hay que limpiar el contenedor
+    // aquí o el contenido se apila en vez de sustituirse.
     mount.innerHTML = "";
 
     var wrap = App.el("section", "view-history");
@@ -123,7 +131,7 @@
 
     function selectTab(key) {
       ctx.tab = key;
-      render(mount);
+      draw(mount, ctx);
       var el = App.$("historyTab-" + key);
       if (el) el.focus();
     }
@@ -136,27 +144,12 @@
     panel.innerHTML = "";
     var data = App.data;
 
-    var filters = App.el("div", "filter-block");
-    filters.appendChild(App.el("p", "field__label", "Periodo"));
-    var periodoGroup = pickerGroup("Periodo", [
-      ["", "Todo"], ["semana", "Esta semana"], ["4sem", "Últimas 4 semanas"]
-    ], ctx.periodo, function (v) { ctx.periodo = v; renderRegistro(panel, ctx); });
-    filters.appendChild(periodoGroup);
-
-    filters.appendChild(App.el("p", "field__label", "Tipo"));
-    var tipoGroup = pickerGroup("Tipo", [
-      ["", "Todos"], ["fuerza", "Fuerza"], ["resistencia", "Cardio"], ["recuperacion", "Recuperación"]
-    ], ctx.tipo, function (v) { ctx.tipo = v; renderRegistro(panel, ctx); });
-    filters.appendChild(tipoGroup);
-
-    filters.appendChild(App.el("p", "field__label", "Estado"));
-    var estadoGroup = pickerGroup("Estado", [
-      ["", "Todos"], ["completada", "Completada"], ["adaptada", "Adaptada"],
-      ["parcial", "Parcial"], ["omitida", "Omitida"]
-    ], ctx.estado, function (v) { ctx.estado = v; renderRegistro(panel, ctx); });
-    filters.appendChild(estadoGroup);
-
-    panel.appendChild(filters);
+    // ---- LOTE 3c: Periodo/Tipo/Estado ya no están inline en la línea
+    // temporal: viven en una hoja modal ("Filtros"), igual que en library.js.
+    var filtersBtn = App.el("button", "btn btn--ghost", filtersButtonLabel(ctx));
+    filtersBtn.type = "button";
+    filtersBtn.addEventListener("click", function () { openHistoryFiltersSheet(ctx, panel); });
+    panel.appendChild(filtersBtn);
 
     var results = data.filterHistory({ periodo: ctx.periodo, tipo: ctx.tipo, estado: ctx.estado });
     var count = App.el("p", "small", results.length + (results.length === 1 ? " registro" : " registros") +
@@ -179,6 +172,52 @@
     var list = App.el("ul", "log");
     results.forEach(function (item) { list.appendChild(buildLogItem(item, panel, ctx)); });
     panel.appendChild(list);
+  }
+
+  function filtersButtonLabel(ctx) {
+    var count = (ctx.periodo ? 1 : 0) + (ctx.tipo ? 1 : 0) + (ctx.estado ? 1 : 0);
+    return count ? "Filtros (" + count + ")" : "Filtros";
+  }
+
+  function openHistoryFiltersSheet(ctx, panel) {
+    // Redibuja el CUERPO de la hoja (no solo el panel de detrás) tras cada
+    // cambio, para que los botones de picker reflejen a mano cuál queda
+    // pulsado (mismo patrón que renderReferenceBlock en library.js).
+    function renderFilterBody(body) {
+      body.innerHTML = "";
+
+      body.appendChild(App.el("p", "field__label", "Periodo"));
+      body.appendChild(pickerGroup("Periodo", [
+        ["", "Todo"], ["semana", "Esta semana"], ["4sem", "Últimas 4 semanas"]
+      ], ctx.periodo, function (v) { ctx.periodo = v; renderRegistro(panel, ctx); renderFilterBody(body); }));
+
+      body.appendChild(App.el("p", "field__label", "Tipo"));
+      body.appendChild(pickerGroup("Tipo", [
+        ["", "Todos"], ["fuerza", "Fuerza"], ["resistencia", "Cardio"], ["recuperacion", "Recuperación"]
+      ], ctx.tipo, function (v) { ctx.tipo = v; renderRegistro(panel, ctx); renderFilterBody(body); }));
+
+      body.appendChild(App.el("p", "field__label", "Estado"));
+      body.appendChild(pickerGroup("Estado", [
+        ["", "Todos"], ["completada", "Completada"], ["adaptada", "Adaptada"],
+        ["parcial", "Parcial"], ["omitida", "Omitida"]
+      ], ctx.estado, function (v) { ctx.estado = v; renderRegistro(panel, ctx); renderFilterBody(body); }));
+
+      var clearBtn = App.el("button", "btn btn--ghost btn--block", "Quitar filtros");
+      clearBtn.type = "button";
+      clearBtn.addEventListener("click", function () {
+        ctx.periodo = ""; ctx.tipo = ""; ctx.estado = "";
+        renderRegistro(panel, ctx);
+        renderFilterBody(body);
+      });
+      body.appendChild(clearBtn);
+
+      var doneBtn = App.el("button", "btn btn--primary btn--block", "Ver resultados");
+      doneBtn.type = "button";
+      doneBtn.addEventListener("click", function () { App.closeSheet(); });
+      body.appendChild(doneBtn);
+    }
+
+    App.openSheet({ title: "Filtros", render: renderFilterBody });
   }
 
   function pickerGroup(label, options, value, onChange) {

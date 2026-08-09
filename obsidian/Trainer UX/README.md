@@ -27,14 +27,14 @@ Abre la carpeta obsidian/Trainer UX como bóveda en Obsidian y después abre [[0
 - Estructura, cuenta, onboarding, navegación y ciclo de vida del plan.
 - Calendario, fases, sesiones, adaptación, molestias y recuperación.
 - Fuerza, variantes, guía, temporizador, excepciones y progresión.
-- Resistencia planificada, segmentos, importación manual y análisis breve.
+- Resistencia estructurada: diseño de bloques, traducción por entorno, ejecución por segmentos, importación manual y análisis breve.
 - Catálogo, historial, progreso, logros y copia de rutinas.
 - PWA, offline, sincronización, privacidad, estados globales y accesibilidad.
 - Matriz de cobertura que enlaza cada área del MVP con la tarea de validación correspondiente.
 
 ## Actualización de prioridad
 
-La guía transversal actual es [[Flujos/30 - Personalizacion hibrida y prioridad inicial]]: inicio de tres decisiones, perfil híbrido breve, sesiones exteriores por capas de datos, alternativas por entorno y guardarraíles explicables de carga. No elimina los flujos secundarios; establece cuándo se descubren.
+La guía transversal actual es [[Flujos/30 - Personalizacion hibrida y prioridad inicial]]: inicio de tres decisiones, perfil híbrido breve, sesiones exteriores por capas de datos, alternativas por entorno y guardarraíles explicables de carga. [[Flujos/31 - Diseñador de sesiones de resistencia]] concreta cómo una intención se convierte en bloques ejecutables. No eliminan los flujos secundarios; establecen cuándo se descubren.
 
 ## Navegación
 
