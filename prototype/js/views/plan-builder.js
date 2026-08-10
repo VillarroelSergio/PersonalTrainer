@@ -42,8 +42,30 @@
       diasDisponibles: null, duracionHabitual: null,
       entorno: null,
       cardioActividad: null, cardioFrecuencia: null,
-      proposal: null, signature: null
+      proposal: null, signature: null,
+      prefilled: false
     };
+  }
+
+  // Corrección onboarding-guiado-010 (ronda 2): cuando el wizard llega
+  // prellenado desde el onboarding guiado (access.js: finishOwnRoutine), los
+  // pasos 1-5 (objetivo/experiencia+carga/disponibilidad/entorno/cardio) ya
+  // vienen respondidos. Devuelve el primer paso entre 1 y 5 que de verdad
+  // falte responder, o 6 (propuesta) si todos están completos — evita
+  // obligar a pulsar "Siguiente" varias veces sobre pantallas ya resueltas.
+  function isStepAnswered(w, step) {
+    if (step === 1) return !!w.objetivo;
+    if (step === 2) return !!(w.experiencia && w.cargaHabitual);
+    if (step === 3) return !!(w.diasDisponibles && w.duracionHabitual);
+    if (step === 4) return !!w.entorno;
+    if (step === 5) return !!w.cardioActividad;
+    return false;
+  }
+  function firstUnansweredStepFrom1(w) {
+    for (var s = 1; s <= 5; s++) {
+      if (!isStepAnswered(w, s)) return s;
+    }
+    return 6;
   }
 
   function render(mount) {
@@ -118,7 +140,19 @@
     btn.type = "button";
     btn.addEventListener("click", function () {
       if (!enabled) { App.toast("Elige una opción para continuar."); return; }
-      ctx.wizard.step++;
+      var w = ctx.wizard;
+      // Salto único desde el paso 0 cuando el wizard viene prellenado desde
+      // el onboarding guiado (ver access.js: finishOwnRoutine): en vez de
+      // avanzar de uno en uno por pasos ya respondidos, salta directo al
+      // primero que de verdad falte (normalmente el 6, la propuesta). Se
+      // consume una sola vez; si el usuario vuelve atrás y cambia algo
+      // manualmente, los pasos 1-5 limpian la marca (ver sus onSelect).
+      if (w.step === 0 && w.prefilled) {
+        w.prefilled = false;
+        w.step = firstUnansweredStepFrom1(w);
+      } else {
+        w.step++;
+      }
       renderStep(mount, ctx);
     });
     wrap.appendChild(btn);
@@ -185,7 +219,7 @@
   function renderObjetivoStep(wrap, mount, ctx) {
     var w = ctx.wizard;
     wrap.appendChild(App.el("p", "lede small", "Esto cambia cómo te explicamos la propuesta final, no una lista distinta de ejercicios."));
-    wrap.appendChild(buildPicker(OBJETIVOS, w.objetivo, "Objetivo actual", function (opt) { w.objetivo = opt; renderStep(mount, ctx); }));
+    wrap.appendChild(buildPicker(OBJETIVOS, w.objetivo, "Objetivo actual", function (opt) { w.objetivo = opt; w.prefilled = false; renderStep(mount, ctx); }));
     appendNext(wrap, mount, ctx, !!w.objetivo);
   }
 
@@ -194,9 +228,9 @@
   function renderExperienciaStep(wrap, mount, ctx) {
     var w = ctx.wizard;
     wrap.appendChild(App.el("p", "field__label", "Experiencia"));
-    wrap.appendChild(buildPicker(EXPERIENCIAS, w.experiencia, "Experiencia", function (opt) { w.experiencia = opt; renderStep(mount, ctx); }));
+    wrap.appendChild(buildPicker(EXPERIENCIAS, w.experiencia, "Experiencia", function (opt) { w.experiencia = opt; w.prefilled = false; renderStep(mount, ctx); }));
     wrap.appendChild(App.el("p", "field__label", "Carga habitual"));
-    wrap.appendChild(buildPicker(CARGAS, w.cargaHabitual, "Carga habitual", function (opt) { w.cargaHabitual = opt; renderStep(mount, ctx); }));
+    wrap.appendChild(buildPicker(CARGAS, w.cargaHabitual, "Carga habitual", function (opt) { w.cargaHabitual = opt; w.prefilled = false; renderStep(mount, ctx); }));
     appendNext(wrap, mount, ctx, !!(w.experiencia && w.cargaHabitual));
   }
 
@@ -205,9 +239,9 @@
   function renderDisponibilidadStep(wrap, mount, ctx) {
     var w = ctx.wizard;
     wrap.appendChild(App.el("p", "field__label", "Días disponibles por semana"));
-    wrap.appendChild(buildPicker(DIAS_OPCIONES, w.diasDisponibles, "Días disponibles", function (opt) { w.diasDisponibles = opt; renderStep(mount, ctx); }));
+    wrap.appendChild(buildPicker(DIAS_OPCIONES, w.diasDisponibles, "Días disponibles", function (opt) { w.diasDisponibles = opt; w.prefilled = false; renderStep(mount, ctx); }));
     wrap.appendChild(App.el("p", "field__label", "Duración habitual de sesión"));
-    wrap.appendChild(buildPicker(DURACIONES, w.duracionHabitual, "Duración habitual", function (opt) { w.duracionHabitual = opt; renderStep(mount, ctx); }));
+    wrap.appendChild(buildPicker(DURACIONES, w.duracionHabitual, "Duración habitual", function (opt) { w.duracionHabitual = opt; w.prefilled = false; renderStep(mount, ctx); }));
     appendNext(wrap, mount, ctx, !!(w.diasDisponibles && w.duracionHabitual));
   }
 
@@ -216,7 +250,7 @@
   function renderEntornoStep(wrap, mount, ctx) {
     var w = ctx.wizard;
     wrap.appendChild(App.el("p", "lede small", "Solo para priorizar variantes compatibles: no pedimos tu inventario exacto de máquinas."));
-    wrap.appendChild(buildPicker(App.data.ENTORNOS_ONBOARDING, w.entorno, "Entorno habitual", function (opt) { w.entorno = opt; renderStep(mount, ctx); }));
+    wrap.appendChild(buildPicker(App.data.ENTORNOS_ONBOARDING, w.entorno, "Entorno habitual", function (opt) { w.entorno = opt; w.prefilled = false; renderStep(mount, ctx); }));
     appendNext(wrap, mount, ctx, !!w.entorno);
   }
 
@@ -227,12 +261,13 @@
     wrap.appendChild(App.el("p", "field__label", "Actividad de resistencia"));
     wrap.appendChild(buildPicker(App.data.CARDIO_ACTIVIDADES, w.cardioActividad, "Actividad de resistencia", function (opt) {
       w.cardioActividad = opt;
+      w.prefilled = false;
       if (opt === "Ninguna") w.cardioFrecuencia = "0";
       renderStep(mount, ctx);
     }));
     if (w.cardioActividad && w.cardioActividad !== "Ninguna") {
       wrap.appendChild(App.el("p", "field__label", "Frecuencia por semana"));
-      wrap.appendChild(buildPicker(CARDIO_FRECUENCIAS, w.cardioFrecuencia, "Frecuencia", function (opt) { w.cardioFrecuencia = opt; renderStep(mount, ctx); }));
+      wrap.appendChild(buildPicker(CARDIO_FRECUENCIAS, w.cardioFrecuencia, "Frecuencia", function (opt) { w.cardioFrecuencia = opt; w.prefilled = false; renderStep(mount, ctx); }));
     }
     appendNext(wrap, mount, ctx, !!w.cardioActividad, "Ver propuesta");
   }

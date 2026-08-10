@@ -911,7 +911,7 @@ a.chip:active:not(:focus-visible) {
   border: 1.5px solid var(--rule);
   border-radius: 999px;
   padding: 10px 14px;
-  font-size: 0.85rem; font-weight: 600;
+  font-size: 0.875rem; font-weight: 600; /* onboarding-guiado-010 ronda 2: mínimo de 14px */
   color: var(--ink-2);
   min-height: 46px;
   min-width: 44px; /* C3b: etiquetas muy cortas ("lb") median 42px de ancho */
@@ -927,6 +927,27 @@ a.chip:active:not(:focus-visible) {
 
 .checkrow { display: flex; align-items: flex-start; gap: 10px; font-size: 0.88rem; min-height: 44px; padding: 6px 0; }
 .checkrow input { width: 22px; height: 22px; margin-top: 1px; flex-shrink: 0; accent-color: var(--accent); }
+
+/* ---- onboarding-guiado-010 (corrección equipamiento): grupos con
+   encabezado + filas de checkbox, reemplaza la nube de chips sin
+   jerarquía. Reutiliza el patrón .checkrow (accent-color, 44px táctil). */
+.equipgroup__title {
+  font-size: 0.8rem; font-weight: 700;
+  color: var(--ink-2);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  margin: 20px 0 6px;
+}
+.equipgroup__list { display: flex; flex-direction: column; }
+.equiprow {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 44px; padding: 8px 2px;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 0.95rem; color: var(--ink);
+}
+.equiprow input {
+  width: 22px; height: 22px; flex-shrink: 0;
+  accent-color: var(--accent);
+}
 
 .bodymap__wellness { margin-bottom: 10px; }
 
@@ -1115,8 +1136,9 @@ textarea {
   border-radius: 18px 18px 0 0;
   width: 100%; max-width: 460px;
   max-height: 86vh;
-  overflow-y: auto;
-  padding: 18px 18px 28px;
+  display: flex;
+  flex-direction: column;
+  padding: 0 18px 18px;
   animation: sheet-in var(--dur-sheet) var(--ease-out);
 }
 
@@ -1125,13 +1147,23 @@ textarea {
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* Cabecera fija: el botón "Cerrar" nunca debe salir de la vista aunque el
+   cuerpo de la hoja (ficha de ejercicio, listas largas…) necesite scroll. */
 .sheet__header {
+  flex: 0 0 auto;
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  padding-bottom: 12px;
+  padding: 18px 0 12px;
   margin-bottom: 14px;
   border-bottom: 1px solid var(--rule-soft);
+  background: var(--paper);
 }
 .sheet__header h2 { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.02em; }
+
+.sheet__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-bottom: 10px;
+}
 
 .optgroup { margin-bottom: 18px; }
 .optgroup__title {
@@ -1628,6 +1660,128 @@ textarea {
 .musclecard__body { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px 12px; }
 .musclecard__name { font-weight: 600; font-size: 0.92rem; }
 .musclecard__meta { color: var(--ink-3); font-size: 0.78rem; }
+
+/* ---- onboarding-guiado-010: selección de foco muscular (paso 10). Reusa el
+   mismo bloque visual que la biblioteca, solo añade el estado "elegido" y la
+   tarjeta "Sin preferencia" (sin imagen, altura mínima táctil de 44px). */
+.musclecard[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-wash) inset; }
+.musclecard--empty { justify-content: center; min-height: 44px; }
+.musclecard--empty .musclecard__body { padding: 14px 12px; }
+
+/* ---- Corrección prioritaria: pantalla inmersiva de generación (0→99%)
+   antes de "Tu plan inicial". Una única pieza central (círculo de progreso),
+   sin tarjetas, sin lista de pasos, sin barra horizontal. Pantalla completa,
+   mucho espacio negativo, sin controles durante la animación. */
+.genloader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: calc(100vh - 40px);
+  padding-top: 0;
+  gap: 6px;
+}
+.genloader__kicker {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.genloader__title {
+  margin-top: 0;
+  margin-bottom: 28px;
+}
+.genloader__circle {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.genloader__ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+.genloader__ring-track {
+  fill: none;
+  stroke: var(--rule-soft);
+  stroke-width: 10;
+}
+.genloader__ring-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 120ms linear;
+}
+.genloader__percent {
+  position: absolute;
+  font-size: 2.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.genloader__phrase {
+  margin-top: 26px;
+  font-size: 0.95rem;
+  color: var(--ink-2);
+  max-width: 26ch;
+}
+@media (prefers-reduced-motion: reduce) {
+  .genloader__ring-fill { transition: none; }
+}
+
+/* ---- onboarding-guiado-010 (corrección): fecha de nacimiento, altura y
+   peso pasan de un formulario de texto a un selector tipo rueda (una sola
+   decisión protagonista por pantalla, valor central destacado, mucho
+   espacio negativo). Reutiliza los tokens de color/identidad existentes
+   (--paper, --rule-soft, --accent), sin iconografía ni azul de referencia. */
+.wheelrow { display: flex; justify-content: center; align-items: flex-end; gap: 14px; margin: 24px 0 8px; }
+.wheelrow--peso { gap: 6px; }
+.wheelcol { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.wheelcol__label { font-size: 0.75rem; font-weight: 600; color: var(--ink-3); margin: 0; }
+.wheelcol__band {
+  position: absolute;
+  left: 0; right: 0;
+  top: calc(28px + 56px); /* debajo de la etiqueta (~28px) + primera fila de la rueda */
+  height: 56px;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  pointer-events: none;
+}
+.wheelrow__sep, .wheelrow__unit {
+  align-self: center;
+  font-weight: 700;
+  color: var(--ink);
+  padding-bottom: 2px;
+}
+.wheelrow__sep { font-size: 1.6rem; }
+.wheelrow__unit { font-size: 1rem; color: var(--ink-2); font-weight: 600; }
+
+.wheel {
+  height: 168px; /* 3 filas visibles de 56px */
+  width: 92px;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  background: var(--paper);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--r-md);
+  scrollbar-width: none;
+}
+.wheel::-webkit-scrollbar { display: none; }
+.wheel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wheel__pad { height: 56px; }
+.wheel__item {
+  height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem;
+  color: var(--ink-3);
+  scroll-snap-align: center;
+}
+.wheel__item.is-center { font-size: 1.6rem; font-weight: 700; color: var(--ink); }
+
+.privacy-note { text-align: center; color: var(--ink-3); margin: 14px 0 4px; }
 
 /* === Lote 4 (mejoras-ux-ui-004): compartir con privacidad, inicio y estados vacíos === */
 

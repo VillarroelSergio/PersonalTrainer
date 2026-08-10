@@ -20,6 +20,9 @@
     wrap.appendChild(App.el("h2", "section-title", "Preferencias"));
     wrap.appendChild(buildPreferences(data));
 
+    wrap.appendChild(App.el("h2", "section-title", "Perfil físico y equipamiento"));
+    wrap.appendChild(buildPhysicalEquipmentBlock(data));
+
     wrap.appendChild(App.el("h2", "section-title", "Seguridad"));
     wrap.appendChild(buildSecurity(data));
 
@@ -50,9 +53,13 @@
     var host = App.el("div", "refblock");
     var user = data.user;
 
+    // Corrección onboarding-guiado-010 (ronda 2): estas listas eran las
+    // antiguas y ya no coincidían con lo que escribe el onboarding nuevo
+    // (App.data.OBJETIVOS_ONBOARDING / App.data.DURACIONES_SESION), dejando
+    // "Preferencias" sin ninguna opción marcada tras completar el onboarding.
     var groups = [
-      { key: "objetivo", label: "Objetivo", options: ["Ganar músculo", "Mejorar resistencia", "Mantener forma", "Rendimiento combinado"] },
-      { key: "duracionHabitual", label: "Duración habitual de sesión", options: ["20 min", "40 min", "60 min", "90+ min"] },
+      { key: "objetivo", label: "Objetivo", options: App.data.OBJETIVOS_ONBOARDING },
+      { key: "duracionHabitual", label: "Duración habitual de sesión", options: App.data.DURACIONES_SESION },
       { key: "unidades", label: "Unidades", options: ["kg", "lb"] }
     ];
 
@@ -80,6 +87,178 @@
     saveBtn.addEventListener("click", function () { App.persist(); App.toast("Preferencias guardadas."); });
     host.appendChild(saveBtn);
     return host;
+  }
+
+  /* ---- Perfil físico y equipamiento (onboarding-guiado-010) --------------
+   * Edad/altura/peso editables (misma validación que el onboarding,
+   * App.data.validateOnboardingPhysical) y, por cada entorno ya elegido en
+   * user.entornos, sus categorías de equipamiento como chips togglables
+   * contra user.equipoPorEntorno[entorno]. Igual que buildPreferences, los
+   * controles mutan data.user directamente al interactuar; "Guardar" solo
+   * valida lo físico y persiste (App.persist() + toast). ------------------- */
+
+  function pfCmFromFtIn(ft, inch) { return Math.round(((ft || 0) * 12 + (inch || 0)) * 2.54); }
+  function pfFtInFromCm(cm) {
+    var totalIn = cm / 2.54;
+    var ft = Math.floor(totalIn / 12);
+    var inch = Math.round(totalIn - ft * 12);
+    if (inch === 12) { ft++; inch = 0; }
+    return { ft: ft, inch: inch };
+  }
+  function pfKgFromLb(lb) { return Math.round(lb * 0.45359237 * 10) / 10; }
+  function pfLbFromKg(kg) { return Math.round((kg / 0.45359237) * 10) / 10; }
+
+  function buildPhysicalEquipmentBlock(data) {
+    var host = App.el("div", "refblock");
+    renderPhysicalEquipment(host, data);
+    return host;
+  }
+
+  function renderPhysicalEquipment(host, data) {
+    host.innerHTML = "";
+    var user = data.user;
+
+    var edadField = App.el("div", "field");
+    edadField.appendChild(App.el("label", "field__label", "Edad (años)"));
+    var edadInput = document.createElement("input");
+    edadInput.type = "number"; edadInput.inputMode = "numeric";
+    edadInput.value = (user.edad === null || user.edad === undefined) ? "" : user.edad;
+    edadInput.addEventListener("input", function () {
+      var raw = parseInt(edadInput.value, 10);
+      user.edad = isNaN(raw) ? null : raw;
+    });
+    edadField.appendChild(edadInput);
+    host.appendChild(edadField);
+
+    var alturaField = App.el("div", "field");
+    alturaField.appendChild(App.el("label", "field__label", "Altura"));
+    var alturaUnitPicker = App.el("div", "picker");
+    alturaUnitPicker.setAttribute("role", "group");
+    alturaUnitPicker.setAttribute("aria-label", "Unidad de altura");
+    [["cm", "cm"], ["ft-in", "ft/in"]].forEach(function (pair) {
+      var b = App.el("button", "picker__btn", pair[1]);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(user.unidadesAltura === pair[0]));
+      b.addEventListener("click", function () { user.unidadesAltura = pair[0]; renderPhysicalEquipment(host, data); });
+      alturaUnitPicker.appendChild(b);
+    });
+    alturaField.appendChild(alturaUnitPicker);
+
+    if (user.unidadesAltura === "ft-in") {
+      var ftin = (user.alturaCm === null || user.alturaCm === undefined) ? { ft: "", inch: "" } : pfFtInFromCm(user.alturaCm);
+      var row = App.el("div");
+      row.style.display = "flex";
+      row.style.gap = "8px";
+      var ftInput = document.createElement("input");
+      ftInput.type = "number"; ftInput.inputMode = "numeric"; ftInput.placeholder = "pies";
+      ftInput.setAttribute("aria-label", "Pies");
+      ftInput.value = ftin.ft;
+      var inInput = document.createElement("input");
+      inInput.type = "number"; inInput.inputMode = "numeric"; inInput.placeholder = "pulgadas";
+      inInput.setAttribute("aria-label", "Pulgadas");
+      inInput.value = ftin.inch;
+      var sync = function () {
+        var ftv = parseFloat(ftInput.value);
+        var inv = parseFloat(inInput.value);
+        if (isNaN(ftv) && isNaN(inv)) { user.alturaCm = null; return; }
+        user.alturaCm = pfCmFromFtIn(isNaN(ftv) ? 0 : ftv, isNaN(inv) ? 0 : inv);
+      };
+      ftInput.addEventListener("input", sync);
+      inInput.addEventListener("input", sync);
+      row.appendChild(ftInput);
+      row.appendChild(inInput);
+      alturaField.appendChild(row);
+    } else {
+      var cmInput = document.createElement("input");
+      cmInput.type = "number"; cmInput.inputMode = "numeric";
+      cmInput.value = (user.alturaCm === null || user.alturaCm === undefined) ? "" : user.alturaCm;
+      cmInput.addEventListener("input", function () {
+        var raw = parseInt(cmInput.value, 10);
+        user.alturaCm = isNaN(raw) ? null : raw;
+      });
+      alturaField.appendChild(cmInput);
+    }
+    host.appendChild(alturaField);
+
+    var pesoField = App.el("div", "field");
+    pesoField.appendChild(App.el("label", "field__label", "Peso"));
+    var pesoUnitPicker = App.el("div", "picker");
+    pesoUnitPicker.setAttribute("role", "group");
+    pesoUnitPicker.setAttribute("aria-label", "Unidad de peso");
+    ["kg", "lb"].forEach(function (u) {
+      var b = App.el("button", "picker__btn", u);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(user.unidades === u));
+      b.addEventListener("click", function () { user.unidades = u; renderPhysicalEquipment(host, data); });
+      pesoUnitPicker.appendChild(b);
+    });
+    pesoField.appendChild(pesoUnitPicker);
+    var pesoInput = document.createElement("input");
+    pesoInput.type = "number"; pesoInput.inputMode = "decimal"; pesoInput.step = "0.1";
+    pesoInput.value = (user.pesoKg === null || user.pesoKg === undefined) ? "" : (user.unidades === "kg" ? user.pesoKg : pfLbFromKg(user.pesoKg));
+    pesoInput.addEventListener("input", function () {
+      var raw = parseFloat(pesoInput.value);
+      if (isNaN(raw)) { user.pesoKg = null; return; }
+      user.pesoKg = user.unidades === "kg" ? raw : pfKgFromLb(raw);
+    });
+    pesoField.appendChild(pesoInput);
+    host.appendChild(pesoField);
+
+    var errorHost = App.el("div");
+    host.appendChild(errorHost);
+
+    // Equipamiento por entorno: un grupo de chips por cada entorno ya
+    // elegido en el onboarding (user.entornos). Sin entornos guardados no
+    // hay nada que mostrar aquí: el equipamiento se pide por entorno, no
+    // como inventario general.
+    if (user.entornos && user.entornos.length) {
+      host.appendChild(App.el("p", "field__label", "Equipamiento por entorno"));
+      // Corrección onboarding-guiado-010 (equipamiento): equipoPorEntorno
+      // guarda ahora los ítems DESMARCADOS (ver data.js), no los
+      // disponibles; el onboarding parte de todo marcado. Este editor de
+      // Perfil debe reflejar el mismo criterio: "pulsado" = disponible =
+      // NO está en la lista de desmarcados.
+      host.appendChild(App.el("p", "lede small", "Todo aparece disponible por defecto; toca para marcar lo que no tienes."));
+      user.entornos.forEach(function (entorno) {
+        if (!user.equipoPorEntorno[entorno]) user.equipoPorEntorno[entorno] = [];
+        var options = data.EQUIPAMIENTO_POR_ENTORNO[entorno] || [];
+        if (!options.length) return;
+        host.appendChild(App.el("p", "lede small", entorno));
+        var chipGroup = App.el("div", "picker picker--wide");
+        chipGroup.setAttribute("role", "group");
+        chipGroup.setAttribute("aria-label", "Equipamiento de " + entorno);
+        options.forEach(function (opt) {
+          var b = App.el("button", "picker__btn", opt);
+          b.type = "button";
+          var deseleccionado = user.equipoPorEntorno[entorno];
+          b.setAttribute("aria-pressed", String(deseleccionado.indexOf(opt) === -1));
+          b.addEventListener("click", function () {
+            var list = user.equipoPorEntorno[entorno];
+            var idx = list.indexOf(opt);
+            if (idx > -1) list.splice(idx, 1); else list.push(opt);
+            b.setAttribute("aria-pressed", String(list.indexOf(opt) === -1));
+          });
+          chipGroup.appendChild(b);
+        });
+        host.appendChild(chipGroup);
+      });
+    }
+
+    var saveBtn = App.el("button", "btn btn--primary btn--sm", "Guardar");
+    saveBtn.type = "button";
+    saveBtn.addEventListener("click", function () {
+      var errors = App.data.validateOnboardingPhysical({ edad: user.edad, alturaCm: user.alturaCm, pesoKg: user.pesoKg });
+      errorHost.innerHTML = "";
+      if (errors.edad || errors.alturaCm || errors.pesoKg) {
+        [errors.edad, errors.alturaCm, errors.pesoKg].forEach(function (msg) {
+          if (msg) errorHost.appendChild(App.el("p", "field__error", msg));
+        });
+        return;
+      }
+      App.persist();
+      App.toast("Perfil físico y equipamiento guardados.");
+    });
+    host.appendChild(saveBtn);
   }
 
   /* ---- Seguridad: cambio de contraseña simulado + recuperación ----------- */

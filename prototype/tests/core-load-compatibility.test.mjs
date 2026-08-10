@@ -33,6 +33,6 @@ test("hidrata un snapshot anterior para que el onboarding pueda mostrar deporte 
   const data = loadWithSnapshot({ data: legacyData, sync: "local", theme: "dark" });
 
   assert.deepEqual(Array.from(data.DEPORTES), ["Fuerza", "Fuerza + correr", "Fuerza + bici", "Trail", "Senderismo"]);
-  assert.deepEqual(Array.from(data.ENTORNOS_ONBOARDING), ["Gimnasio", "Casa", "Parque", "Cinta", "Exterior", "Viaje"]);
+  assert.deepEqual(Array.from(data.ENTORNOS_ONBOARDING), ["Gimnasio completo", "Gimnasio básico", "Casa", "Exterior", "Cinta/bici estática"]);
   assert.deepEqual(Array.from(data.user.entornos), []);
 });

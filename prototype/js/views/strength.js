@@ -104,7 +104,6 @@
 
     var badges = App.el("div", "badge-row");
     if (session.esAdaptada) badges.appendChild(App.el("span", "state state--adaptada", "Sesión adaptada"));
-    badges.appendChild(App.sync.badge(session.sync || "local"));
     wrap.appendChild(badges);
 
     var pct = stats.setsTotal ? Math.round((stats.setsDone / stats.setsTotal) * 100) : 0;

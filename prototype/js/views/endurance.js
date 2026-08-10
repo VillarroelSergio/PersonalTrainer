@@ -115,7 +115,6 @@
     var badges = App.el("div", "badge-row");
     badges.appendChild(App.el("span", "state state--" + session.estado, estadoLabel));
     if (session.esAdaptada) badges.appendChild(App.el("span", "state state--adaptada", "Sesión adaptada"));
-    badges.appendChild(App.sync.badge(session.sync || "local"));
     wrap.appendChild(badges);
 
     var loadMsg = data.loadContext();
@@ -165,11 +164,15 @@
     objLink.addEventListener("click", function () { openObjectivesSheet(data); });
     wrap.appendChild(objLink);
 
-    // ---- Importar SIEMPRE visible aquí (nota 07): sitio natural para traer
-    // el resultado real una vez hecha la actividad fuera de la app. ---------
-    wrap.appendChild(buildImportEntry(session.id));
-
+    // ---- Orden de fases (revisión UX): antes de hacer la actividad, la
+    // única acción posible es prepararla ("Preparar en mi reloj" u otro
+    // ajuste); importar solo tiene sentido DESPUÉS de haberla hecho, así que
+    // buildActions (que incluye "Ya hice la actividad") va primero y el
+    // acceso a importar queda como último paso, no como la primera opción
+    // que se ve al entrar (nota 07: sigue siempre visible, solo cambia dónde).
     wrap.appendChild(buildActions(session, data, tmpl, pendienteDeResultado));
+
+    wrap.appendChild(buildImportEntry(session.id));
 
     mount.appendChild(wrap);
   }
@@ -225,12 +228,16 @@
     var box = App.el("div", "endurance-envalts");
     box.appendChild(App.el("p", "field__label", "Alternativas por entorno"));
     var list = App.el("ul", "cues");
+    // onboarding-guiado-010 (ronda 2, corrección de bajo riesgo): texto
+    // actualizado para ser coherente con los 5 entornos vigentes en
+    // App.data.ENTORNOS_ONBOARDING ("Parque"/"Viaje" ya no existen como
+    // entornos seleccionables). Solo texto, sin tocar la lógica de la vista.
     [
-      "Cinta: mismo objetivo con velocidad e inclinación en vez de terreno real.",
-      "Parque o exterior: ideal si el objetivo pide terreno variable.",
-      "Bici estática: sustituye el impacto en piernas si lo necesitas.",
+      "Gimnasio completo: adapta el estímulo a máquinas de cardio si el clima o el terreno no acompañan.",
+      "Gimnasio básico: usa la cinta o la bici que tengas disponible como alternativa.",
       "Casa: circuito corto si no puedes salir.",
-      "Viaje: adapta a lo que tengas disponible, mismo tiempo objetivo.",
+      "Exterior: ideal si el objetivo pide terreno variable.",
+      "Cinta/bici estática: mismo objetivo con velocidad e inclinación en vez de terreno real.",
       "Lluvia: pásate a cinta o bici estática sin perder el estímulo."
     ].forEach(function (a) { list.appendChild(App.el("li", null, a)); });
     box.appendChild(list);

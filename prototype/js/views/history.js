@@ -15,7 +15,7 @@
     adaptada: "Adaptada", parcial: "Parcial", omitida: "Omitida"
   };
   var TIPO_LABEL = { fuerza: "Fuerza", resistencia: "Cardio", recuperacion: "Recuperación" };
-  var PROCEDENCIA_LABEL = { local: "Local", importado: "Importado", adaptado: "Adaptado por ti" };
+  var PROCEDENCIA_LABEL = { local: "Registrada en la app", importado: "Importada del reloj", adaptado: "Adaptado por ti" };
 
   // C4: mismo aviso literal que checkin.js (SAFETY_TEXT), reutilizado tal
   // cual junto a la molestia "Importante" en el detalle de una sesión de
@@ -242,9 +242,8 @@
     var meta = item.meta + " · " + (PROCEDENCIA_LABEL[item.procedencia] || item.procedencia);
     body.appendChild(App.el("p", "log__meta", meta));
     var badges = App.el("div", "badge-row");
-    badges.appendChild(App.sync.badge(item.sync || "local"));
     if (item.versions && item.versions.length) badges.appendChild(App.el("span", "state state--sim", "Corregido · versión anterior disponible"));
-    body.appendChild(badges);
+    if (badges.childNodes.length) body.appendChild(badges);
     var openBtn = App.el("button", "chip", "Ver detalle");
     openBtn.type = "button";
     openBtn.addEventListener("click", function () { openDetailSheet(item, panel, ctx); });
@@ -266,7 +265,6 @@
         var badges = App.el("div", "badge-row");
         badges.appendChild(App.el("span", "state state--" + item.estado, ESTADO_LABEL[item.estado] || item.estado));
         badges.appendChild(App.el("span", "tag", "Procedencia: " + (PROCEDENCIA_LABEL[item.procedencia] || item.procedencia)));
-        badges.appendChild(App.sync.badge(item.sync || "local"));
         body.appendChild(badges);
 
         buildDetailBody(body, item);
@@ -519,7 +517,6 @@
     body.appendChild(App.el("p", "catalog-card__name", label + ": " + m.valor + " " + m.unidad));
     body.appendChild(App.el("p", "catalog-card__meta", m.fecha + " · " + (PROCEDENCIA_LABEL[m.procedencia] || m.procedencia)));
     top.appendChild(body);
-    top.appendChild(App.sync.badge(m.sync || "local"));
     li.appendChild(top);
 
     if (m.versions && m.versions.length) {

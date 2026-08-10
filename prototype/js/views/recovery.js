@@ -38,12 +38,15 @@
 
     // Alternativas dependientes del entorno declarado (nota 17 ampliada):
     // movilidad siempre disponible (vale en casa o donde sea), caminata si
-    // hay exterior/parque, cinta si el entorno es cinta (típico día de
-    // lluvia), cardio suave siempre como comodín, descanso siempre al final.
+    // hay exterior, cinta si el entorno incluye cinta/bici estática (típico
+    // día de lluvia), cardio suave siempre como comodín, descanso siempre al
+    // final. ---- onboarding-guiado-010: ENTORNOS_ONBOARDING ya no tiene
+    // "Parque" (fusionado en "Exterior") ni "Cinta" a secas (ahora
+    // "Cinta/bici estática").
     var envs = (data.user && data.user.entornos) || [];
     var keys = ["movilidad"];
-    if (envs.indexOf("Exterior") > -1 || envs.indexOf("Parque") > -1) keys.push("caminata");
-    if (envs.indexOf("Cinta") > -1) keys.push("cinta");
+    if (envs.indexOf("Exterior") > -1) keys.push("caminata");
+    if (envs.indexOf("Cinta/bici estática") > -1) keys.push("cinta");
     keys.push("cardio");
 
     keys.forEach(function (key) {

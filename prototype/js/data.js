@@ -321,13 +321,137 @@
       return isIntense ? pair.intense : pair.suave;
     }
 
+    // ---- onboarding-guiado-010: validación pura del paso de datos físicos.
+    // Recibe SIEMPRE valores ya convertidos a unidades canónicas (cm, kg);
+    // la vista convierte desde ft-in/lb antes de llamar. Nunca lee ni
+    // muta App.data: solo evalúa el payload recibido, así se puede probar
+    // sin DOM.
+    data.validateOnboardingPhysical = function (payload) {
+      payload = payload || {};
+      var errors = { edad: null, alturaCm: null, pesoKg: null };
+
+      var edad = payload.edad;
+      var edadNum = Number(edad);
+      if (edad === null || edad === undefined || edad === "" || isNaN(edadNum) || !Number.isInteger(edadNum) || edadNum < 12 || edadNum > 100) {
+        errors.edad = "Escribe una edad entre 12 y 100 años.";
+      }
+
+      var alturaCm = payload.alturaCm;
+      var alturaNum = Number(alturaCm);
+      if (alturaCm === null || alturaCm === undefined || alturaCm === "" || isNaN(alturaNum) || alturaNum < 100 || alturaNum > 250) {
+        errors.alturaCm = "Escribe una altura entre 100 y 250 cm.";
+      }
+
+      var pesoKg = payload.pesoKg;
+      var pesoNum = Number(pesoKg);
+      if (pesoKg === null || pesoKg === undefined || pesoKg === "" || isNaN(pesoNum) || pesoNum < 30 || pesoNum > 300) {
+        errors.pesoKg = "Escribe un peso entre 30 y 300 kg.";
+      }
+
+      return errors;
+    };
+
+    // ---- onboarding-guiado-010 (corrección): la fecha de nacimiento es
+    // ahora el dato canónico que capturan las ruedas del onboarding; `edad`
+    // se deriva de ella para no romper a los consumidores existentes
+    // (validateOnboardingPhysical, Perfil, nombre del plan). Recibe una
+    // fecha ISO "AAAA-MM-DD"; usa el reloj real del dispositivo (no el "hoy"
+    // simulado del prototipo), porque una fecha de nacimiento es un dato del
+    // mundo real, no de la semana de demostración.
+    data.ageFromBirthDate = function (birthDateIso) {
+      if (!birthDateIso) return null;
+      var parts = String(birthDateIso).split("-");
+      var year = parseInt(parts[0], 10), month = parseInt(parts[1], 10), day = parseInt(parts[2], 10);
+      if (!year || !month || !day) return null;
+      var today = new Date();
+      var age = today.getFullYear() - year;
+      var todayMonth = today.getMonth() + 1;
+      if (todayMonth < month || (todayMonth === month && today.getDate() < day)) age--;
+      return age;
+    };
+
+    // ---- onboarding-guiado-010 (corrección equipamiento): mapa de ítems
+    // finos (paso 9) a las categorías gruesas que ya etiquetan el catálogo
+    // de ejercicios (EXERCISE_CATALOG, campo `equipo`: Barra/Mancuernas/
+    // Máquina/Polea/Peso corporal). Ítems sin categoría equivalente (bancos,
+    // bandas, colchoneta, cardio de interior) no participan en la
+    // priorización: hoy no hay variantes de fuerza etiquetadas con esas
+    // categorías en el catálogo.
+    data.EQUIPO_ITEM_A_CATEGORIA = {
+      "Mancuernas": "Mancuernas",
+      "Kettlebells": "Mancuernas",
+      "Barra olímpica": "Barra",
+      "Barra EZ": "Barra",
+      "Discos": "Barra",
+      "Landmine": "Barra",
+      "Rack o jaula": "Barra",
+      "Soportes para barra": "Barra",
+      "Máquina Smith": "Máquina",
+      "Polea alta/baja": "Polea",
+      "Jalón al pecho": "Polea",
+      "Remo en máquina": "Máquina",
+      "Press de pecho en máquina": "Máquina",
+      "Peck deck / contractor": "Máquina",
+      "Prensa": "Máquina",
+      "Extensión de cuádriceps": "Máquina",
+      "Curl femoral": "Máquina",
+      "Hack squat": "Máquina",
+      "Aductor/abductor": "Máquina",
+      "Gemelo en máquina": "Máquina",
+      "Barra de dominadas": "Peso corporal",
+      "Fondos": "Peso corporal"
+    };
+
+    // Categorías de equipo (`equipo`) disponibles para un entorno, dado lo
+    // que la persona desmarcó explícitamente (`deseleccionado`, ítems del
+    // paso 9). Nunca "bloquea": solo informa qué categorías tienen al menos
+    // un ítem disponible, para que priorizarPorEquipoDisponible ordene sin
+    // ocultar nada del catálogo.
+    data.equipoDisponiblePorEntorno = function (entorno, deseleccionado) {
+      deseleccionado = deseleccionado || [];
+      var grupoKeys = data.EQUIPAMIENTO_GRUPOS_POR_ENTORNO[entorno] || [];
+      var disponibles = {};
+      grupoKeys.forEach(function (key) {
+        var grupo = data.EQUIPAMIENTO_GRUPOS.filter(function (g) { return g.key === key; })[0];
+        if (!grupo) return;
+        grupo.items.forEach(function (item) {
+          var categoria = data.EQUIPO_ITEM_A_CATEGORIA[item];
+          if (categoria && deseleccionado.indexOf(item) === -1) disponibles[categoria] = true;
+        });
+      });
+      return disponibles;
+    };
+
+    // Reordena SIN filtrar: los ejercicios cuya categoría de equipo está
+    // disponible para el entorno van primero; el resto se conserva al final,
+    // en su mismo orden relativo. Nunca oculta ni bloquea ejercicios del
+    // catálogo (requisito explícito del encargo). Ejercicios sin `equipo`
+    // (o con una categoría no modelada, p. ej. peso corporal puro) cuentan
+    // como compatibles por defecto.
+    data.priorizarPorEquipoDisponible = function (ejercicios, entorno, deseleccionado) {
+      var disponibles = data.equipoDisponiblePorEntorno(entorno, deseleccionado);
+      var lista = (ejercicios || []).slice();
+      var compatibles = lista.filter(function (e) { return !e.equipo || disponibles[e.equipo]; });
+      var resto = lista.filter(function (e) { return e.equipo && !disponibles[e.equipo]; });
+      return compatibles.concat(resto);
+    };
+
     // Devuelve { sessions, infeasible, explanation, totalDays, freq,
     // strengthDays, suggestReduceFreq, suggestExtraDay }. `sessions` es la
     // lista a usar (vacía si infeasible); `explanation` es siempre texto
     // llano listo para mostrar en el paso 7.
     data.generatePlanWeek = function (opts) {
-      var minutosPorDuracion = { "20 min": 20, "40 min": 40, "60 min": 60, "90+ min": 90 };
-      var minutos = minutosPorDuracion[opts.duracionHabitual] || 40;
+      // ---- onboarding-guiado-010: nuevas claves de DURACIONES_SESION (el
+      // onboarding guiado) SUMADAS a las antiguas de plan-builder.js, que
+      // sigue sin tocarse y sigue pasando sus propias etiquetas ("20 min"…
+      // "90+ min") directamente aquí. Quitar las antiguas rompería el
+      // creador guiado nativo (no solo la ruta de onboarding que las mapea
+      // en access.js: mapDuracionToBuilder).
+      var minutosPorDuracion = {
+        "20 min": 20, "40 min": 40, "60 min": 60, "90+ min": 90,
+        "30-40 min": 35, "45-60 min": 50, "60-75 min": 65, "más de 75 min": 80
+      };
+      var minutos = minutosPorDuracion[opts.duracionHabitual] || 50;
       var pattern, proposito;
 
       if (opts.modo === "cero") {
@@ -1285,6 +1409,14 @@
         email: "",
         nombre: "",
         objetivo: "Ganar músculo",
+        // ---- onboarding-guiado-010 (corrección): los objetivos son ahora
+        // multi-selección (chips) en el onboarding. `goals` conserva el
+        // orden de selección; `primaryGoal` es siempre goals[0]. `objetivo`
+        // (singular, de arriba) se mantiene en espejo con `primaryGoal` por
+        // compatibilidad con Perfil/plan-builder.js, que solo entienden un
+        // objetivo único.
+        goals: [],
+        primaryGoal: null,
         experiencia: "Intermedia",
         diasDisponibles: null,
         duracionHabitual: null,
@@ -1296,6 +1428,35 @@
         deporte: null,
         entornos: [],
         unidades: "kg",
+        // ---- onboarding-guiado-010: perfil físico, disponibilidad y
+        // equipamiento recogidos por el onboarding guiado de 10 decisiones.
+        // edad/alturaCm/pesoKg SIEMPRE en unidades canónicas (años, cm, kg);
+        // unidadesAltura/unidades (peso, ya existente) son solo de
+        // visualización. recommendationMode/externalRecordingMode son
+        // valores fijos del MVP (sin variantes todavía), no hay UI que los
+        // cambie: se declaran aquí para que todo usuario (incluidos
+        // snapshots antiguos hidratados) los tenga.
+        // ---- onboarding-guiado-010 (corrección): birthDate ("AAAA-MM-DD")
+        // es ahora el dato canónico capturado por rueda; edad se deriva de
+        // él con App.data.ageFromBirthDate y se guarda en paralelo solo
+        // para no romper lecturas existentes (Perfil, notice de la app,
+        // etc.) que aún leen `edad` directamente.
+        birthDate: null,
+        edad: null,
+        alturaCm: null,
+        unidadesAltura: "cm",
+        pesoKg: null,
+        diasFuerza: null,
+        actividadesExteriores: [],
+        // ---- onboarding-guiado-010 (corrección equipamiento): el paso 9
+        // parte de todo seleccionado; equipoPorEntorno[entorno] guarda los
+        // ítems DESMARCADOS (no disponibles), nunca los disponibles. Un
+        // array vacío (el estado inicial de cada entorno) significa "todo
+        // el equipamiento del entorno está disponible".
+        equipoPorEntorno: {},
+        focoMuscular: [],
+        recommendationMode: "proactive_confirmed",
+        externalRecordingMode: "manual_watch_import",
         consentimiento: { aceptado: false, fecha: null },
         // ---- LOTE 6: contraseña simulada (nota 24) para poder validar el
         // cambio de contraseña en Perfil; no está ligada al acceso real de
@@ -1350,9 +1511,53 @@
 
       CARDIO_ACTIVIDADES: ["Ninguna", "Correr", "Bici", "Andar", "Trail", "Senderismo"],
 
-      // Seis entornos habituales (multi-selección en el onboarding, selección
-      // única en el paso de entorno del creador guiado).
-      ENTORNOS_ONBOARDING: ["Gimnasio", "Casa", "Parque", "Cinta", "Exterior", "Viaje"],
+      // ---- onboarding-guiado-010: vocabulario del onboarding guiado de 10
+      // decisiones (access.js). Constantes propias, distintas de OBJETIVOS/
+      // EXPERIENCIAS que sigue usando plan-builder.js sin tocar (ver
+      // documentación de esa vista): unificarlas habría exigido reescribir
+      // el mapeo de plan-builder, fuera del alcance de esta tarea.
+      // ---- onboarding-guiado-010 (corrección): "Quemar grasa" se añade en
+      // la posición pedida por el encargo; el paso ahora es multi-selección
+      // (ver access.js), esta lista sigue siendo solo el vocabulario de
+      // opciones disponibles.
+      OBJETIVOS_ONBOARDING: ["Ganar músculo", "Ganar fuerza", "Quemar grasa", "Mejorar rendimiento exterior", "Mantenerme activo"],
+      EXPERIENCIAS_ONBOARDING: ["Empezando", "Con base", "Avanzado"],
+      DIAS_FUERZA_ONBOARDING: ["1", "2", "3", "4", "5+"],
+      ACTIVIDADES_EXTERIORES_ONBOARDING: ["Correr", "Bicicleta", "Caminar/senderismo", "Ninguna"],
+      DURACIONES_SESION: ["30-40 min", "45-60 min", "60-75 min", "más de 75 min"],
+
+      // Cinco entornos habituales (multi-selección en el onboarding, selección
+      // única en el paso de entorno del creador guiado). Sustituye la lista
+      // vieja de 6 valores: sin "Viaje" (no aportaba equipamiento propio) y
+      // "Cinta" fusionada con "Exterior estático" en "Cinta/bici estática".
+      ENTORNOS_ONBOARDING: ["Gimnasio completo", "Gimnasio básico", "Casa", "Exterior", "Cinta/bici estática"],
+
+      // ---- onboarding-guiado-010 (corrección equipamiento): categorías
+      // comprensibles agrupadas (paso 9 del onboarding y editable después en
+      // Perfil), sin marcas/modelos. Sustituye la lista plana anterior:
+      // ahora cada entorno muestra grupos completos preseleccionados, el
+      // usuario solo desmarca. EQUIPAMIENTO_POR_ENTORNO (lista plana) se
+      // calcula más abajo a partir de estos dos, se conserva por
+      // compatibilidad con Perfil y con quien ya lo consulta como lista.
+      EQUIPAMIENTO_GRUPOS: [
+        { key: "pesas-barras", label: "Pesas y barras", items: ["Mancuernas", "Barra olímpica", "Barra EZ", "Discos", "Kettlebells", "Landmine"] },
+        { key: "bancos-soportes", label: "Bancos y soportes", items: ["Banco plano o ajustable", "Rack o jaula", "Soportes para barra", "Máquina Smith"] },
+        { key: "poleas-torso", label: "Poleas y torso", items: ["Polea alta/baja", "Jalón al pecho", "Remo en máquina", "Press de pecho en máquina", "Peck deck / contractor"] },
+        { key: "maquinas-pierna", label: "Máquinas de pierna", items: ["Prensa", "Extensión de cuádriceps", "Curl femoral", "Hack squat", "Aductor/abductor", "Gemelo en máquina"] },
+        { key: "peso-corporal-accesorios", label: "Peso corporal y accesorios", items: ["Barra de dominadas", "Fondos", "Bandas elásticas", "Colchoneta"] },
+        { key: "cardio-interior", label: "Cardio de interior", items: ["Cinta", "Bicicleta estática", "Elíptica", "Remo ergómetro"] }
+      ],
+
+      // Qué grupos (completos, no ítems sueltos) son relevantes por entorno.
+      // "Gimnasio completo" muestra los 6; el resto solo los grupos que
+      // razonablemente existen en ese contexto.
+      EQUIPAMIENTO_GRUPOS_POR_ENTORNO: {
+        "Gimnasio completo": ["pesas-barras", "bancos-soportes", "poleas-torso", "maquinas-pierna", "peso-corporal-accesorios", "cardio-interior"],
+        "Gimnasio básico": ["pesas-barras", "bancos-soportes", "peso-corporal-accesorios"],
+        "Casa": ["pesas-barras", "bancos-soportes", "peso-corporal-accesorios"],
+        "Exterior": ["peso-corporal-accesorios"],
+        "Cinta/bici estática": ["cardio-interior", "peso-corporal-accesorios"]
+      },
 
       PLAN_TEMPLATES: {
         ppl: {
@@ -2568,6 +2773,20 @@
         plantilla: "ppl"
       }
     ];
+
+    // ---- onboarding-guiado-010 (corrección equipamiento): EQUIPAMIENTO_POR_ENTORNO
+    // (lista plana) se deriva de EQUIPAMIENTO_GRUPOS_POR_ENTORNO, no se
+    // mantiene a mano por duplicado: un solo lugar de verdad para qué
+    // ítems trae cada entorno.
+    data.EQUIPAMIENTO_POR_ENTORNO = {};
+    Object.keys(data.EQUIPAMIENTO_GRUPOS_POR_ENTORNO).forEach(function (entorno) {
+      var items = [];
+      data.EQUIPAMIENTO_GRUPOS_POR_ENTORNO[entorno].forEach(function (key) {
+        var grupo = data.EQUIPAMIENTO_GRUPOS.filter(function (g) { return g.key === key; })[0];
+        if (grupo) items = items.concat(grupo.items);
+      });
+      data.EQUIPAMIENTO_POR_ENTORNO[entorno] = items;
+    });
 
     // data.SESSION_EXERCISES (pull/push/legs) se construye dentro de
     // attachDataHelpers(), que se ejecuta a continuación: así se reconstruye

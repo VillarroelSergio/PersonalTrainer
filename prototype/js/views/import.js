@@ -332,7 +332,6 @@
     var badges = App.el("div", "badge-row");
     badges.appendChild(App.el("span", "state state--completada", "Procedencia: importado"));
     if (linked) badges.appendChild(App.el("span", "state state--" + linked.estado, RESISTENCIA_ESTADO_LABEL[linked.estado] || linked.estado));
-    badges.appendChild(App.sync.badge("local"));
     wrap.appendChild(badges);
 
     wrap.appendChild(App.el("p", "lede", s.savedRecord.nombre + " se guardó en tu historial." +

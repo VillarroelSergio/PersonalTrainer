@@ -81,6 +81,15 @@
       }
     }
     if (nav) nav.hidden = !isDestination || isBare;
+
+    // Toda vista que no sea un destino de navegación (sesión de fuerza o
+    // resistencia, check-in, importar, recuperación, compartir…) oculta el
+    // bottomnav y por tanto pierde su única salida. #btnBack vive en la
+    // cabecera fija (.topbar es sticky) para que siempre haya un "Volver"
+    // visible sin depender de hacer scroll. Las vistas "bare" (acceso/
+    // onboarding) no lo muestran: ya gestionan su propia salida.
+    var back = App.$("btnBack");
+    if (back) back.hidden = isDestination || isBare;
   }
 
   function focusViewTitle(mount) {
@@ -335,13 +344,6 @@
         btn.title = info.text;
       }
       App.persist();
-    },
-
-    badge: function (estado) {
-      var info = SYNC_LABELS[estado] || SYNC_LABELS.local;
-      var span = App.el("span", "state state--sync-" + estado);
-      span.textContent = info.icon + " " + info.text.replace(" · simulado", "");
-      return span;
     }
   };
 
@@ -494,6 +496,16 @@
       var snapshot = JSON.parse(raw);
       if (!snapshot || !snapshot.data) return false;
       App.data = App._attachDataHelpers(hydrateMissingData(snapshot.data, App.dataDefaults()));
+      // ---- onboarding-guiado-010 (corrección): un snapshot antiguo tiene
+      // `edad` pero no `birthDate` (hydrateMissingData solo rellena claves
+      // ausentes con null, no puede inventar una fecha). Aproximamos una
+      // fecha de nacimiento compatible (1 de enero del año deducido) para
+      // que la persona pueda seguir editando su perfil por rueda de fecha
+      // sin perder el punto de partida ya declarado.
+      if (App.data.user && App.data.user.birthDate === null && App.data.user.edad) {
+        var approxYear = new Date().getFullYear() - App.data.user.edad;
+        App.data.user.birthDate = approxYear + "-01-01";
+      }
       if (snapshot.theme === "light") document.documentElement.setAttribute("data-theme", "light");
       if (snapshot.sync) syncState = snapshot.sync;
       return true;
@@ -538,9 +550,22 @@
     App.$("btnProfile").addEventListener("click", openProfileSheet);
   }
 
+  // #btnBack es la única salida de una vista sin bottomnav (sesión, check-in,
+  // importar…). Escape hace lo mismo que pulsarlo, salvo que haya una hoja
+  // modal abierta encima: en ese caso Escape la cierra a ella primero
+  // (wireSheetChrome ya cubre ese caso y hace `return` antes de llegar aquí).
+  function wireBack() {
+    App.$("btnBack").addEventListener("click", App.back);
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape" || sheetOpen) return;
+      if (!App.$("btnBack").hidden) App.back();
+    });
+  }
+
   App.start = function () {
     wireSheetChrome();
     wireNav();
+    wireBack();
     wireTheme();
     App.load();
     App.sync.set(App.sync.get());

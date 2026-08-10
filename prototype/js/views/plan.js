@@ -30,8 +30,8 @@
   };
 
   var PROCEDENCIA_LABEL = {
-    local: "Local",
-    importado: "Importado",
+    local: "Registrada en la app",
+    importado: "Importada del reloj",
     adaptado: "Adaptado por ti"
   };
 
@@ -223,9 +223,12 @@
 
     top.appendChild(body);
     if (session) {
+      // La sincronización es un estado de la app entera (icono en la
+      // cabecera), no de cada sesión: repetir aquí el mismo pill genérico en
+      // cada fila contradecía visualmente el estado real de la sesión (nota
+      // revisión UX: "0/4 y Push planificado" junto a "Sincronizado").
       var badges = App.el("div", "dayrow__actions");
       badges.appendChild(App.el("span", "state state--" + session.estado, ESTADO_LABEL[session.estado]));
-      badges.appendChild(App.sync.badge(session.sync || "local"));
       top.appendChild(badges);
     }
     row.appendChild(top);
