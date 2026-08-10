@@ -486,6 +486,8 @@ a.chip:active:not(:focus-visible) {
 .log__bar--omitida   { background: var(--ink-3); }
 .log__bar--planificada { background: var(--cardio); }
 .log__bar--en_curso  { background: var(--accent); }
+.log__bar--condatos  { background: var(--done); }
+.log__bar--sindatos  { background: var(--ink-3); }
 
 .log__body { min-width: 0; flex: 1; }
 .log__title { font-weight: 600; font-size: 0.95rem; }
@@ -741,6 +743,7 @@ a.chip:active:not(:focus-visible) {
   min-height: 44px;
   text-decoration: none;
 }
+.chip[aria-disabled="true"] { color: var(--ink-3); opacity: 0.6; }
 
 .lanes-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
 .lanes-head .section-title { flex: 1; }

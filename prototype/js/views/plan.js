@@ -308,6 +308,9 @@
     host.appendChild(buildBlockProgress(data.plan));
     host.appendChild(buildWeekStats(data));
 
+    host.appendChild(App.el("p", "field__label", "Carga semanal por bloque"));
+    host.appendChild(buildLoadSummary(data));
+
     host.appendChild(App.el("p", "field__label", "Cómo va"));
     host.appendChild(buildEvolutionNote(data));
 
@@ -367,6 +370,24 @@
     figures.appendChild(f3);
 
     return figures;
+  }
+
+  // carga-combinada-semanal (nota MVP §11): reutiliza data.weeklyLoadSummary
+  // (misma clasificación piernas/tren superior/resistencia que la regla de
+  // choque de calendario) y el marcado .log ya existente en Actividad
+  // reciente, sin CSS nuevo salvo el color del indicador.
+  function buildLoadSummary(data) {
+    var list = App.el("ul", "log");
+    data.weeklyLoadSummary().forEach(function (block) {
+      var li = App.el("li", "log__item");
+      li.appendChild(App.el("span", "log__bar log__bar--" + (block.sinDatos ? "sindatos" : "condatos")));
+      var body = App.el("div", "log__body");
+      body.appendChild(App.el("p", "log__title", block.label.charAt(0).toUpperCase() + block.label.slice(1)));
+      body.appendChild(App.el("p", "log__meta", block.texto));
+      li.appendChild(body);
+      list.appendChild(li);
+    });
+    return list;
   }
 
   // LOTE 4 (home.js original): nunca se afirma una evolución que no existe.

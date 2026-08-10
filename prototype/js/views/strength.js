@@ -30,6 +30,12 @@
   var sessionBarEl = null;
   var sessionBarCtx = null; // { session, data, ex, mount }
 
+  // ---- registro-un-toque: última acción reversible dentro de la tarjeta
+  // de ejercicio abierta (repetir serie, añadir serie, cambiar variante).
+  // ponytail: un único slot por ejercicio (igual que data.lastAction para
+  // el calendario), no una pila; basta para deshacer la última acción.
+  var lastExerciseAction = null;
+
   /* ---- Entrada de la vista ------------------------------------------------ */
 
   function render(mount, params) {
@@ -341,10 +347,37 @@
     wrap.appendChild(exhead);
 
     var chiprow = App.el("div", "chiprow");
+
+    // ---- registro-un-toque: repetir la última serie (rellena y confirma la
+    // siguiente serie pendiente en un solo toque) y añadir serie (una serie
+    // más, precargada con el último peso/reps) sin abrir ningún diálogo.
+    var repeatBtn = App.el("button", "chip", "Repetir serie anterior");
+    repeatBtn.type = "button";
+    repeatBtn.addEventListener("click", function () { repeatLastSet(ex, data, session, mount); });
+    chiprow.appendChild(repeatBtn);
+
+    var addSetBtn = App.el("button", "chip", "+ Añadir serie");
+    addSetBtn.type = "button";
+    addSetBtn.addEventListener("click", function () { addSetToExercise(ex, data, session, mount); });
+    chiprow.appendChild(addSetBtn);
+
     var variantBtn = App.el("button", "chip", "Cambiar variante");
     variantBtn.type = "button";
     variantBtn.addEventListener("click", function () { openVariantSheet(session, data, ex, mount); });
     chiprow.appendChild(variantBtn);
+
+    var undoBtn = App.el("button", "chip", "Deshacer");
+    undoBtn.type = "button";
+    var canUndo = !!lastExerciseAction && lastExerciseAction.exId === ex.id;
+    if (!canUndo) undoBtn.setAttribute("aria-disabled", "true");
+    undoBtn.addEventListener("click", function () {
+      if (!lastExerciseAction || lastExerciseAction.exId !== ex.id) {
+        App.toast("No hay ninguna acción reciente que deshacer en este ejercicio.");
+        return;
+      }
+      undoLastExerciseAction(ex, data, session, mount);
+    });
+    chiprow.appendChild(undoBtn);
 
     var guideBtn = App.el("button", "chip", "Ver guía");
     guideBtn.type = "button";
@@ -376,6 +409,8 @@
     });
     wrap.appendChild(diffGroup);
 
+    wrap.appendChild(buildProgressionBlock(ex, data, session));
+
     var lanesHead = App.el("div", "lanes-head");
     lanesHead.appendChild(App.el("p", "section-title", "Series"));
     var modeswitch = App.el("div", "modeswitch");
@@ -406,6 +441,94 @@
 
     mount.appendChild(wrap);
     mountSessionBar(mount, session, data, ex);
+  }
+
+  /* ---- progresion-explicita: decisión visible antes de cada ejercicio
+   * (nota MVP §8). data.progressionSuggestion deriva la sugerencia; al abrir
+   * la tarjeta por primera vez se aplica sola (precarga), y la persona puede
+   * cambiarla en un toque en cualquier momento — el resultado real que
+   * registre siempre prevalece sobre la carga precargada. --------------------- */
+
+  var PROGRESSION_LABELS = { bajar: "Bajar", mantener: "Mantener", subir: "Subir poco" };
+
+  function buildProgressionBlock(ex, data, session) {
+    var suggestion = data.progressionSuggestion(ex);
+    if (ex.progressionDecision === undefined) data.applyProgressionDecision(ex, suggestion.decision);
+
+    var wrap = App.el("div", "progression");
+    wrap.appendChild(App.el("p", "field__label", "Antes de empezar: carga sugerida"));
+
+    var motivo = ex.progressionDecision === suggestion.decision
+      ? suggestion.motivo
+      : "Cambiado manualmente (sugerencia: \"" + PROGRESSION_LABELS[suggestion.decision] + "\" — " + suggestion.motivo + ")";
+    wrap.appendChild(App.el("p", "small progression__motivo", "Motivo: " + motivo));
+
+    var group = App.el("div", "picker picker--wide");
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", "Confirmar o cambiar la decisión de progresión para " + ex.nombre);
+    ["bajar", "mantener", "subir"].forEach(function (key) {
+      var b = App.el("button", "picker__btn", PROGRESSION_LABELS[key]);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(ex.progressionDecision === key));
+      b.addEventListener("click", function () {
+        data.applyProgressionDecision(ex, key);
+        App.navigate("train", { sessionId: session.id }, { replace: true });
+      });
+      group.appendChild(b);
+    });
+    wrap.appendChild(group);
+    return wrap;
+  }
+
+  /* ---- registro-un-toque: repetir la última serie, añadir serie y
+   * deshacer (nota nueva del lote de mejoras). Cada una es una sola
+   * interacción: sin sheet, sin confirmación adicional. -------------------- */
+
+  function repeatLastSet(ex, data, session, mount) {
+    var idx = -1;
+    for (var i = 0; i < ex.sets.length; i++) {
+      if (ex.sets[i].estado !== "hecha") { idx = i; break; }
+    }
+    if (idx < 0) { App.toast("Todas las series de " + ex.nombre + " ya están registradas."); return; }
+
+    var done = ex.sets.filter(function (s) { return s.estado === "hecha"; });
+    var source = done.length ? done[done.length - 1] : ex.sets[idx];
+    lastExerciseAction = {
+      type: "set", exId: ex.id, index: idx,
+      before: { peso: ex.sets[idx].peso, reps: ex.sets[idx].reps, estado: ex.sets[idx].estado }
+    };
+    ex.sets[idx].peso = source.peso;
+    ex.sets[idx].reps = source.reps;
+    ex.sets[idx].estado = "hecha";
+    restTimerExerciseId = ex.id;
+    if (!restTimerHandle) restTimerRemaining = ex.restSeconds;
+    App.toast("Serie " + (idx + 1) + " registrada igual que la anterior.");
+    App.navigate("train", { sessionId: session.id }, { replace: true });
+  }
+
+  function addSetToExercise(ex, data, session, mount) {
+    var last = ex.sets[ex.sets.length - 1] || { peso: 0, reps: 0 };
+    ex.sets.push({ peso: last.peso, reps: last.reps, estado: "pendiente" });
+    lastExerciseAction = { type: "addSet", exId: ex.id };
+    App.toast("Serie añadida a " + ex.nombre + ".");
+    App.navigate("train", { sessionId: session.id }, { replace: true });
+  }
+
+  function undoLastExerciseAction(ex, data, session, mount) {
+    var action = lastExerciseAction;
+    if (action.type === "set") {
+      ex.sets[action.index].peso = action.before.peso;
+      ex.sets[action.index].reps = action.before.reps;
+      ex.sets[action.index].estado = action.before.estado;
+    } else if (action.type === "addSet") {
+      ex.sets.pop();
+    } else if (action.type === "variant") {
+      ex.variante = action.before.variante;
+      ex.ultimoTexto = action.before.ultimoTexto;
+    }
+    lastExerciseAction = null;
+    App.toast("Deshecho.");
+    App.navigate("train", { sessionId: session.id }, { replace: true });
   }
 
   /* ---- Barra persistente de sesión: progreso, ejercicio actual, cierre y
@@ -672,6 +795,7 @@
             btn.appendChild(App.el("span", "opt__name", item.nombre));
             btn.appendChild(App.el("span", "opt__meta", item.meta));
             btn.addEventListener("click", function () {
+              lastExerciseAction = { type: "variant", exId: ex.id, before: { variante: ex.variante, ultimoTexto: ex.ultimoTexto } };
               ex.variante = item.nombre;
               ex.ultimoTexto = item.meta.indexOf("·") >= 0
                 ? item.meta.split("·").pop().trim() + " (con esta variante)"

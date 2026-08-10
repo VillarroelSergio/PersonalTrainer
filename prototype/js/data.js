@@ -230,6 +230,36 @@
       return null;
     };
 
+    // ---- carga-combinada-semanal: resumen por grandes bloques (nota MVP
+    // §11 — "piernas, tren superior o resistencia", "sin datos suficientes"
+    // cuando corresponda; nunca inventa una tendencia). Lee solo HISTORY de
+    // esta semana (semanasAtras === 0); no reimplementa el filtro de
+    // periodo, ya existente en history.js. "recuperacion" no es uno de los
+    // tres bloques declarados y queda fuera.
+    var LOAD_BLOCK_MATCHERS = [
+      { label: "piernas", test: function (h) { return h.tipo === "fuerza" && /legs/i.test(h.nombre || ""); } },
+      { label: "tren superior", test: function (h) { return h.tipo === "fuerza" && /push|pull/i.test(h.nombre || ""); } },
+      { label: "resistencia", test: function (h) { return h.tipo === "resistencia"; } }
+    ];
+
+    data.weeklyLoadSummary = function () {
+      var thisWeek = data.HISTORY.filter(function (h) { return h.semanasAtras === 0; });
+      return LOAD_BLOCK_MATCHERS.map(function (block) {
+        var items = thisWeek.filter(block.test);
+        if (!items.length) return { label: block.label, texto: "Sin datos suficientes esta semana.", sinDatos: true };
+        var minutos = items.reduce(function (sum, h) {
+          var m = /(\d+)\s*min/.exec(h.meta || "");
+          return sum + (m ? parseInt(m[1], 10) : 0);
+        }, 0);
+        var plural = items.length === 1 ? "sesión registrada" : "sesiones registradas";
+        return {
+          label: block.label,
+          texto: items.length + " " + plural + (minutos ? " · " + minutos + " min" : "") + " esta semana.",
+          sinDatos: false
+        };
+      });
+    };
+
     data.moveSession = function (id, targetDayKey) {
       var s = data.findSession(id);
       if (!s) return null;
@@ -740,6 +770,58 @@
 
     // ---- Cierre de sesión de fuerza: minutos proporcionales a lo realmente
     // registrado (nota 05), nunca la duración completa. ----------------------
+    // ---- progresion-explicita: decisión de progresión antes de cada
+    // ejercicio (nota MVP §8 — "progreso pequeño", "se mantiene o reduce",
+    // "el resultado real prevalece"). Deriva una sugerencia de la dificultad
+    // declarada la última vez (ex.difficulty) y de si las repeticiones
+    // llegaron al techo o se quedaron cortas frente al objetivo. Solo
+    // ajusta la carga PRECARGADA de series aún pendientes: nunca toca una
+    // serie ya confirmada ni impide que la persona la edite después.
+    function parseObjetivoRange(objetivo) {
+      var m = /(\d+)\s*-\s*(\d+)/.exec(objetivo || "");
+      if (m) return { min: parseInt(m[1], 10), max: parseInt(m[2], 10) };
+      var single = /×\s*(\d+)/.exec(objetivo || "");
+      if (single) return { min: parseInt(single[1], 10), max: parseInt(single[1], 10) };
+      return null;
+    }
+    function parseUltimoReps(ultimoTexto) {
+      var m = /×\s*(\d+)/.exec(ultimoTexto || "");
+      return m ? parseInt(m[1], 10) : null;
+    }
+
+    data.progressionSuggestion = function (ex) {
+      if (ex.difficulty === "dura") {
+        return { decision: "bajar", motivo: "La última vez marcaste esta variante como demasiado dura." };
+      }
+      var range = parseObjetivoRange(ex.objetivo);
+      var reps = parseUltimoReps(ex.ultimoTexto);
+      if (!range || reps === null) {
+        return { decision: "mantener", motivo: "Sin referencia suficiente para sugerir un cambio: se mantiene la carga precargada." };
+      }
+      if (reps >= range.max) {
+        return { decision: "subir", motivo: "Llegaste a " + reps + " reps, en el techo de tu objetivo (" + range.min + "-" + range.max + ")." };
+      }
+      if (reps < range.min) {
+        return { decision: "bajar", motivo: "Te quedaste en " + reps + " reps, por debajo del objetivo (" + range.min + "-" + range.max + ")." };
+      }
+      return { decision: "mantener", motivo: "Cumpliste el rango previsto (" + range.min + "-" + range.max + ") con esfuerzo adecuado." };
+    };
+
+    // ponytail: la base se captura una sola vez por apertura de tarjeta (en
+    // ex._progressionBase) para que cambiar de decisión varias veces no
+    // componga porcentajes sobre un valor ya modificado.
+    data.applyProgressionDecision = function (ex, decision) {
+      if (!ex._progressionBase) {
+        ex._progressionBase = ex.sets.map(function (s) { return s.peso; });
+      }
+      ex.progressionDecision = decision;
+      var factor = decision === "subir" ? 1.05 : decision === "bajar" ? 0.9 : 1;
+      ex.sets.forEach(function (s, i) {
+        if (s.estado === "hecha") return;
+        s.peso = Math.round((ex._progressionBase[i] * factor) / 0.5) * 0.5;
+      });
+    };
+
     data.closeStrengthSession = function (session, opts) {
       var stats = data.sessionStats(session.id);
       var reference = (data.SESSION_REFERENCE_MINUTES && data.SESSION_REFERENCE_MINUTES[session.id]) || session.duracionPrevista || 45;

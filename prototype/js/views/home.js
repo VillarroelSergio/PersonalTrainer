@@ -219,9 +219,18 @@
   function loadWarningPhrase(warn, data) {
     var cardioDay = data.dayByKey(warn.session.day);
     var legsDay = data.dayByKey(warn.conflict.day);
-    return warn.session.nombre + " el " + (cardioDay ? cardioDay.nombre.toLowerCase() : warn.session.day) +
-      ": justo al lado de " + warn.conflict.nombre.toLowerCase() + " (" + (legsDay ? legsDay.nombre.toLowerCase() : warn.conflict.day) +
-      "). Puedes revisarlo desde Plan.";
+    var cardioIdx = data.DAYS.indexOf(cardioDay);
+    var legsIdx = data.DAYS.indexOf(legsDay);
+    var horas = (cardioIdx >= 0 && legsIdx >= 0) ? Math.abs(legsIdx - cardioIdx) * 24 : null;
+    var free = data.freeDays(warn.session.day)[0];
+
+    var phrase = warn.session.nombre + " el " + (cardioDay ? cardioDay.nombre.toLowerCase() : warn.session.day) +
+      (horas ? " deja " + horas + " h antes de " : " queda junto a ") +
+      warn.conflict.nombre.toLowerCase() + " (" + (legsDay ? legsDay.nombre.toLowerCase() : warn.conflict.day) + ").";
+    phrase += free
+      ? " Si la mueves, " + free.nombre.toLowerCase() + " queda libre esta semana."
+      : " No hay día libre esta semana para moverla: revisa las opciones desde Plan.";
+    return phrase;
   }
 
   // ---- c) Cómo llegas hoy: bloque propio, no un botón dentro de la tarjeta
