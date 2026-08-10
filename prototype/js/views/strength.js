@@ -351,22 +351,19 @@
     // ---- registro-un-toque: repetir la última serie (rellena y confirma la
     // siguiente serie pendiente en un solo toque) y añadir serie (una serie
     // más, precargada con el último peso/reps) sin abrir ningún diálogo.
-    var repeatBtn = App.el("button", "chip", "Repetir serie anterior");
+    var repeatBtn = App.el("button", "chip chip--compact", "Repetir");
     repeatBtn.type = "button";
+    repeatBtn.setAttribute("aria-label", "Repetir serie anterior");
     repeatBtn.addEventListener("click", function () { repeatLastSet(ex, data, session, mount); });
     chiprow.appendChild(repeatBtn);
 
-    var addSetBtn = App.el("button", "chip", "+ Añadir serie");
+    var addSetBtn = App.el("button", "chip chip--compact", "+ Serie");
     addSetBtn.type = "button";
+    addSetBtn.setAttribute("aria-label", "Añadir una serie");
     addSetBtn.addEventListener("click", function () { addSetToExercise(ex, data, session, mount); });
     chiprow.appendChild(addSetBtn);
 
-    var variantBtn = App.el("button", "chip", "Cambiar variante");
-    variantBtn.type = "button";
-    variantBtn.addEventListener("click", function () { openVariantSheet(session, data, ex, mount); });
-    chiprow.appendChild(variantBtn);
-
-    var undoBtn = App.el("button", "chip", "Deshacer");
+    var undoBtn = App.el("button", "chip chip--compact", "Deshacer");
     undoBtn.type = "button";
     var canUndo = !!lastExerciseAction && lastExerciseAction.exId === ex.id;
     if (!canUndo) undoBtn.setAttribute("aria-disabled", "true");
@@ -379,35 +376,11 @@
     });
     chiprow.appendChild(undoBtn);
 
-    var guideBtn = App.el("button", "chip", "Ver guía");
-    guideBtn.type = "button";
-    guideBtn.addEventListener("click", function () { openGuideSheet(ex); });
-    chiprow.appendChild(guideBtn);
-
-    var videoLink = document.createElement("a");
-    videoLink.className = "chip";
-    videoLink.href = ex.video;
-    videoLink.target = "_blank";
-    videoLink.rel = "noopener";
-    videoLink.textContent = "Vídeo en YouTube ↗";
-    chiprow.appendChild(videoLink);
+    var optionsBtn = App.el("button", "chip chip--compact", "Opciones");
+    optionsBtn.type = "button";
+    optionsBtn.addEventListener("click", function () { openExerciseOptionsSheet(session, data, ex, mount); });
+    chiprow.appendChild(optionsBtn);
     wrap.appendChild(chiprow);
-
-    wrap.appendChild(App.el("p", "field__label", "¿Cómo te resultó la última vez? (opcional)"));
-    var diffGroup = App.el("div", "picker");
-    diffGroup.setAttribute("role", "group");
-    diffGroup.setAttribute("aria-label", "Facilidad percibida");
-    [["facil", "Fácil"], ["adecuada", "Adecuada"], ["dura", "Demasiado dura"]].forEach(function (pair) {
-      var b = App.el("button", "picker__btn", pair[1]);
-      b.type = "button";
-      b.setAttribute("aria-pressed", String(ex.difficulty === pair[0]));
-      b.addEventListener("click", function () {
-        ex.difficulty = ex.difficulty === pair[0] ? null : pair[0];
-        App.navigate("train", { sessionId: session.id }, { replace: true });
-      });
-      diffGroup.appendChild(b);
-    });
-    wrap.appendChild(diffGroup);
 
     wrap.appendChild(buildProgressionBlock(ex, data, session));
 
@@ -450,6 +423,54 @@
    * registre siempre prevalece sobre la carga precargada. --------------------- */
 
   var PROGRESSION_LABELS = { bajar: "Bajar", mantener: "Mantener", subir: "Subir poco" };
+
+  function openExerciseOptionsSheet(session, data, ex, mount) {
+    App.openSheet({
+      title: "Opciones de " + ex.nombre,
+      render: function (body) {
+        var variantBtn = App.el("button", "opt", "Cambiar variante");
+        variantBtn.type = "button";
+        variantBtn.addEventListener("click", function () {
+          App.closeSheet();
+          openVariantSheet(session, data, ex, mount);
+        });
+        body.appendChild(variantBtn);
+
+        var guideBtn = App.el("button", "opt", "Ver guía");
+        guideBtn.type = "button";
+        guideBtn.addEventListener("click", function () {
+          App.closeSheet();
+          openGuideSheet(ex);
+        });
+        body.appendChild(guideBtn);
+
+        var videoLink = document.createElement("a");
+        videoLink.className = "btn btn--ghost btn--block";
+        videoLink.href = ex.video;
+        videoLink.target = "_blank";
+        videoLink.rel = "noopener";
+        videoLink.textContent = "Vídeo en YouTube ↗";
+        body.appendChild(videoLink);
+
+        body.appendChild(App.el("p", "field__label", "¿Cómo resultó la última vez? (opcional)"));
+        var diffGroup = App.el("div", "picker");
+        diffGroup.setAttribute("role", "group");
+        diffGroup.setAttribute("aria-label", "Facilidad percibida");
+        [["facil", "Fácil"], ["adecuada", "Adecuada"], ["dura", "Demasiado dura"]].forEach(function (pair) {
+          var b = App.el("button", "picker__btn", pair[1]);
+          b.type = "button";
+          b.setAttribute("aria-pressed", String(ex.difficulty === pair[0]));
+          b.addEventListener("click", function () {
+            ex.difficulty = ex.difficulty === pair[0] ? null : pair[0];
+            App.closeSheet();
+            App.navigate("train", { sessionId: session.id }, { replace: true });
+          });
+          diffGroup.appendChild(b);
+        });
+        body.appendChild(diffGroup);
+      }
+    });
+  }
 
   function buildProgressionBlock(ex, data, session) {
     var suggestion = data.progressionSuggestion(ex);

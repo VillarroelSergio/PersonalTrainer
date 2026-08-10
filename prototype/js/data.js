@@ -1734,8 +1734,8 @@
       // primero durante la demo.
       HISTORY: [
         {
-          id: "hist-push-s0", tipo: "fuerza", fecha: "Lunes", semanasAtras: 0,
-          nombre: "Push", meta: "Lunes · 52 min · 4 de 4 ejercicios", estado: "completada",
+          id: "hist-push-s0", tipo: "fuerza", fecha: "Lunes, 28 de julio", semanasAtras: 1,
+          nombre: "Push", meta: "Lunes, 28 de julio · 52 min · 4 de 4 ejercicios", estado: "completada",
           procedencia: "local", sync: "sincronizado",
           detalle: { ejercicios: [
             { nombre: "Press banca", carga: 60, reps: 8, series: 3, volumen: 1440 },
@@ -1744,8 +1744,8 @@
           versions: []
         },
         {
-          id: "hist-run-easy-s0", tipo: "resistencia", fecha: "Martes", semanasAtras: 0,
-          nombre: "Carrera suave", meta: "Martes · 30 min", estado: "completada",
+          id: "hist-run-easy-s0", tipo: "resistencia", fecha: "Martes, 29 de julio", semanasAtras: 1,
+          nombre: "Carrera suave", meta: "Martes, 29 de julio · 30 min", estado: "completada",
           procedencia: "importado", sync: "sincronizado",
           detalle: { duracionMin: 30, distanciaKm: 4.8, ritmo: "6:15 min/km", fcMedia: 138, cargaEstimada: "baja" },
           versions: []

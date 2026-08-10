@@ -36,3 +36,20 @@ test("hidrata un snapshot anterior para que el onboarding pueda mostrar deporte 
   assert.deepEqual(Array.from(data.ENTORNOS_ONBOARDING), ["Gimnasio completo", "Gimnasio básico", "Casa", "Exterior", "Cinta/bici estática"]);
   assert.deepEqual(Array.from(data.user.entornos), []);
 });
+
+test("la actividad reciente separa visualmente la semana anterior del plan actual", () => {
+  const context = vm.createContext({ window: {}, console });
+  context.window.window = context.window;
+  vm.runInContext(readFileSync(resolve("prototype/js/data.js"), "utf8"), context);
+
+  const history = context.window.App.dataDefaults().HISTORY;
+  const previousWeek = history.filter((entry) => entry.id === "hist-push-s0" || entry.id === "hist-run-easy-s0");
+
+  assert.equal(previousWeek.length, 2);
+  assert.ok(previousWeek.every((entry) => entry.semanasAtras === 1));
+  assert.deepEqual(
+    Array.from(previousWeek, (entry) => entry.fecha),
+    ["Lunes, 28 de julio", "Martes, 29 de julio"]
+  );
+  assert.ok(previousWeek.every((entry) => /\d{1,2} de julio/.test(entry.meta)));
+});

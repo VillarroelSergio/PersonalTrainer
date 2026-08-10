@@ -730,7 +730,7 @@ a.chip:active:not(:focus-visible) {
 .exhead__variant { font-weight: 600; font-size: 1.05rem; letter-spacing: -0.015em; }
 .exhead__line { font-size: 0.84rem; color: var(--ink-2); margin-top: 3px; }
 
-.chiprow { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 4px; }
+.chiprow { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 2px; }
 
 .chip {
   display: inline-flex; align-items: center; justify-content: center; gap: 4px;
@@ -744,6 +744,9 @@ a.chip:active:not(:focus-visible) {
   text-decoration: none;
 }
 .chip[aria-disabled="true"] { color: var(--ink-3); opacity: 0.6; }
+.chip--compact { min-height: 36px; padding: 6px 10px; font-size: 0.76rem; }
+
+.progression .picker__btn { min-height: 38px; padding: 7px 10px; }
 
 .lanes-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
 .lanes-head .section-title { flex: 1; }
