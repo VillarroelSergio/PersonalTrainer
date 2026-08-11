@@ -1,0 +1,39 @@
+.bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 12px;
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg);
+  border-top: 1px solid var(--rule-soft);
+}
+
+.back {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.continue {
+  flex: 1;
+  min-height: 44px;
+  border-radius: var(--r-md);
+  border: none;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  font-size: 1rem;
+  transition: transform var(--dur-press) var(--ease-out), opacity var(--dur-state) var(--ease-out);
+}
+
+.continue:disabled {
+  opacity: 0.45;
+}
+
+.continue:active:not(:disabled):not(:focus-visible) {
+  transform: scale(0.98);
+}

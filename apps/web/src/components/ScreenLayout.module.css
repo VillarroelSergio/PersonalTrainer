@@ -1,0 +1,21 @@
+.wrap {
+  padding: 16px 20px 24px;
+}
+
+.title {
+  margin: 4px 0 6px;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.hint {
+  margin: 0 0 18px;
+  color: var(--ink-2);
+  font-size: 0.95rem;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

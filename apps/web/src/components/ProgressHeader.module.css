@@ -1,0 +1,36 @@
+.wrap {
+  padding: 12px 20px 8px;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.caption {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.rail {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+}
+
+.dot {
+  height: 4px;
+  flex: 1;
+  border-radius: 999px;
+  background: var(--rule);
+}
+
+.dotDone {
+  background: var(--ink-3);
+}
+
+.dotCurrent {
+  background: var(--accent);
+}
