@@ -1,94 +1,104 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { WEEKDAY_LABEL, WEEKDAYS, type Weekday } from "@/lib/weekdays";
 
 type EditBody =
   | { kind: "move"; isoWeekStart: string; sessionIndex: number; targetDay: Weekday }
-  | { kind: "skip" | "remove" | "restore" | "remove_added"; isoWeekStart: string; sessionIndex: number }
-  | { kind: "add"; isoWeekStart: string; day: Weekday; title: string; sessionKind: "strength" | "endurance"; estimatedMinutes: number };
+  | { kind: "skip" | "remove" | "restore"; isoWeekStart: string; sessionIndex: number };
 
-async function submitEdit(planId: string, body: EditBody): Promise<boolean> {
+type PlanSessionActionsProps = { planId: string; weekStart: string; sessionIndex: number; status: string; currentDay: Weekday };
+
+async function submitEdit(planId: string, body: EditBody): Promise<string | null> {
   const response = await fetch(`/api/v1/plans/${planId}/session-edits`, {
     method: "POST", credentials: "same-origin",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
   });
-  return response.ok;
+  if (response.ok) return null;
+  const parsed = await response.json().catch(() => null);
+  return parsed?.error?.message ?? "No pudimos guardar el cambio. Inténtalo de nuevo.";
 }
 
-function RowActions({ planId, weekStart, sessionIndex, status, isAdded }: { planId: string; weekStart: string; sessionIndex: number; status: string; isAdded: boolean }) {
+export default function PlanSessionActions({ planId, weekStart, sessionIndex, status, currentDay }: PlanSessionActionsProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const [targetDay, setTargetDay] = useState<Weekday>("monday");
+  // Moving to the day the session is already on is a no-op, so it's excluded
+  // from the target options below — default to the first other day instead.
+  const otherDays = WEEKDAYS.filter((day) => day !== currentDay) as Weekday[];
+  const [targetDay, setTargetDay] = useState<Weekday>(otherDays[0] ?? currentDay);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!sheetOpen) return;
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") closeSheet();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [sheetOpen]);
+
+  function closeSheet() {
+    setSheetOpen(false);
+    setError(null);
+    triggerRef.current?.focus();
+  }
 
   async function run(body: EditBody) {
     setPending(true);
-    const ok = await submitEdit(planId, body);
+    setError(null);
+    const message = await submitEdit(planId, body);
     setPending(false);
-    if (ok) router.refresh();
+    if (message) { setError(message); return; }
+    setSheetOpen(false);
+    router.refresh();
   }
 
   const hasAdjustment = status === "skipped" || status === "removed" || status === "moved_here";
+  const sheetTitleId = `planRowSheetTitle-${sessionIndex}`;
 
   return (
-    <div className="dayrow__actions">
-      {!isAdded && (
-        <>
-          <select aria-label="Mover a día" value={targetDay} onChange={(event) => setTargetDay(event.target.value as Weekday)} disabled={pending}>
-            {WEEKDAYS.map((day) => <option key={day} value={day}>{WEEKDAY_LABEL[day as Weekday]}</option>)}
-          </select>
-          <button type="button" className="chip" disabled={pending} onClick={() => run({ kind: "move", isoWeekStart: weekStart, sessionIndex, targetDay })}>Mover</button>
-          <button type="button" className="chip" disabled={pending} onClick={() => run({ kind: "skip", isoWeekStart: weekStart, sessionIndex })}>Omitir</button>
-          <button type="button" className="chip" disabled={pending} onClick={() => run({ kind: "remove", isoWeekStart: weekStart, sessionIndex })}>Eliminar</button>
-          {hasAdjustment ? (
-            <button type="button" className="chip" disabled={pending} onClick={() => run({ kind: "restore", isoWeekStart: weekStart, sessionIndex })}>Deshacer</button>
-          ) : null}
-        </>
-      )}
-      {isAdded ? (
-        <button type="button" className="chip" disabled={pending} onClick={() => run({ kind: "remove_added", isoWeekStart: weekStart, sessionIndex })}>Quitar sesión añadida</button>
+    <>
+      <button ref={triggerRef} type="button" className="icon-btn" aria-label="Más acciones para esta sesión" onClick={() => setSheetOpen(true)}>
+        <span aria-hidden="true">⋯</span>
+      </button>
+
+      {sheetOpen ? (
+        <div className="sheet-overlay" role="presentation" onClick={closeSheet}>
+          <div className="sheet" role="dialog" aria-modal="true" aria-labelledby={sheetTitleId} onClick={(event) => event.stopPropagation()}>
+            <div className="sheet__header sheet__header--compact">
+              <h2 id={sheetTitleId}>Más acciones</h2>
+              <button type="button" className="icon-btn" aria-label="Cerrar" onClick={closeSheet}>×</button>
+            </div>
+            {error ? <p className="notice notice--warn" role="alert">{error}</p> : null}
+            <div className="sheet__body sheet__body--compact">
+              <div className="field field--compact">
+                <label className="field__label" htmlFor={`planRowTargetDay-${sessionIndex}`}>Mover a</label>
+                <select id={`planRowTargetDay-${sessionIndex}`} value={targetDay} onChange={(event) => setTargetDay(event.target.value as Weekday)} disabled={pending}>
+                  {otherDays.map((day) => <option key={day} value={day}>{WEEKDAY_LABEL[day as Weekday]}</option>)}
+                </select>
+              </div>
+              <button type="button" className="opt opt--compact" disabled={pending} onClick={() => run({ kind: "move", isoWeekStart: weekStart, sessionIndex, targetDay })}>
+                <span className="opt__name">Mover</span>
+              </button>
+              <button type="button" className="opt opt--compact" disabled={pending} onClick={() => run({ kind: "skip", isoWeekStart: weekStart, sessionIndex })}>
+                <span className="opt__name">Omitir</span>
+              </button>
+              <button type="button" className="opt opt--compact" disabled={pending} onClick={() => run({ kind: "remove", isoWeekStart: weekStart, sessionIndex })}>
+                <span className="opt__name">Eliminar</span>
+              </button>
+              {hasAdjustment ? (
+                <button type="button" className="opt opt--compact" disabled={pending} onClick={() => run({ kind: "restore", isoWeekStart: weekStart, sessionIndex })}>
+                  <span className="opt__name">Deshacer</span>
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
       ) : null}
-    </div>
+    </>
   );
 }
-
-function AddForm({ planId, weekStart }: { planId: string; weekStart: string }) {
-  const router = useRouter();
-  const [day, setDay] = useState<Weekday>("monday");
-  const [title, setTitle] = useState("");
-  const [sessionKind, setSessionKind] = useState<"strength" | "endurance">("strength");
-  const [estimatedMinutes, setEstimatedMinutes] = useState(30);
-  const [pending, setPending] = useState(false);
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!title.trim()) return;
-    setPending(true);
-    const ok = await submitEdit(planId, { kind: "add", isoWeekStart: weekStart, day, title: title.trim(), sessionKind, estimatedMinutes });
-    setPending(false);
-    if (ok) { setTitle(""); router.refresh(); }
-  }
-
-  return (
-    <form className="field" onSubmit={submit}>
-      <label className="field__label" htmlFor="planAddTitle">Nombre</label>
-      <input id="planAddTitle" type="text" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={80} required />
-      <div className="picker" role="group" aria-label="Día">
-        {WEEKDAYS.map((weekday) => (
-          <button key={weekday} type="button" className="picker__btn" aria-pressed={day === weekday} onClick={() => setDay(weekday as Weekday)}>{WEEKDAY_LABEL[weekday as Weekday]}</button>
-        ))}
-      </div>
-      <div className="picker" role="group" aria-label="Tipo">
-        <button type="button" className="picker__btn" aria-pressed={sessionKind === "strength"} onClick={() => setSessionKind("strength")}>Fuerza</button>
-        <button type="button" className="picker__btn" aria-pressed={sessionKind === "endurance"} onClick={() => setSessionKind("endurance")}>Resistencia</button>
-      </div>
-      <label className="field__label" htmlFor="planAddMinutes">Minutos estimados</label>
-      <input id="planAddMinutes" type="number" min={10} max={180} value={estimatedMinutes} onChange={(event) => setEstimatedMinutes(Number(event.target.value))} />
-      <button type="submit" className="btn btn--primary btn--block" disabled={pending}>Añadir sesión</button>
-    </form>
-  );
-}
-
-export const PlanSessionActions = { RowActions, AddForm };

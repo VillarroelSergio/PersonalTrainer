@@ -63,7 +63,7 @@ describe("history repository", () => {
     completeExposure(workoutRepo, sqlite, week3.getTime(), "partial");
 
     const adherence = historyRepo.computeAdherence("account-a", "plan-a", week3);
-    expect(adherence).toEqual({ previstas: 3, completadas: 1, adaptadas: 1, parciales: 1, omitidas: 0, recolocadas: 0 });
+    expect(adherence).toEqual({ previstas: 3, completadas: 1, adaptadas: 1, parciales: 1, omitidas: 0, recolocadas: 0, recuperacionValida: 0 });
 
     const progress = historyRepo.listVariantProgress("account-a");
     expect(progress).toHaveLength(1);
@@ -103,6 +103,6 @@ describe("history repository", () => {
       .run("adj-1", "account-a", "plan-a", "2026-08-03", 0, "monday", "reschedule", "wednesday", "[]", "fake-recommendation", week1.getTime());
 
     const adherence = historyRepo.computeAdherence("account-a", "plan-a", week1);
-    expect(adherence).toEqual({ previstas: 1, completadas: 0, adaptadas: 0, parciales: 0, omitidas: 0, recolocadas: 1 });
+    expect(adherence).toEqual({ previstas: 1, completadas: 0, adaptadas: 0, parciales: 0, omitidas: 0, recolocadas: 1, recuperacionValida: 0 });
   });
 });

@@ -59,7 +59,11 @@ export function createWorkoutSessionRepository(database: Db, sqliteHandle: Datab
       .get();
     if (existing) {
       const exercises = database.select().from(sessionExercise).where(and(eq(sessionExercise.workoutSessionId, existing.id), eq(sessionExercise.status, "active"))).all();
-      return { workoutSession: existing, sessionExercises: exercises };
+      const exercisesWithSets = exercises.map((exercise) => ({
+        ...exercise,
+        sets: database.select().from(setPerformance).where(eq(setPerformance.sessionExerciseId, exercise.id)).orderBy(setPerformance.setNumber).all()
+      }));
+      return { workoutSession: existing, sessionExercises: exercisesWithSets };
     }
 
     const plan = database.select().from(trainingPlan).where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId))).get();

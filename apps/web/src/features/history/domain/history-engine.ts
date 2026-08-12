@@ -11,10 +11,11 @@ import type { SessionCloseStatus } from "@/features/workouts/domain/progression"
  * conversiones a "recovery" (Fase 2 no genera un registro de sesión real
  * para esa versión suave todavía — deuda declarada, no un error de cómputo).
  */
-export type AdherenceCounts = { previstas: number; completadas: number; adaptadas: number; parciales: number; omitidas: number; recolocadas: number };
+export type AdherenceCounts = { previstas: number; completadas: number; adaptadas: number; parciales: number; omitidas: number; recolocadas: number; recuperacionValida: number };
 
 export type PlannedStrengthOccurrence = { sessionIndex: number; day: Weekday };
-export type ExecutedOccurrence = { sessionIndex: number; isoWeekStart: string; status: SessionCloseStatus };
+/** `source: "recovery"` marks an occurrence closed via a recovery session (never strength volume) so the presentation layer can show "recuperación válida" as the subset of completadas/adaptadas it already is — never counted twice. */
+export type ExecutedOccurrence = { sessionIndex: number; isoWeekStart: string; status: SessionCloseStatus; source?: "recovery" };
 export type AdjustmentOccurrence = { sessionIndex: number; isoWeekStart: string; kind: string };
 
 function addDays(date: Date, days: number): Date {
@@ -25,7 +26,7 @@ function midnight(date: Date): Date {
 }
 
 export function computeAdherence(plannedSessions: PlannedStrengthOccurrence[], planStartedAt: Date, today: Date, executed: ExecutedOccurrence[], adjustments: AdjustmentOccurrence[]): AdherenceCounts {
-  const counts: AdherenceCounts = { previstas: 0, completadas: 0, adaptadas: 0, parciales: 0, omitidas: 0, recolocadas: 0 };
+  const counts: AdherenceCounts = { previstas: 0, completadas: 0, adaptadas: 0, parciales: 0, omitidas: 0, recolocadas: 0, recuperacionValida: 0 };
   if (plannedSessions.length === 0) return counts;
 
   const todayMidnight = midnight(today);
@@ -44,6 +45,7 @@ export function computeAdherence(plannedSessions: PlannedStrengthOccurrence[], p
         if (execution.status === "completed") counts.completadas += 1;
         else if (execution.status === "adapted") counts.adaptadas += 1;
         else counts.parciales += 1;
+        if (execution.source === "recovery") counts.recuperacionValida += 1;
         continue;
       }
 

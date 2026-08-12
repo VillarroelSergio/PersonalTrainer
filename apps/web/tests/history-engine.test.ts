@@ -17,18 +17,24 @@ describe("computeAdherence", () => {
       { sessionIndex: 0, isoWeekStart: "2026-08-24", status: "partial" }
     ];
     const result = computeAdherence(planned, parseIsoDateLocal("2026-08-10"), parseIsoDateLocal("2026-08-24"), executed, []);
-    expect(result).toEqual({ previstas: 3, completadas: 1, adaptadas: 1, parciales: 1, omitidas: 0, recolocadas: 0 });
+    expect(result).toEqual({ previstas: 3, completadas: 1, adaptadas: 1, parciales: 1, omitidas: 0, recolocadas: 0, recuperacionValida: 0 });
   });
 
   it("counts a due occurrence with no execution and no adjustment as omitted", () => {
     const result = computeAdherence(planned, parseIsoDateLocal("2026-08-10"), parseIsoDateLocal("2026-08-10"), [], []);
-    expect(result).toEqual({ previstas: 1, completadas: 0, adaptadas: 0, parciales: 0, omitidas: 1, recolocadas: 0 });
+    expect(result).toEqual({ previstas: 1, completadas: 0, adaptadas: 0, parciales: 0, omitidas: 1, recolocadas: 0, recuperacionValida: 0 });
   });
 
   it("counts a rescheduled occurrence as recolocada, not omitida, even without a matching workout_session row", () => {
     const adjustments: AdjustmentOccurrence[] = [{ sessionIndex: 0, isoWeekStart: "2026-08-10", kind: "reschedule" }];
     const result = computeAdherence(planned, parseIsoDateLocal("2026-08-10"), parseIsoDateLocal("2026-08-10"), [], adjustments);
-    expect(result).toEqual({ previstas: 1, completadas: 0, adaptadas: 0, parciales: 0, omitidas: 0, recolocadas: 1 });
+    expect(result).toEqual({ previstas: 1, completadas: 0, adaptadas: 0, parciales: 0, omitidas: 0, recolocadas: 1, recuperacionValida: 0 });
+  });
+
+  it("records a recovery session as a valid adherence subset without counting it twice", () => {
+    const executed: ExecutedOccurrence[] = [{ sessionIndex: 0, isoWeekStart: "2026-08-10", status: "adapted", source: "recovery" }];
+    const result = computeAdherence(planned, parseIsoDateLocal("2026-08-10"), parseIsoDateLocal("2026-08-10"), executed, []);
+    expect(result).toMatchObject({ previstas: 1, adaptadas: 1, recuperacionValida: 1 });
   });
 
   it("does not count next week's occurrence until its own day arrives", () => {

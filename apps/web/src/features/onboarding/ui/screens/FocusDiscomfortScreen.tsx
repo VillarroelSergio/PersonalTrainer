@@ -39,25 +39,11 @@ export function FocusDiscomfortScreen({ optionalMuscleFocus, onToggleFocus, disc
 
       <div>
         <p style={{ fontWeight: 600, marginBottom: 8 }}>Zona amplia de molestia (opcional, es contexto, no diagnóstico)</p>
-        <div className={styles.bodyMap} role="group" aria-label="Mapa corporal de zonas amplias">
-          <div className={styles.silhouette} aria-hidden="true">
-            <div className={styles.head} />
-            <div className={styles.torso} />
-            <div className={styles.armLeft} />
-            <div className={styles.armRight} />
-            <div className={styles.legLeft} />
-            <div className={styles.legRight} />
-          </div>
+        <div className={styles.zoneGrid} role="group" aria-label="Zonas amplias de molestia">
           {DISCOMFORT_ZONE_OPTIONS.map((zone) => (
-            <button
-              key={zone.value}
-              type="button"
-              className={discomfort?.zone === zone.value ? `${styles.hotspot} ${styles.hotspotSelected}` : styles.hotspot}
-              style={{ top: `${zone.top}%`, left: `${zone.left}%` }}
-              aria-pressed={discomfort?.zone === zone.value}
-              onClick={() => selectZone(zone.value)}
-            >
-              {zone.label}
+            <button key={zone.value} type="button" className={`${styles.zoneCard}${discomfort?.zone === zone.value ? ` ${styles.zoneCardSelected}` : ""}`} aria-pressed={discomfort?.zone === zone.value} onClick={() => selectZone(zone.value)}>
+              <span className={`${styles.zoneArt} ${styles[`zoneArt-${zone.value}`]}`} aria-hidden="true" />
+              <span>{zone.label}</span>
             </button>
           ))}
         </div>

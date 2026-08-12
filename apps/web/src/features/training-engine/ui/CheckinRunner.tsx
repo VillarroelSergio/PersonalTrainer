@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   DISCOMFORT_INTENSITY_OPTIONS,
   DISCOMFORT_KIND_OPTIONS,
@@ -10,6 +11,7 @@ import {
 } from "@/features/onboarding/presentation/constants";
 import type { Discomfort, DiscomfortZone } from "@/features/onboarding/presentation/types";
 import bodyMapStyles from "@/features/onboarding/ui/screens/FocusDiscomfortScreen.module.css";
+import { isBodyMapVisible, resolveDiscomfortForSubmit, MOLESTIA_OPTIONS, type MolestiaLevel } from "@/features/training-engine/domain/checkin-discomfort";
 
 type Energy = "low" | "normal" | "high";
 type TimeOption = 20 | 40 | 60 | 90;
@@ -26,12 +28,17 @@ type Recommendation = {
 
 const SAFETY_TEXT = "Esto no es un diagnóstico. Si la molestia persiste o es intensa, considera detener o adaptar la sesión y consultar a un profesional de salud.";
 
+// Recurso aprobado (docs/PROTOTYPE-PARITY-MOBILE.md): mismo asset que prototype/assets/body-map/.
+// La imagen combina vista frontal y trasera; .bodymap-crop recorta la mitad frontal (ver app.css).
+const BODY_MAP_IMG = "/library/body-map/body-map-front-back-v1.webp";
+const BODY_MAP_ALT = "Mapa corporal frontal con zonas amplias para registrar una molestia.";
+
 export function CheckinRunner() {
   const router = useRouter();
   const [energy, setEnergy] = useState<Energy | null>(null);
   const [motivation, setMotivation] = useState<Energy | null>(null);
   const [timeAvailableMinutes, setTimeAvailableMinutes] = useState<TimeOption | null>(null);
-  const [equipmentUnavailable, setEquipmentUnavailable] = useState(false);
+  const [molestiaLevel, setMolestiaLevel] = useState<MolestiaLevel>("none");
   const [discomfort, setDiscomfort] = useState<Discomfort | null>(null);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,18 +47,24 @@ export function CheckinRunner() {
 
   function selectZone(zone: DiscomfortZone) {
     if (discomfort?.zone === zone) { setDiscomfort(null); return; }
-    setDiscomfort({ zone, intensity: "mild" });
+    setDiscomfort({ zone, intensity: molestiaLevel === "none" ? "mild" : molestiaLevel });
+  }
+
+  function changeMolestiaLevel(level: MolestiaLevel) {
+    setMolestiaLevel(level);
+    if (level === "none") setDiscomfort(null);
   }
 
   async function reviewProposal() {
     setSubmitting(true);
     setError(null);
+    const submittedDiscomfort = resolveDiscomfortForSubmit(molestiaLevel, discomfort);
     try {
       const response = await fetch("/api/v1/checkins", {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ energy, motivation, timeAvailableMinutes, equipmentUnavailable, discomfort })
+        body: JSON.stringify({ energy, motivation, timeAvailableMinutes, equipmentUnavailable: false, discomfort: submittedDiscomfort })
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error?.message ?? "No pudimos revisar tu check-in.");
@@ -110,6 +123,7 @@ export function CheckinRunner() {
         {recommendation.importantDiscomfort && <p className="notice notice--warn">{SAFETY_TEXT}</p>}
 
         <button type="button" className="btn btn--ghost btn--block" disabled={deciding} onClick={() => decide("keep")}>Mantener sesión prevista</button>
+        <button type="button" className="btn btn--quiet" disabled={deciding} onClick={() => setRecommendation(null)}>Editar check-in</button>
         <button type="button" className="btn btn--quiet" disabled={deciding} onClick={() => decide("reject")}>Descartar propuesta</button>
       </section>
     );
@@ -117,9 +131,8 @@ export function CheckinRunner() {
 
   return (
     <section className="view-checkin">
-      <p className="kicker">Hoy</p>
       <h1 className="view-title">¿Cómo llegas hoy?</h1>
-      <p className="lede small">Todo es opcional y rápido. Con tus respuestas te proponemos alternativas explicadas: tú decides si las aplicas.</p>
+      <p className="lede small">Responde en segundos, es opcional.</p>
       {error && <p className="notice notice--warn" role="alert">{error}</p>}
 
       <PickerField label="Energía" options={["low", "normal", "high"] as Energy[]} labels={{ low: "Baja", normal: "Normal", high: "Alta" }} value={energy} onChange={setEnergy} />
@@ -133,52 +146,54 @@ export function CheckinRunner() {
       />
 
       <div className="field">
-        <p className="field__label">Equipo (opcional)</p>
-        <div className="picker" role="group" aria-label="Equipo habitual disponible">
-          <button type="button" className="picker__btn" aria-pressed={equipmentUnavailable} onClick={() => setEquipmentUnavailable((value) => !value)}>
-            No tengo mi equipo habitual hoy
-          </button>
-        </div>
-      </div>
-
-      <div className="field">
-        <p className="field__label">¿En qué zona amplia notas una molestia? (opcional, es contexto, no diagnóstico)</p>
-        <div className={bodyMapStyles.bodyMap} role="group" aria-label="Mapa corporal de zonas amplias">
-          <div className={bodyMapStyles.silhouette} aria-hidden="true">
-            <div className={bodyMapStyles.head} />
-            <div className={bodyMapStyles.torso} />
-            <div className={bodyMapStyles.armLeft} />
-            <div className={bodyMapStyles.armRight} />
-            <div className={bodyMapStyles.legLeft} />
-            <div className={bodyMapStyles.legRight} />
-          </div>
-          {DISCOMFORT_ZONE_OPTIONS.map((zone) => (
-            <button
-              key={zone.value}
-              type="button"
-              className={discomfort?.zone === zone.value ? `${bodyMapStyles.hotspot} ${bodyMapStyles.hotspotSelected}` : bodyMapStyles.hotspot}
-              style={{ top: `${zone.top}%`, left: `${zone.left}%` }}
-              aria-pressed={discomfort?.zone === zone.value}
-              onClick={() => selectZone(zone.value)}
-            >
-              {zone.label}
+        <p className="field__label">Molestias (opcional)</p>
+        <div className="picker picker--wide" role="group" aria-label="Molestias">
+          {MOLESTIA_OPTIONS.map((option) => (
+            <button key={option.value} type="button" className="picker__btn" aria-pressed={molestiaLevel === option.value} onClick={() => changeMolestiaLevel(option.value)}>
+              {option.label}
             </button>
           ))}
         </div>
-
-        {discomfort && (
-          <div className={bodyMapStyles.detail}>
-            <ChipRow label="Lado" options={DISCOMFORT_SIDE_OPTIONS} selected={discomfort.side} onSelect={(side) => setDiscomfort({ ...discomfort, side })} />
-            <ChipRow label="Intensidad" options={DISCOMFORT_INTENSITY_OPTIONS} selected={discomfort.intensity} onSelect={(intensity) => setDiscomfort({ ...discomfort, intensity })} />
-            <ChipRow label="Tipo" options={DISCOMFORT_KIND_OPTIONS} selected={discomfort.kind} onSelect={(kind) => setDiscomfort({ ...discomfort, kind })} />
-            {discomfort.intensity === "important" && <p className="notice notice--warn">{SAFETY_TEXT}</p>}
-          </div>
-        )}
       </div>
 
-      <button type="button" className="btn btn--primary btn--block" disabled={submitting} onClick={reviewProposal}>
-        {submitting ? "Revisando…" : "Revisar propuesta"}
-      </button>
+      {isBodyMapVisible(molestiaLevel) && (
+        <div className="field">
+          <p className="lede small">
+            Información orientativa de bienestar, no un diagnóstico: no identifica lesiones ni garantiza la recuperación. Sirve para explicar el ajuste de la sesión de hoy.
+          </p>
+          <p className="field__label">¿En qué zona amplia lo notas?</p>
+          <div className="bodymap-crop" role="group" aria-label="Mapa corporal de zonas amplias">
+            <Image className="bodymap-img" src={BODY_MAP_IMG} alt={BODY_MAP_ALT} width={640} height={800} priority={false} />
+            {DISCOMFORT_ZONE_OPTIONS.map((zone) => (
+              <button
+                key={zone.value}
+                type="button"
+                className="zone"
+                style={{ top: `${zone.top}%`, left: `${zone.left}%` }}
+                aria-pressed={discomfort?.zone === zone.value}
+                onClick={() => selectZone(zone.value)}
+              >
+                {zone.label}
+              </button>
+            ))}
+          </div>
+
+          {discomfort && (
+            <div className={bodyMapStyles.detail}>
+              <ChipRow label="Lado" options={DISCOMFORT_SIDE_OPTIONS} selected={discomfort.side} onSelect={(side) => setDiscomfort({ ...discomfort, side })} />
+              <ChipRow label="Intensidad" options={DISCOMFORT_INTENSITY_OPTIONS} selected={discomfort.intensity} onSelect={(intensity) => setDiscomfort({ ...discomfort, intensity })} />
+              <ChipRow label="Tipo" options={DISCOMFORT_KIND_OPTIONS} selected={discomfort.kind} onSelect={(kind) => setDiscomfort({ ...discomfort, kind })} />
+              {discomfort.intensity === "important" && <p className="notice notice--warn">{SAFETY_TEXT}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="checkin-cta">
+        <button type="button" className="btn btn--primary btn--block" disabled={submitting} onClick={reviewProposal}>
+          {submitting ? "Revisando…" : "Revisar propuesta"}
+        </button>
+      </div>
     </section>
   );
 }
@@ -187,7 +202,7 @@ function PickerField<T extends string | number>({ label, options, labels, value,
   return (
     <div className="field">
       <p className="field__label">{label} (opcional)</p>
-      <div className="picker picker--wide" role="group" aria-label={label}>
+      <div className="picker picker--wide picker--compact" role="group" aria-label={label}>
         {options.map((option) => (
           <button key={option} type="button" className="picker__btn" aria-pressed={value === option} onClick={() => onChange(value === option ? null : option)}>
             {labels[String(option)]}

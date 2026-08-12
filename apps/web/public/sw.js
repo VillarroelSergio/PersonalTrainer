@@ -8,7 +8,7 @@
  *  - everything under /api/ always goes to the network untouched — mutations
  *    go through the outbox (src/lib/offline), not the service worker.
  */
-const SHELL_CACHE = "trainer-shell-v1";
+const SHELL_CACHE = "trainer-shell-v2";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();

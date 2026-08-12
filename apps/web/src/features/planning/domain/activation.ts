@@ -21,7 +21,7 @@ export class ProposalNotFoundError extends Error {
  * this can run against an in-memory database in tests.
  */
 export function createActivation(database: typeof productionDb, sqliteHandle: Database.Database) {
-  const runActivation = sqliteHandle.transaction((ownerId: string, proposalId: string) => {
+  const runActivation = sqliteHandle.transaction((ownerId: string, proposalId: string, proposalJson?: string) => {
     const proposal = database
       .select()
       .from(planProposal)
@@ -29,12 +29,14 @@ export function createActivation(database: typeof productionDb, sqliteHandle: Da
       .get();
     if (!proposal) throw new ProposalNotFoundError();
 
+    const contentJson = proposalJson ?? proposal.proposalJson;
+    if (proposalJson) database.update(planProposal).set({ proposalJson }).where(eq(planProposal.id, proposalId)).run();
     database.update(trainingPlan).set({ status: "archived" }).where(and(eq(trainingPlan.ownerId, ownerId), eq(trainingPlan.status, "active"))).run();
 
     const id = crypto.randomUUID();
     database
       .insert(trainingPlan)
-      .values({ id, ownerId, name: "Plan activo", status: "active", version: 1, contentJson: proposal.proposalJson, createdAt: new Date() })
+      .values({ id, ownerId, name: "Plan activo", status: "active", version: 1, contentJson, createdAt: new Date() })
       .run();
 
     database.update(planProposal).set({ status: "activated" }).where(eq(planProposal.id, proposalId)).run();
@@ -43,7 +45,7 @@ export function createActivation(database: typeof productionDb, sqliteHandle: Da
   });
 
   /** Scoped by owner id: activating another account's proposal id throws ProposalNotFoundError. */
-  return function activateOwnedProposal(ownerId: string, proposalId: string): { id: string; ownerId: string } {
-    return runActivation(ownerId, proposalId);
+  return function activateOwnedProposal(ownerId: string, proposalId: string, proposalJson?: string): { id: string; ownerId: string } {
+    return runActivation(ownerId, proposalId, proposalJson);
   };
 }

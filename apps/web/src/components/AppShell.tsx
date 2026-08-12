@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { authClient } from "@/lib/auth-client";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
 import type { SyncState } from "@/lib/offline/use-offline-sync";
 
@@ -16,15 +15,14 @@ const SYNC_LABEL: Record<SyncState, { text: string; icon: string }> = {
 };
 
 const NAV_DESTINATIONS = [
-  { href: "/hoy", label: "Hoy", icon: <path d="M4 11l8-7 8 7v9a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1v-9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /> },
+  { href: "/hoy", label: "Inicio", icon: <path d="M4 11l8-7 8 7v9a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1v-9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /> },
   { href: "/plan", label: "Plan", icon: <path d="M4 5h16v15H4V5zm0 5h16M8 3v4m8-4v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /> },
   { href: "/ejercicios", label: "Ejercicios", icon: <path d="M4 5h5a3 3 0 013 3v11a2.5 2.5 0 00-2.5-2.5H4V5zm16 0h-5a3 3 0 00-3 3v11a2.5 2.5 0 012.5-2.5H20V5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /> },
-  { href: "/historial", label: "Historial", icon: <path d="M4 4v16h16M8 15l3-4 3 3 4-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /> }
+  { href: "/historial", label: "Historial", icon: <path d="M12 8v5l3 2M21 12a9 9 0 11-3-6.7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /> }
 ];
 
-export function AppShell({ title, backHref, children }: { title: string; backHref?: string; children: React.ReactNode }) {
+export function AppShell({ backHref, children }: { title: string; backHref?: string; children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
@@ -42,12 +40,6 @@ export function AppShell({ title, backHref, children }: { title: string; backHre
     window.localStorage.setItem("trainer-theme", next);
   }
 
-  async function signOut() {
-    await authClient.signOut();
-    router.push("/login");
-    router.refresh();
-  }
-
   return (
     <>
       <header className="topbar">
@@ -60,13 +52,13 @@ export function AppShell({ title, backHref, children }: { title: string; backHre
           <span className="topbar__mark" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 12h2m12 0h2M8 7v10m8-10v10M8 12h8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
           </span>
-          <span className="topbar__title">{title}</span>
+          <span className="topbar__title">Tu camino</span>
         </div>
         <div className="topbar__tools">
           <SyncIndicator />
-          <button type="button" className="icon-btn" onClick={signOut} aria-label="Cerrar sesión">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </button>
+          <Link href="/perfil" className="icon-btn" aria-label="Perfil">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.4" stroke="currentColor" strokeWidth="1.6" /><path d="M5 20c1.5-4 4.2-6 7-6s5.5 2 7 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+          </Link>
           <button type="button" className="icon-btn" onClick={toggleTheme} aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"} aria-pressed={theme === "light"}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v2m0 14v2m9-9h-2M5 12H3m14.5-6.5l-1.4 1.4M7.9 16.1l-1.4 1.4m0-11l1.4 1.4M16.1 16.1l1.4 1.4M12 8a4 4 0 100 8 4 4 0 000-8z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
           </button>

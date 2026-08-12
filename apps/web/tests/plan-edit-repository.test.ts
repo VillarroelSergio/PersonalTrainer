@@ -60,6 +60,17 @@ describe("plan edit repository", () => {
     expect(rows[0].targetDay).toBe("saturday");
   });
 
+  it("moving a session to the weekday it's already on clears any adjustment instead of storing a same-day reschedule (which buildWeekView would render as two rows for the same day)", () => {
+    const { db, sqlite } = fixture();
+    const repo = createPlanEditRepository(db, sqlite);
+    const week = nextWeekStart();
+
+    repo.applyEdit("account-a", "plan-a", { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "friday" });
+    repo.applyEdit("account-a", "plan-a", { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "monday" }); // back to its template day
+
+    expect(db.select().from(schema.sessionAdjustment).all()).toHaveLength(0);
+  });
+
   it("rejects editing a session in a week that has already passed", () => {
     const { db, sqlite } = fixture();
     const repo = createPlanEditRepository(db, sqlite);
@@ -88,19 +99,6 @@ describe("plan edit repository", () => {
     const { db, sqlite } = fixture();
     const repo = createPlanEditRepository(db, sqlite);
     expect(() => repo.applyEdit("account-a", "plan-a", { kind: "skip", isoWeekStart: nextWeekStart(), sessionIndex: 9 })).toThrow(InvalidSessionIndexError);
-  });
-
-  it("adds an ad-hoc session for one week without colliding with template indices, and remove_added deletes it cleanly", () => {
-    const { db, sqlite } = fixture();
-    const repo = createPlanEditRepository(db, sqlite);
-    const week = nextWeekStart();
-
-    const added = repo.applyEdit("account-a", "plan-a", { kind: "add", isoWeekStart: week, day: "sunday", title: "Movilidad", sessionKind: "endurance", estimatedMinutes: 20 });
-    expect("sessionIndex" in added && added.sessionIndex).toBeGreaterThanOrEqual(1000);
-
-    repo.applyEdit("account-a", "plan-a", { kind: "remove_added", isoWeekStart: week, sessionIndex: (added as { sessionIndex: number }).sessionIndex });
-    const rows = db.select().from(schema.sessionAdjustment).all();
-    expect(rows).toHaveLength(0);
   });
 
   it("restore clears any adjustment for that occurrence, returning it to the plain plan", () => {

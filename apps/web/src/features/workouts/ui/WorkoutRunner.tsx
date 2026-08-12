@@ -2,63 +2,171 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { EXERCISE_CATALOG, findVariant } from "@/features/catalog/data/exercise-catalog";
+import Image from "next/image";
+import { EXERCISE_CATALOG, findVariant, MUSCLE_GROUP_LABEL, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
+import { DISCOMFORT_ZONE_OPTIONS } from "@/features/onboarding/presentation/constants";
+import type { DiscomfortZone } from "@/features/onboarding/presentation/types";
+import { MOLESTIA_OPTIONS, type MolestiaLevel } from "@/features/training-engine/domain/checkin-discomfort";
+import { youtubeSearchUrl } from "@/features/catalog/domain/video-link";
 
-type SessionExercise = { id: string; variantId: string; position: number; status: string; targetSets: number; targetRepsMin: number; targetRepsMax: number };
+type PreviewExercise = { variantId: string; targetSets: number; targetRepsMin: number; targetRepsMax: number };
+type PersistedSet = { setNumber: number; loadKg: number | null; repetitions: number | null; difficulty: Difficulty | null };
+type SessionExercise = { id: string; variantId: string; position: number; status: string; targetSets: number; targetRepsMin: number; targetRepsMax: number; sets?: PersistedSet[] };
 type WorkoutSession = { id: string; status: string; version: number };
 type Difficulty = "too_easy" | "just_right" | "too_hard";
 type CloseStatus = "completed" | "adapted" | "partial";
 
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { too_easy: "Fácil", just_right: "Justa", too_hard: "Demasiado dura" };
+const DEFAULT_REST_SECONDS = 90;
 
-export function WorkoutRunner({ planId, sessionIndex }: { planId: string; sessionIndex: number }) {
+function objetivoText(exercise: PreviewExercise | SessionExercise): string {
+  return `${exercise.targetSets} series de ${exercise.targetRepsMin}-${exercise.targetRepsMax} repeticiones`;
+}
+
+export function WorkoutRunner({
+  planId,
+  sessionIndex,
+  previewExercises,
+  favoriteVariantIds,
+  recentVariantIds,
+  autoStart = false
+}: {
+  planId: string;
+  sessionIndex: number;
+  previewExercises: PreviewExercise[];
+  favoriteVariantIds: string[];
+  recentVariantIds: string[];
+  autoStart?: boolean;
+}) {
   const router = useRouter();
   const [workout, setWorkout] = useState<WorkoutSession | null>(null);
   const [exercises, setExercises] = useState<SessionExercise[]>([]);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [restSeconds, setRestSeconds] = useState(90);
-  const [restRemaining, setRestRemaining] = useState<number | null>(null);
   const [closing, setClosing] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/v1/workouts", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ planId, sessionIndex }) })
-      .then(async (response) => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body?.error?.message ?? "No pudimos iniciar la sesión.");
-        setWorkout(body.data.workoutSession);
-        setExercises(body.data.sessionExercises);
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "No pudimos iniciar la sesión."));
-  }, [planId, sessionIndex]);
+  const [exerciseStats, setExerciseStats] = useState<Record<string, { total: number; done: number }>>({});
+  const [restSeconds, setRestSeconds] = useState(DEFAULT_REST_SECONDS);
+  const [restLabel, setRestLabel] = useState<string | null>(null);
+  const [restRemaining, setRestRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     if (restRemaining === null) return;
-    if (restRemaining <= 0) return;
+    if (restRemaining <= 0) {
+      setRestRemaining(null);
+      return;
+    }
     const timeout = setTimeout(() => setRestRemaining((value) => (value !== null ? value - 1 : value)), 1000);
     return () => clearTimeout(timeout);
   }, [restRemaining]);
 
-  if (error) return <p className="notice notice--warn" role="alert">{error}</p>;
-  if (!workout) return <p className="lede">Preparando tu sesión…</p>;
+  // El descanso solo tiene sentido entre series de una sesión activa: se detiene y
+  // oculta en cuanto se pasa a cerrar la sesión, para no seguir corriendo tras terminar.
+  useEffect(() => {
+    if (closing) {
+      setRestRemaining(null);
+      setRestLabel(null);
+    }
+  }, [closing]);
+
+  useEffect(() => {
+    if (autoStart) startSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
+
+  function reportStats(exerciseId: string, stats: { total: number; done: number }) {
+    setExerciseStats((current) => ({ ...current, [exerciseId]: stats }));
+  }
+
+  function onSetConfirmed(label: string) {
+    setRestLabel(label);
+    setRestRemaining((current) => (current === null ? restSeconds : current));
+  }
+
+  async function startSession() {
+    setStarting(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/v1/workouts", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ planId, sessionIndex })
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message ?? "No pudimos iniciar la sesión.");
+      setWorkout(body.data.workoutSession);
+      setExercises(body.data.sessionExercises);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No pudimos iniciar la sesión.");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  if (error && !workout) return <p className="notice notice--warn" role="alert">{error}</p>;
+
+  // P0-1: vista previa de la sesión (prototype/js/views/strength.js drawList) — la
+  // sesión real solo se crea (POST /api/v1/workouts) al pulsar "Empezar sesión".
+  if (!workout) {
+    const setsTotal = previewExercises.reduce((sum, exercise) => sum + exercise.targetSets, 0);
+    return (
+      <section className="view-strength">
+        <div className="session-meter">
+          <div className="meter" role="img" aria-label="Progreso de la sesión: 0 por ciento de las series registradas">
+            <div className="meter__fill" style={{ width: "0%" }} />
+          </div>
+          <p className="meter__text">0 de {previewExercises.length} ejercicios · 0 de {setsTotal} series</p>
+        </div>
+
+        <ol className="exlist">
+          {previewExercises.map((exercise, index) => {
+            const variant = findVariant(exercise.variantId);
+            return (
+              <li key={exercise.variantId + index}>
+                <div className="exrow">
+                  <span className="exrow__index">{index + 1}</span>
+                  <span className="exrow__body">
+                    <span className="exrow__name">{variant ? `${variant.exerciseName} — ${variant.variantName}` : exercise.variantId}</span>
+                    <span className="exrow__meta">{objetivoText(exercise)}</span>
+                  </span>
+                  <span className="exrow__sets">
+                    {Array.from({ length: exercise.targetSets }, (_, setIndex) => <span key={setIndex} className="exrow__pip" />)}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+
+        {error ? <p className="notice notice--warn" role="alert">{error}</p> : null}
+        <button type="button" className="btn btn--primary btn--block" disabled={starting} onClick={startSession}>
+          {starting ? "Preparando…" : "Empezar sesión"}
+        </button>
+      </section>
+    );
+  }
+
+  const statsValues = Object.values(exerciseStats);
+  const setsTotal = statsValues.reduce((sum, stat) => sum + stat.total, 0);
+  const setsDone = statsValues.reduce((sum, stat) => sum + stat.done, 0);
+  const exDone = statsValues.filter((stat) => stat.total > 0 && stat.done === stat.total).length;
+  const pct = setsTotal ? Math.round((setsDone / setsTotal) * 100) : 0;
 
   return (
-    <section className="view-strength view-exercise">
-      <div className="restlane">
-        <span className="restlane__clock" aria-live="polite">{restRemaining !== null ? formatClock(restRemaining) : formatClock(restSeconds)}</span>
-        <div className="restlane__body">
-          <p className="restlane__label">Descanso</p>
-          <span className="restlane__edit">
-            <label htmlFor="rest-seconds" className="sr-only">Segundos de descanso</label>
-            <input id="rest-seconds" type="number" min={0} value={restSeconds} onChange={(event) => setRestSeconds(Number(event.target.value))} />
-            <span>s</span>
-          </span>
-        </div>
-        <button type="button" className="chip chip--compact restlane__action" onClick={() => setRestRemaining(restSeconds)}>Iniciar</button>
-      </div>
-
+    <section className={"view-strength view-exercise" + (closing ? " is-closing" : "")}>
       {exercises.map((exercise) => (
-        <ExerciseCard key={exercise.id} workoutId={workout.id} exercise={exercise} onSubstitute={(replacement) => setExercises((current) => current.map((item) => (item.id === exercise.id ? replacement : item)))} />
+        <ExerciseCard
+          key={exercise.id}
+          workoutId={workout.id}
+          exercise={exercise}
+          favoriteVariantIds={favoriteVariantIds}
+          recentVariantIds={recentVariantIds}
+          onSubstitute={(replacement) => setExercises((current) => current.map((item) => (item.id === exercise.id ? replacement : item)))}
+          onStats={reportStats}
+          onSetConfirmed={onSetConfirmed}
+        />
       ))}
 
       {!closing ? (
@@ -66,6 +174,32 @@ export function WorkoutRunner({ planId, sessionIndex }: { planId: string; sessio
       ) : (
         <CloseForm workoutId={workout.id} baseVersion={workout.version} onClosed={() => router.push("/hoy")} />
       )}
+
+      {/* Barra persistente (prototype mountSessionBar/buildRestWidget): única fuente de
+          progreso + descanso visible durante la sesión activa; se oculta al cerrar para
+          no duplicar el resumen del cierre ni dejar el temporizador corriendo. */}
+      {!closing ? (
+        <div className="sessionbar" role="region" aria-label={`Progreso de la sesión: ${pct} por ciento de las series registradas`}>
+          <div className="sessionbar__top">
+            <div className="sessionbar__meta">
+              <p className="sessionbar__progress">{setsDone} de {setsTotal} series</p>
+              <p className="sessionbar__current">{exDone} de {exercises.length} ejercicios completos</p>
+            </div>
+            <div className="sessionbar__fill" style={{ width: `${pct}%` }} aria-hidden="true" />
+          </div>
+          {restLabel ? (
+            <div className="sessionbar__rest">
+              <span className="sessionbar__clock" aria-live="polite">{formatClock(restRemaining ?? restSeconds)}</span>
+              <span className="sessionbar__restlabel">{restRemaining !== null ? `Descansando · ${restLabel}` : `Descanso terminado · ${restLabel}`}</span>
+              <span className="sessionbar__restedit">
+                <label htmlFor="rest-seconds" className="sr-only">Segundos de descanso recomendado</label>
+                <input id="rest-seconds" type="number" min={15} max={300} step={5} value={restSeconds} disabled={restRemaining !== null} onChange={(event) => setRestSeconds(Number(event.target.value) || DEFAULT_REST_SECONDS)} />
+                <span>s</span>
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -77,13 +211,50 @@ function formatClock(totalSeconds: number) {
   return `${minutes}:${rest < 10 ? "0" : ""}${rest}`;
 }
 
-function ExerciseCard({ workoutId, exercise, onSubstitute }: { workoutId: string; exercise: SessionExercise; onSubstitute: (replacement: SessionExercise) => void }) {
+type SetRowState = { setNumber: number; loadKg: string; reps: string; difficulty: Difficulty | ""; saved: boolean };
+
+function initialSets(targetSets: number, persisted?: PersistedSet[]): SetRowState[] {
+  const byNumber = new Map((persisted ?? []).map((set) => [set.setNumber, set]));
+  const count = Math.max(targetSets, byNumber.size);
+  return Array.from({ length: count }, (_, index) => {
+    const setNumber = index + 1;
+    const saved = byNumber.get(setNumber);
+    return saved
+      ? { setNumber, loadKg: saved.loadKg?.toString() ?? "", reps: saved.repetitions?.toString() ?? "", difficulty: saved.difficulty ?? "", saved: true }
+      : { setNumber, loadKg: "", reps: "", difficulty: "", saved: false };
+  });
+}
+
+function ExerciseCard({
+  workoutId,
+  exercise,
+  favoriteVariantIds,
+  recentVariantIds,
+  onSubstitute,
+  onStats,
+  onSetConfirmed
+}: {
+  workoutId: string;
+  exercise: SessionExercise;
+  favoriteVariantIds: string[];
+  recentVariantIds: string[];
+  onSubstitute: (replacement: SessionExercise) => void;
+  onStats: (exerciseId: string, stats: { total: number; done: number }) => void;
+  onSetConfirmed: (label: string) => void;
+}) {
   const variant = findVariant(exercise.variantId);
-  const alternatives = EXERCISE_CATALOG.filter((candidate) => candidate.movementPattern === variant?.movementPattern && candidate.id !== exercise.variantId);
-  const [savedSets, setSavedSets] = useState<Record<number, boolean>>({});
+  const [sets, setSets] = useState<SetRowState[]>(() => initialSets(exercise.targetSets, exercise.sets));
+  const [lastAction, setLastAction] = useState<{ type: "repeat" | "addSet"; setNumber: number; prev: Omit<SetRowState, "setNumber"> } | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [variantSheetOpen, setVariantSheetOpen] = useState(false);
   const sync = useOfflineSyncContext();
 
-  async function saveSet(setNumber: number, loadKg: number | null, repetitions: number | null, difficulty: Difficulty | null) {
+  useEffect(() => {
+    onStats(exercise.id, { total: sets.length, done: sets.filter((set) => set.saved).length });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sets, exercise.id]);
+
+  async function persistSet(setNumber: number, loadKg: number | null, repetitions: number | null, difficulty: Difficulty | null) {
     const payload = { sessionExerciseId: exercise.id, setNumber, loadKg, repetitions, difficulty };
     const operationId = crypto.randomUUID();
     try {
@@ -93,12 +264,57 @@ function ExerciseCard({ workoutId, exercise, onSubstitute }: { workoutId: string
         headers: { "content-type": "application/json", "idempotency-key": operationId },
         body: JSON.stringify(payload)
       });
-      if (response.ok) setSavedSets((current) => ({ ...current, [setNumber]: true }));
+      if (!response.ok) throw new Error("request failed");
     } catch {
       // No coverage: queue the series and mark it saved locally — the sync-pill in the header shows it as pending until it reaches the server.
       await sync.enqueue({ id: operationId, kind: "record_set", workoutSessionId: workoutId, payload, createdAt: Date.now(), status: "pending" });
-      setSavedSets((current) => ({ ...current, [setNumber]: true }));
     }
+  }
+
+  async function confirmSet(setNumber: number) {
+    const row = sets.find((set) => set.setNumber === setNumber);
+    if (!row) return;
+    const loadKg = row.loadKg ? Number(row.loadKg) : null;
+    const repetitions = row.reps ? Number(row.reps) : null;
+    const difficulty = row.difficulty || null;
+    await persistSet(setNumber, loadKg, repetitions, difficulty);
+    setSets((current) => current.map((set) => (set.setNumber === setNumber ? { ...set, saved: true } : set)));
+    onSetConfirmed(variant ? `${variant.exerciseName} — ${variant.variantName}` : exercise.variantId);
+  }
+
+  function updateSet(setNumber: number, patch: Partial<SetRowState>) {
+    setSets((current) => current.map((set) => (set.setNumber === setNumber ? { ...set, ...patch } : set)));
+  }
+
+  // registro-un-toque (prototype repeatLastSet): repite los valores de la última serie
+  // confirmada en la siguiente serie pendiente y la confirma en un solo toque.
+  async function repeatLastSet() {
+    const target = sets.find((set) => !set.saved);
+    if (!target) return;
+    const done = sets.filter((set) => set.saved);
+    const source = done.length ? done[done.length - 1] : target;
+    setLastAction({ type: "repeat", setNumber: target.setNumber, prev: { loadKg: target.loadKg, reps: target.reps, difficulty: target.difficulty, saved: target.saved } });
+    setSets((current) => current.map((set) => (set.setNumber === target.setNumber ? { ...set, loadKg: source.loadKg, reps: source.reps, saved: true } : set)));
+    await persistSet(target.setNumber, source.loadKg ? Number(source.loadKg) : null, source.reps ? Number(source.reps) : null, source.difficulty || null);
+    onSetConfirmed(variant ? `${variant.exerciseName} — ${variant.variantName}` : exercise.variantId);
+  }
+
+  function addSet() {
+    const last = sets[sets.length - 1];
+    const setNumber = sets.length + 1;
+    setLastAction({ type: "addSet", setNumber, prev: { loadKg: "", reps: "", difficulty: "", saved: false } });
+    setSets((current) => [...current, { setNumber, loadKg: last?.loadKg ?? "", reps: last?.reps ?? "", difficulty: "", saved: false }]);
+  }
+
+  async function undo() {
+    if (!lastAction) return;
+    if (lastAction.type === "addSet") {
+      setSets((current) => current.filter((set) => set.setNumber !== lastAction.setNumber));
+    } else {
+      updateSet(lastAction.setNumber, lastAction.prev);
+      if (lastAction.prev.saved === false) await persistSet(lastAction.setNumber, null, null, null);
+    }
+    setLastAction(null);
   }
 
   async function substitute(newVariantId: string) {
@@ -109,90 +325,201 @@ function ExerciseCard({ workoutId, exercise, onSubstitute }: { workoutId: string
       body: JSON.stringify({ variantId: newVariantId })
     });
     const body = await response.json();
-    if (response.ok) onSubstitute(body.data);
+    if (response.ok) {
+      setVariantSheetOpen(false);
+      onSubstitute(body.data);
+    }
   }
 
   return (
     <div>
       <div className="exhead">
+        {variant?.mediaUrl ? (
+          <div className="exercise-media" style={{ width: 60, height: 60, flexShrink: 0 }}>
+            <Image className="exercise-media__img" src={variant.mediaUrl} alt="" width={60} height={60} />
+          </div>
+        ) : (
+          <div className="exercise-media exercise-media--pending" style={{ width: 60, height: 60, flexShrink: 0 }}>
+            <p className="exercise-media__pending">Próximamente</p>
+          </div>
+        )}
         <div className="exhead__body">
           <p className="exhead__variant">{variant ? `${variant.exerciseName} — ${variant.variantName}` : exercise.variantId}</p>
-          {variant ? <p className="exhead__line">{variant.guide}</p> : null}
-          <p className="exhead__line">Objetivo: {exercise.targetSets} series de {exercise.targetRepsMin}-{exercise.targetRepsMax} repeticiones.</p>
+          <p className="exhead__line">Objetivo: {objetivoText(exercise)}</p>
         </div>
       </div>
 
-      {alternatives.length > 0 ? (
-        <div className="field">
-          <label htmlFor={`alt-${exercise.id}`} className="field__label">Cambiar variante</label>
-          <select id={`alt-${exercise.id}`} defaultValue="" onChange={(event) => event.target.value && substitute(event.target.value)}>
-            <option value="" disabled>Elegir alternativa compatible</option>
-            {alternatives.map((alternative) => (
-              <option key={alternative.id} value={alternative.id}>{alternative.variantName}</option>
-            ))}
-          </select>
-        </div>
-      ) : null}
+      <div className="chiprow">
+        <button type="button" className="chip chip--compact" onClick={repeatLastSet}>Repetir</button>
+        <button type="button" className="chip chip--compact" onClick={addSet}>+ Serie</button>
+        <button type="button" className="chip chip--compact" aria-disabled={!lastAction} onClick={undo}>Deshacer</button>
+        <button type="button" className="chip chip--compact" onClick={() => setGuideOpen(true)}>Ver guía</button>
+        <button type="button" className="chip chip--compact" onClick={() => setVariantSheetOpen(true)}>Cambiar variante</button>
+      </div>
 
       <p className="section-title">Series</p>
       <ul className="lanes">
-        {Array.from({ length: exercise.targetSets }, (_, index) => index + 1).map((setNumber) => (
-          <SetRow key={setNumber} setNumber={setNumber} saved={Boolean(savedSets[setNumber])} onSave={(loadKg, repetitions, difficulty) => saveSet(setNumber, loadKg, repetitions, difficulty)} />
+        {sets.map((set) => (
+          <SetRow key={set.setNumber} set={set} onChange={(patch) => updateSet(set.setNumber, patch)} onConfirm={() => confirmSet(set.setNumber)} />
         ))}
       </ul>
+
+      {guideOpen && variant ? <GuideSheet variant={variant} onClose={() => setGuideOpen(false)} /> : null}
+      {variantSheetOpen ? (
+        <VariantSheet
+          currentVariantId={exercise.variantId}
+          favoriteVariantIds={favoriteVariantIds}
+          recentVariantIds={recentVariantIds}
+          onPick={substitute}
+          onClose={() => setVariantSheetOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
 
-function SetRow({ setNumber, saved, onSave }: { setNumber: number; saved: boolean; onSave: (loadKg: number | null, repetitions: number | null, difficulty: Difficulty | null) => void }) {
-  const [loadKg, setLoadKg] = useState("");
-  const [repetitions, setRepetitions] = useState("");
-  const [difficulty, setDifficulty] = useState<Difficulty | "">("");
-
+function SetRow({ set, onChange, onConfirm }: { set: SetRowState; onChange: (patch: Partial<SetRowState>) => void; onConfirm: () => void }) {
   return (
     <li className="lane__error-row" style={{ display: "flex", flexDirection: "column", gap: 6, borderBottom: "1px solid var(--rule-soft)", paddingBottom: 8 }}>
-      <div className={"lane" + (saved ? " is-done" : "")} style={{ borderBottom: "none", padding: "10px 0 4px" }}>
-        <span className="lane__num">{setNumber}</span>
+      <div className={"lane" + (set.saved ? " is-done" : "")} style={{ borderBottom: "none", padding: "10px 0 4px" }}>
+        <span className="lane__num">{set.setNumber}</span>
         <span className="lane__field">
-          <label htmlFor={`load-${setNumber}`} className="sr-only">Carga en kg</label>
-          <input id={`load-${setNumber}`} type="number" value={loadKg} onChange={(event) => setLoadKg(event.target.value)} />
+          <label htmlFor={`load-${set.setNumber}`} className="sr-only">Carga en kg</label>
+          <input id={`load-${set.setNumber}`} type="number" value={set.loadKg} disabled={set.saved} onChange={(event) => onChange({ loadKg: event.target.value })} />
           <span className="lane__unit">kg</span>
         </span>
         <span className="lane__field">
-          <label htmlFor={`reps-${setNumber}`} className="sr-only">Repeticiones</label>
-          <input id={`reps-${setNumber}`} type="number" value={repetitions} onChange={(event) => setRepetitions(event.target.value)} />
+          <label htmlFor={`reps-${set.setNumber}`} className="sr-only">Repeticiones</label>
+          <input id={`reps-${set.setNumber}`} type="number" value={set.reps} disabled={set.saved} onChange={(event) => onChange({ reps: event.target.value })} />
           <span className="lane__unit">reps</span>
         </span>
         <span className="lane__state">
-          <button type="button" className={"setbtn" + (saved ? " is-done" : "")} onClick={() => onSave(loadKg ? Number(loadKg) : null, repetitions ? Number(repetitions) : null, difficulty || null)}>
-            {saved ? "Hecha ✓" : "Confirmar"}
+          <button type="button" className={"setbtn" + (set.saved ? " is-done" : "")} onClick={() => (set.saved ? onChange({ saved: false }) : onConfirm())}>
+            {set.saved ? "Hecha ✓" : "Confirmar"}
           </button>
         </span>
       </div>
-      <div className="picker" role="group" aria-label={`Dificultad de la serie ${setNumber}`}>
-        {(Object.entries(DIFFICULTY_LABEL) as Array<[Difficulty, string]>).map(([value, label]) => (
-          <button key={value} type="button" className="picker__btn" aria-pressed={difficulty === value} onClick={() => setDifficulty(difficulty === value ? "" : (value as Difficulty))}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {!set.saved ? (
+        <div className="picker" role="group" aria-label={`Dificultad de la serie ${set.setNumber}`}>
+          {(Object.entries(DIFFICULTY_LABEL) as Array<[Difficulty, string]>).map(([value, label]) => (
+            <button key={value} type="button" className="picker__btn" aria-pressed={set.difficulty === value} onClick={() => onChange({ difficulty: set.difficulty === value ? "" : value })}>
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </li>
+  );
+}
+
+// P1-3: guía por ejercicio (prototype openGuideSheet) — cues/músculo/vídeo reutilizando el
+// catálogo (guide/primaryMuscleGroup) y el mismo enlace de búsqueda externo que /ejercicios/[id].
+function GuideSheet({ variant, onClose }: { variant: ExerciseVariant; onClose: () => void }) {
+  const titleId = "guideSheetTitle";
+  return (
+    <div className="sheet-overlay" role="presentation" onClick={onClose}>
+      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(event) => event.stopPropagation()}>
+        <div className="sheet__header">
+          <h2 id={titleId}>{variant.exerciseName} — {variant.variantName}</h2>
+          <button type="button" className="icon-btn" aria-label="Cerrar" onClick={onClose}>×</button>
+        </div>
+        <div className="sheet__body">
+          <p className="field__label">Músculo principal</p>
+          <p className="lede small">{MUSCLE_GROUP_LABEL[variant.primaryMuscleGroup]}</p>
+          <p className="field__label">Cómo hacerlo</p>
+          <p className="lede small">{variant.guide}</p>
+          <a href={youtubeSearchUrl(variant.exerciseName, variant.variantName)} target="_blank" rel="noopener noreferrer" className="btn btn--ghost btn--block">
+            Buscar vídeo en YouTube ↗
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// P1-6: hoja de variante categorizada (prototype openVariantSheet) en vez de un <select>
+// plano — Favoritas/Recientes ya se leen igual que en /ejercicios, Mismo patrón y Catálogo
+// se derivan del propio EXERCISE_CATALOG.
+function VariantSheet({
+  currentVariantId,
+  favoriteVariantIds,
+  recentVariantIds,
+  onPick,
+  onClose
+}: {
+  currentVariantId: string;
+  favoriteVariantIds: string[];
+  recentVariantIds: string[];
+  onPick: (variantId: string) => void;
+  onClose: () => void;
+}) {
+  const current = findVariant(currentVariantId);
+  const titleId = "variantSheetTitle";
+  const shown = new Set<string>([currentVariantId]);
+
+  function takeGroup(ids: string[]): ExerciseVariant[] {
+    const result: ExerciseVariant[] = [];
+    for (const id of ids) {
+      if (shown.has(id)) continue;
+      const found = findVariant(id);
+      if (!found) continue;
+      shown.add(id);
+      result.push(found);
+    }
+    return result;
+  }
+
+  const favoritas = takeGroup(favoriteVariantIds);
+  const recientes = takeGroup(recentVariantIds);
+  const mismoPatron = current ? takeGroup(EXERCISE_CATALOG.filter((item) => item.movementPattern === current.movementPattern).map((item) => item.id)) : [];
+  const catalogo = takeGroup(EXERCISE_CATALOG.map((item) => item.id));
+
+  const groups: Array<{ title: string; items: ExerciseVariant[] }> = [
+    { title: "Favoritas", items: favoritas },
+    { title: "Usadas recientemente", items: recientes },
+    { title: "Mismo patrón", items: mismoPatron },
+    { title: "Catálogo general", items: catalogo }
+  ];
+
+  return (
+    <div className="sheet-overlay" role="presentation" onClick={onClose}>
+      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(event) => event.stopPropagation()}>
+        <div className="sheet__header">
+          <h2 id={titleId}>Cambiar variante</h2>
+          <button type="button" className="icon-btn" aria-label="Cerrar" onClick={onClose}>×</button>
+        </div>
+        <div className="sheet__body">
+          <p className="lede small">El registro que hagas a partir de ahora se guarda con la variante realmente usada.</p>
+          {groups.map((group) =>
+            group.items.length ? (
+              <div className="optgroup" key={group.title}>
+                <p className="optgroup__title">{group.title}</p>
+                {group.items.map((item) => (
+                  <button key={item.id} type="button" className="opt" onClick={() => onPick(item.id)}>
+                    <span className="opt__name">{item.exerciseName} — {item.variantName}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
 function CloseForm({ workoutId, baseVersion, onClosed }: { workoutId: string; baseVersion: number; onClosed: () => void }) {
   const [status, setStatus] = useState<CloseStatus>("completed");
   const [globalEffort, setGlobalEffort] = useState(5);
-  const [comment, setComment] = useState("");
-  const [hasDiscomfort, setHasDiscomfort] = useState(false);
-  const [zone, setZone] = useState("back");
-  const [intensity, setIntensity] = useState("mild");
+  const [molestiaLevel, setMolestiaLevel] = useState<MolestiaLevel>("none");
+  const [zone, setZone] = useState<DiscomfortZone>("back");
   const [error, setError] = useState<string | null>(null);
   const sync = useOfflineSyncContext();
 
   async function submit() {
     const operationId = crypto.randomUUID();
-    const payload = { status, globalEffort, comment: comment || null, discomfort: hasDiscomfort ? { zone, intensity } : null };
+    const discomfort = molestiaLevel === "none" ? null : { zone, intensity: molestiaLevel };
+    const payload = { status, globalEffort, comment: null, discomfort };
     try {
       const response = await fetch(`/api/v1/workouts/${workoutId}/finish`, {
         method: "POST",
@@ -237,28 +564,32 @@ function CloseForm({ workoutId, baseVersion, onClosed }: { workoutId: string; ba
         <input id="global-effort" type="number" min={1} max={10} required value={globalEffort} onChange={(event) => setGlobalEffort(Number(event.target.value))} />
       </div>
 
+      {/* P1-7: picker de 4 niveles (Ninguna/Leve/Moderada/Importante), mismo patrón que /checkin
+          (CheckinRunner.tsx), en vez del checkbox + selects anterior. */}
       <div className="field">
-        <label htmlFor="close-comment" className="field__label">Comentario (opcional)</label>
-        <textarea id="close-comment" value={comment} onChange={(event) => setComment(event.target.value)} />
+        <p className="field__label">Molestias al cerrar (opcional)</p>
+        <div className="picker picker--wide" role="group" aria-label="Molestias al cerrar">
+          {MOLESTIA_OPTIONS.map((option) => (
+            <button key={option.value} type="button" className="picker__btn" aria-pressed={molestiaLevel === option.value} onClick={() => setMolestiaLevel(option.value)}>
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
-
-      <label className="checkrow">
-        <input type="checkbox" checked={hasDiscomfort} onChange={(event) => setHasDiscomfort(event.target.checked)} />
-        Hubo alguna molestia general (no es un diagnóstico)
-      </label>
-      {hasDiscomfort ? (
-        <div className="field" style={{ display: "flex", gap: 8 }}>
-          <select value={zone} onChange={(event) => setZone(event.target.value)}>
-            {["neck", "shoulder", "back", "elbow", "wrist", "hip", "knee", "ankle"].map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-          <select value={intensity} onChange={(event) => setIntensity(event.target.value)}>
-            {["mild", "moderate", "important"].map((option) => (
-              <option key={option} value={option}>{option}</option>
+      {molestiaLevel !== "none" ? (
+        <div className="field">
+          <label htmlFor="close-zone" className="field__label">Zona</label>
+          <select id="close-zone" value={zone} onChange={(event) => setZone(event.target.value as DiscomfortZone)}>
+            {DISCOMFORT_ZONE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
         </div>
+      ) : null}
+      {molestiaLevel === "important" ? (
+        <p className="notice notice--warn" role="alert">
+          Molestia importante: esto no es un diagnóstico. Si la molestia persiste o es intensa, considera detener o adaptar la sesión y consultar a un profesional de salud.
+        </p>
       ) : null}
 
       <button type="button" className="btn btn--primary btn--block" onClick={submit}>Guardar sesión</button>

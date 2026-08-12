@@ -56,6 +56,13 @@
   font-size: 0.85rem;
 }
 
+.editor { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; align-items: center; width: 100%; }
+.editor select, .editor input { min-width: 0; min-height: 36px; padding: 7px 8px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--paper-2); color: var(--ink); font: inherit; font-size: .8rem; }
+.minutes { display: inline-flex; align-items: center; gap: 3px; color: var(--ink-3); font-size: .75rem; }
+.minutes input { width: 52px; }
+.remove, .editAnswers { border: 0; background: transparent; color: var(--warn); font: inherit; font-size: .78rem; cursor: pointer; }
+.editAnswers { align-self: flex-start; color: var(--ink-3); text-decoration: underline; }
+
 .reasons {
   border-top: 1px solid var(--rule-soft);
   padding-top: 12px;

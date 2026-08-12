@@ -5,7 +5,7 @@ import type { CheckinInput, ExternalActivityEvidence, Recommendation, Recommenda
 import type { PlanProposal } from "@/contracts/onboarding";
 
 export const RULE_VERSION = "training-engine-v1" as const;
-const LONG_OR_INTENSE_ENDURANCE_MINUTES = 40;
+export const LONG_OR_INTENSE_ENDURANCE_MINUTES = 40;
 
 type PlannedSession = PlanProposal["week"]["sessions"][number];
 
@@ -189,7 +189,7 @@ function keepPlannedChange(): RecommendationChange {
   return { code: "KEEP_PLANNED", kind: "keep_planned", description: "Mantener la sesión prevista sin cambios.", ops: [] };
 }
 
-function isLegsHeavy(session: PlannedSession): boolean {
+export function isLegsHeavy(session: PlannedSession): boolean {
   const exercises = session.exercises ?? [];
   if (exercises.length === 0) return false;
   return exercises.every((exercise) => {
@@ -199,7 +199,7 @@ function isLegsHeavy(session: PlannedSession): boolean {
 }
 
 /** First rest day within the week (no planned session), searching outward from `today`. */
-function findFreeWeekday(sessions: PlannedSession[], today: Weekday): Weekday | null {
+export function findFreeWeekday(sessions: PlannedSession[], today: Weekday): Weekday | null {
   const occupied = new Set(sessions.map((session) => session.day));
   const todayIndex = WEEKDAYS.indexOf(today);
   for (let offset = 1; offset <= 6; offset += 1) {

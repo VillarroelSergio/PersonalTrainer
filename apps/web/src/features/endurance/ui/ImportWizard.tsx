@@ -25,7 +25,9 @@ function formatMetric(metricType: string, value: number, unit: string): string {
   return `${value} ${unit}`;
 }
 
-export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIndex }: { isoWeekStart: string; enduranceSessions: Array<{ sessionIndex: number; label: string }>; initialSessionIndex: number | null }) {
+type EnduranceSessionOption = { sessionIndex: number; label: string; title: string; estimatedMinutes: number };
+
+export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIndex }: { isoWeekStart: string; enduranceSessions: EnduranceSessionOption[]; initialSessionIndex: number | null }) {
   const [importData, setImportData] = useState<ImportData | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +126,7 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
         )}
         <Link href="/historial" className="btn btn--primary btn--block">Ver en historial</Link>
         <Link href="/hoy" className="btn btn--ghost btn--block">Volver a Hoy</Link>
+        <Link href="/plan" className="btn btn--ghost btn--block">Revisar plan</Link>
       </section>
     );
   }
@@ -137,11 +140,14 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
         {error && <p className="notice notice--warn" role="alert">{error}</p>}
         <input
           ref={inputRef}
+          id="activityFile"
+          className="sr-only"
           type="file"
           accept=".fit,.tcx,.gpx"
           disabled={uploading}
           onChange={(event) => { const file = event.target.files?.[0]; if (file) handleFile(file); }}
         />
+        <label htmlFor="activityFile" className="btn btn--primary btn--block">{uploading ? "Subiendo y analizando…" : "Elegir archivo"}</label>
         {uploading && <p className="lede small">Subiendo y analizando…</p>}
       </section>
     );
@@ -159,6 +165,7 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
   }
 
   const analysis = importData.analysis as ParsedActivity;
+  const associatedSession = associatedSessionIndex != null ? (enduranceSessions.find((entry) => entry.sessionIndex === associatedSessionIndex) ?? null) : null;
 
   return (
     <section className="view-import">
@@ -201,6 +208,27 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
           <option value="">Ninguna (actividad independiente)</option>
           {enduranceSessions.map((entry) => <option key={entry.sessionIndex} value={entry.sessionIndex}>{entry.label}</option>)}
         </select>
+      </div>
+
+      <div className="import-compare">
+        {associatedSession == null ? (
+          <p className="lede small">Sin asociar: se guardará como actividad independiente. Ninguna sesión planificada cambia de estado.</p>
+        ) : (
+          <>
+            <p className="field__label">Comparación con lo previsto (aproximada)</p>
+            <ul className="cues">
+              <li>Sesión prevista: {associatedSession.title}</li>
+              {/* ponytail: el plan no guarda un entorno previsto por sesión (solo día/título/duración estimada), así que este campo del prototipo se omite en vez de inventarlo */}
+              {analysis.durationS != null && (
+                <li>
+                  Duración prevista: {associatedSession.estimatedMinutes} min · real: {Math.round(analysis.durationS / 60)} min (
+                  {(() => { const diff = Math.round(analysis.durationS / 60) - associatedSession.estimatedMinutes; return `${diff >= 0 ? "+" : ""}${diff} min`; })()}
+                  )
+                </li>
+              )}
+            </ul>
+          </>
+        )}
       </div>
 
       <button type="button" className="btn btn--primary btn--block" disabled={committing || !name.trim()} onClick={() => commit(importData.status === "duplicate")}>

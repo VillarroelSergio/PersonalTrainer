@@ -4,12 +4,22 @@ import { db } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
 
 export function createAuth(disableSignUp = true) {
+  const localOrigin = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
+  const trustedOrigins = process.env.NODE_ENV === "development"
+    ? [...new Set([localOrigin, "http://127.0.0.1:3000"])]
+    : [localOrigin];
+
   return betterAuth({
     database: drizzleAdapter(db, { provider: "sqlite", schema }),
     emailAndPassword: { enabled: true, disableSignUp },
-    trustedOrigins: [process.env.BETTER_AUTH_URL ?? "http://localhost:3000"]
+    trustedOrigins
   });
 }
 
-/** The app instance never exposes public account registration. */
-export const auth = createAuth();
+/**
+ * Production keeps registration closed because accounts are provisioned
+ * manually. The local development app needs a recovery path after a test
+ * account is deliberately deleted, so the login page can create a new local
+ * account without changing production behaviour.
+ */
+export const auth = createAuth(process.env.NODE_ENV !== "development");

@@ -18,9 +18,14 @@ export default async function ImportarPage({ searchParams }: { searchParams: Pro
   const { session: sessionParam } = await searchParams;
   const content = JSON.parse(activePlan.contentJson) as PlanProposal;
   const enduranceSessions = (content.week?.sessions ?? [])
-    .map((entry, sessionIndex) => ({ sessionIndex, day: entry.day, title: entry.title, kind: entry.kind }))
+    .map((entry, sessionIndex) => ({ sessionIndex, day: entry.day, title: entry.title, kind: entry.kind, estimatedMinutes: entry.estimatedMinutes }))
     .filter((entry) => entry.kind === "endurance")
-    .map((entry) => ({ sessionIndex: entry.sessionIndex, label: `${entry.title} (${WEEKDAY_LABEL[entry.day as Weekday]})` }));
+    .map((entry) => ({
+      sessionIndex: entry.sessionIndex,
+      label: `${entry.title} (${WEEKDAY_LABEL[entry.day as Weekday]})`,
+      title: entry.title,
+      estimatedMinutes: entry.estimatedMinutes
+    }));
 
   return (
     <AppShell title="Importar actividad" backHref="/hoy">

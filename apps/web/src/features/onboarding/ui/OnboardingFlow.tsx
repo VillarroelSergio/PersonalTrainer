@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useReducer, useState } from "react";
+import type { PlanProposal } from "@/contracts/onboarding";
 import { CtaBar } from "@/components/CtaBar";
 import { ProgressHeader } from "@/components/ProgressHeader";
 import { RingTransition } from "@/components/RingTransition";
@@ -19,7 +20,7 @@ import { ProposalScreen } from "./screens/ProposalScreen";
 type OnboardingFlowProps = {
   dataSource?: OnboardingDataSource;
   /** Punto de integración pedido por Codex: activar el borrador ya persistido por su id. Tiene prioridad sobre dataSource.activate. */
-  onActivate?: (proposalId: string) => Promise<void> | void;
+  onActivate?: (proposal: PlanProposal) => Promise<void> | void;
 };
 
 const defaultDataSource = new RealOnboardingDataSource();
@@ -63,10 +64,9 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
     dispatch({ type: "GO_NEXT" });
   }
 
-  function activate() {
-    if (!state.proposal) return;
+  function activate(proposal: PlanProposal) {
     dispatch({ type: "ACTIVATE_START" });
-    const task = onActivate ? Promise.resolve(onActivate(state.proposal.proposalId)) : Promise.resolve(dataSource.activate?.(state.proposal));
+    const task = onActivate ? Promise.resolve(onActivate(proposal)) : Promise.resolve(dataSource.activate?.(proposal));
     task
       .then(() => dispatch({ type: "ACTIVATE_SUCCESS" }))
       .catch((error: unknown) => dispatch({ type: "ACTIVATE_ERROR", message: error instanceof Error ? error.message : "Error inesperado." }));

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { db, sqlite } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
+import { weeklyLoadWarning } from "@/features/planning/domain/plan-week";
 import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
 import { createWorkoutTrainingEngineRepository } from "@/features/training-engine/domain/repository";
 import { createRecoverySessionRepository } from "@/features/recovery/domain/recovery-session-repository";
@@ -12,6 +13,7 @@ import { WEEKDAY_ABBREV, WEEKDAY_LABEL, WEEKDAYS, isoWeekStart, todayWeekday, ty
 import type { PlanProposal } from "@/contracts/onboarding";
 
 const DONE_STATUSES = new Set(["completed", "adapted", "partial"]);
+const STATUS_LABEL: Record<string, string> = { completed: "completada", adapted: "adaptada", partial: "parcial", in_progress: "en curso" };
 
 export default async function HoyPage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -26,26 +28,34 @@ export default async function HoyPage() {
   const statuses = repository.listLatestStatuses(session.user.id, activePlan.id);
 
   const today = todayWeekday();
-  const todayIndex = sessions.findIndex((item) => item.day === today);
+  const todayIndices = sessions.map((item, index) => item.day === today ? index : -1).filter((index) => index >= 0);
+  const todayIndex = todayIndices[0] ?? -1;
   const todaySession = todayIndex >= 0 ? sessions[todayIndex] : null;
   const engineRepository = createWorkoutTrainingEngineRepository(db, sqlite);
   const adjustment = todayIndex >= 0 ? engineRepository.getAdjustment(session.user.id, activePlan.id, isoWeekStart(), todayIndex) : undefined;
   const recoveryRepository = createRecoverySessionRepository(db, sqlite);
   const recoveryStatus = todayIndex >= 0 && adjustment?.kind === "recovery" ? recoveryRepository.findLatest(session.user.id, activePlan.id, todayIndex)?.status ?? null : null;
 
+  const warn = weeklyLoadWarning(sessions);
+
   return (
     <AppShell title="Trainer">
       <p className="kicker">{content.initialBlock?.name ?? activePlan.name}</p>
-      <h1 className="view-title">Hoy</h1>
+      <h1 className="view-title">Tu camino</h1>
 
       <h2 className="section-title">Entrenamiento de hoy</h2>
-      <TodayHero session={todaySession} sessionIndex={todayIndex} status={todayIndex >= 0 ? statuses[todayIndex] : undefined} adjustment={adjustment} recoveryStatus={recoveryStatus} />
-      <Link href="/checkin" className="btn btn--ghost btn--block">Hacer check-in de hoy</Link>
+      <div className="today-stack">
+        <TodayHero session={todaySession} sessionIndex={todayIndex} status={todayIndex >= 0 ? statuses[todayIndex] : undefined} adjustment={adjustment} recoveryStatus={recoveryStatus} />
+        {todayIndices.slice(1).map((index) => (
+          <TodayHero key={index} session={sessions[index]} sessionIndex={index} status={statuses[index]} adjustment={engineRepository.getAdjustment(session.user.id, activePlan.id, isoWeekStart(), index)} recoveryStatus={null} />
+        ))}
+      </div>
 
       <h2 className="section-title">Plan de la semana</h2>
       <ol className="weekrail" aria-label="Tu semana">
         {WEEKDAYS.map((day) => {
-          const index = sessions.findIndex((item) => item.day === day);
+          const dayIndices = sessions.map((item, index) => item.day === day ? index : -1).filter((index) => index >= 0);
+          const index = dayIndices[0] ?? -1;
           const daySession = index >= 0 ? sessions[index] : null;
           const status = index >= 0 ? statuses[index] : undefined;
           const isToday = day === today;
@@ -56,22 +66,62 @@ export default async function HoyPage() {
           else classNames.push("is-planned");
           if (daySession?.kind === "endurance") classNames.push("is-cardio");
 
+          const href = !daySession
+            ? "/plan"
+            : status && DONE_STATUSES.has(status)
+              ? "/historial"
+              : daySession.kind === "endurance"
+                ? `/resistencia?session=${index}`
+                : `/entrenar?session=${index}`;
+          const described = !daySession
+            ? "descanso"
+            : `${daySession.title}, ${status && DONE_STATUSES.has(status) ? STATUS_LABEL[status] ?? status : isToday ? "hoy" : "planificada"}`;
+
           return (
             <li key={day}>
-              <span className={classNames.join(" ")}>
-                <span className="weekrail__label">{WEEKDAY_ABBREV[day as Weekday]}</span>
-                <span className="weekrail__mark" />
-                <span className="weekrail__name">{daySession ? daySession.title : "descanso"}</span>
-              </span>
+              <Link href={href} className={classNames.join(" ")} aria-label={`${WEEKDAY_LABEL[day as Weekday]}: ${described}`}>
+                <span className="weekrail__label" aria-hidden="true">{WEEKDAY_ABBREV[day as Weekday]}</span>
+                <span className="weekrail__bar" aria-hidden="true" />
+                {dayIndices.length > 1 ? <span className="weekrail__count" aria-label={`${dayIndices.length} sesiones`}>{dayIndices.length}</span> : null}
+              </Link>
             </li>
           );
         })}
       </ol>
-      <p className="rail-legend">Relleno = completada · naranja = hoy · hueco = planificada · punto = descanso.</p>
-      <Link href="/importar" className="btn btn--ghost btn--block">Importar actividad exterior</Link>
-      <Link href="/compartir" className="btn btn--ghost btn--block">Compartir rutina</Link>
+      <p className="lede small">{weekStoryLine(sessions, statuses)}</p>
+      {warn && <p className="notice notice--warn">{loadWarningPhrase(warn)}</p>}
+
+      {!todaySession || todayIndices.every((index) => statuses[index] && DONE_STATUSES.has(statuses[index])) ? null : (
+        <>
+          <h2 className="section-title">Cómo llegas hoy</h2>
+          <p className="lede small">Opcional y rápido: cuéntanos cómo llegas hoy (20 s) para ajustar la sesión si hace falta.</p>
+          <Link href="/checkin" className="btn btn--ghost btn--block btn--compact">Hacer check-in de hoy</Link>
+        </>
+      )}
     </AppShell>
   );
+}
+
+/** One short, honest sentence replacing the removed rail-legend paragraph — derived from
+ * the same real statuses already computed above, never a fabricated count. */
+function weekStoryLine(sessions: PlanProposal["week"]["sessions"], statuses: Record<number, string>): string {
+  const total = sessions.length;
+  if (total === 0) return "Esta semana no tienes sesiones planificadas.";
+  const done = sessions.reduce((count, _session, index) => count + (statuses[index] && DONE_STATUSES.has(statuses[index]) ? 1 : 0), 0);
+  if (done === 0) return `${total} sesión${total === 1 ? "" : "es"} por delante esta semana, ninguna hecha todavía.`;
+  if (done === total) return `Semana completa: las ${total} sesiones hechas.`;
+  return `${done} de ${total} sesiones hechas esta semana.`;
+}
+
+/** Same phrase shape as the prototype's loadWarningPhrase (home.js), simplified: always
+ * "queda junto a" instead of computing hour-gaps, since neighborWeekdays only ever returns
+ * adjacent days (the exact gap is never more informative than "adjacent"). */
+function loadWarningPhrase(warn: NonNullable<ReturnType<typeof weeklyLoadWarning>>): string {
+  const freeLabel = warn.freeDay ? WEEKDAY_LABEL[warn.freeDay] : null;
+  const phrase = `${warn.session.title} el ${WEEKDAY_LABEL[warn.session.day as Weekday].toLowerCase()} queda junto a ${warn.conflict.title.toLowerCase()} (${WEEKDAY_LABEL[warn.conflict.day as Weekday].toLowerCase()}).`;
+  return phrase + (freeLabel
+    ? ` Si la mueves, ${freeLabel.toLowerCase()} queda libre esta semana.`
+    : " No hay día libre esta semana para moverla: revisa las opciones desde Plan.");
 }
 
 function TodayHero({
@@ -103,7 +153,7 @@ function TodayHero({
         <p className="today__eyebrow">Hoy · recuperación</p>
         <h2 className="today__title" id="todayTitle">Versión de recuperación</h2>
         <p className="today__why">Aceptaste cambiar {session.title.toLowerCase()} por una versión más suave hoy. Vuelves al plan normal en la próxima sesión prevista.</p>
-        <Link href={`/recuperar?session=${sessionIndex}`} className="btn btn--primary btn--block">
+        <Link href={`/recuperar?session=${sessionIndex}`} className="btn btn--primary btn--block btn--compact">
           {recoveryStatus === "completed" ? "Ver recuperación registrada" : recoveryStatus === "in_progress" ? "Continuar recuperación" : "Empezar recuperación"}
         </Link>
       </article>
@@ -126,6 +176,9 @@ function TodayHero({
         <p className="today__eyebrow">Hoy · {status === "completed" ? "sesión completada" : status === "adapted" ? "versión adaptada terminada" : "sesión parcial"}</p>
         <h2 className="today__title" id="todayTitle">{session.title}</h2>
         <p className="today__why">Registrada: {session.estimatedMinutes} min activos aproximados.</p>
+        <div className="today__alts">
+          <TodayAlt kind="recovery" title="Cambiar a recuperación" meta="10–15 min, sin carga" href={`/recuperar?session=${sessionIndex}`} />
+        </div>
       </article>
     );
   }
@@ -136,7 +189,11 @@ function TodayHero({
         <p className="today__eyebrow">Hoy · resistencia</p>
         <h2 className="today__title" id="todayTitle">{session.title}</h2>
         <p className="today__why">Prevista para hoy · {session.estimatedMinutes} min aproximados. Trainer diseña los bloques; tú la creas en tu reloj y la haces fuera de la app.</p>
-        <Link href={`/resistencia?session=${sessionIndex}`} className="btn btn--primary btn--block">Preparar sesión de resistencia</Link>
+        <Link href={`/resistencia?session=${sessionIndex}`} className="btn btn--primary btn--block btn--compact">Preparar sesión de resistencia</Link>
+        <div className="today__alts">
+          <TodayAlt kind="adapt" title="Ajustar a cómo llego hoy" meta="Check-in de 20 s · propone y confirmas" href="/checkin" />
+          <TodayAlt kind="recovery" title="Cambiar a recuperación" meta="Movilidad suave, 10–15 min" href={`/recuperar?session=${sessionIndex}`} />
+        </div>
       </article>
     );
   }
@@ -146,9 +203,28 @@ function TodayHero({
       <p className="today__eyebrow">Hoy · {WEEKDAY_LABEL[session.day as Weekday]}</p>
       <h2 className="today__title" id="todayTitle">{session.title}</h2>
       <p className="today__why">Prevista para hoy · {session.estimatedMinutes} min aproximados.</p>
-      <Link href={`/entrenar?session=${sessionIndex}`} className="btn btn--primary btn--block">
+      <Link href={`/entrenar?session=${sessionIndex}`} className="btn btn--primary btn--block btn--compact">
         {status === "in_progress" ? "Continuar sesión" : "Empezar sesión"}
       </Link>
+      {status !== "in_progress" && (
+        <div className="today__alts">
+          <TodayAlt kind="adapt" title="Ajustar a cómo llego hoy" meta="Check-in de 20 s · propone y confirmas" href="/checkin" />
+          <TodayAlt kind="recovery" title="Cambiar a recuperación" meta="Movilidad suave, 10–15 min" href={`/recuperar?session=${sessionIndex}`} />
+        </div>
+      )}
     </article>
+  );
+}
+
+function TodayAlt({ kind, title, meta, href }: { kind: "adapt" | "recovery"; title: string; meta: string; href: string }) {
+  return (
+    <Link href={href} className={`alt alt--${kind}`}>
+      <span className="alt__mark" aria-hidden="true" />
+      <span className="alt__body">
+        <span className="alt__title">{title}</span>
+        <span className="alt__meta">{meta}</span>
+      </span>
+      <span className="alt__arrow" aria-hidden="true">→</span>
+    </Link>
   );
 }

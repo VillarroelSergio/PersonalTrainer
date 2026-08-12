@@ -1,8 +1,10 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db/client";
+import { db, sqlite } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
+import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
+import { listOwnedFavoriteVariantIds } from "@/features/catalog/domain/favorite-repository";
 import { WorkoutRunner } from "@/features/workouts/ui/WorkoutRunner";
 import { AppShell } from "@/components/AppShell";
 import { WEEKDAY_LABEL, type Weekday } from "@/lib/weekdays";
@@ -19,13 +21,31 @@ export default async function EntrenarPage({ searchParams }: { searchParams: Pro
   const sessionIndex = Number(sessionParam ?? "0");
   const content = JSON.parse(activePlan.contentJson) as PlanProposal;
   const plannedSession = content.week?.sessions?.[sessionIndex];
-  if (!plannedSession || plannedSession.kind !== "strength") redirect("/hoy");
+  if (!plannedSession || plannedSession.kind !== "strength" || !plannedSession.exercises?.length) redirect("/hoy");
+
+  // Vista previa (P0-1): la lista y los favoritos/recientes se resuelven aquí, en el
+  // servidor, con los mismos repositorios que ya usa /ejercicios — la sesión real
+  // (POST /api/v1/workouts) no se crea hasta que la persona pulsa "Empezar sesión".
+  const workoutRepo = createWorkoutSessionRepository(db, sqlite);
+  const favoriteVariantIds = await listOwnedFavoriteVariantIds(db, session.user.id);
+  const recentVariantIds = workoutRepo.listRecentVariantIds(session.user.id, 6);
+  // "Continuar sesión" en /hoy enlaza aquí igual que "Empezar sesión": si ya existe una
+  // sesión in_progress para este índice, se entra directo a ella sin pasar por la vista
+  // previa ni exigir un segundo toque en "Empezar sesión".
+  const isResuming = workoutRepo.listLatestStatuses(session.user.id, activePlan.id)[sessionIndex] === "in_progress";
 
   return (
     <AppShell title="Entrenar" backHref="/hoy">
       <p className="kicker">{WEEKDAY_LABEL[plannedSession.day as Weekday]}</p>
       <h1 className="view-title">{plannedSession.title}</h1>
-      <WorkoutRunner planId={activePlan.id} sessionIndex={sessionIndex} />
+      <WorkoutRunner
+        planId={activePlan.id}
+        sessionIndex={sessionIndex}
+        previewExercises={plannedSession.exercises}
+        favoriteVariantIds={favoriteVariantIds}
+        recentVariantIds={recentVariantIds}
+        autoStart={isResuming}
+      />
     </AppShell>
   );
 }

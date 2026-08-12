@@ -35,15 +35,15 @@ export function ShareLinkManager({ planId, initialLinks }: { planId: string; ini
     <section aria-label="Generar y gestionar enlaces">
       <h2 className="section-title">Generar enlace de copia</h2>
       {error ? <p className="notice notice--warn" role="alert">{error}</p> : null}
-      <button type="button" className="btn btn--primary btn--block" onClick={generate} disabled={busy}>{busy ? "Generando…" : "Generar enlace"}</button>
+      <button type="button" className="btn btn--primary btn--sm btn--block" onClick={generate} disabled={busy}>{busy ? "Generando…" : "Generar enlace"}</button>
 
       <h2 className="section-title">Enlaces generados</h2>
       {links.length === 0 ? (
-        <p className="lede small">Todavía no has generado ningún enlace.</p>
+        <p className="lede small share-empty">Todavía no has generado ningún enlace.</p>
       ) : (
-        <ul className="catalog-list">
+        <ul className="catalog-list catalog-list--compact">
           {links.map((link) => (
-            <li key={link.id} className="catalog-card">
+            <li key={link.id} className="catalog-card catalog-card--compact">
               <div className="catalog-card__top">
                 <div className="catalog-card__body">
                   <p className="small mono">{shareUrl(link.id)}</p>

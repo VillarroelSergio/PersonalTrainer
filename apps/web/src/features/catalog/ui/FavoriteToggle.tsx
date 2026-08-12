@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export function FavoriteToggle({ variantId, initialFavorite }: { variantId: string; initialFavorite: boolean }) {
+export function FavoriteToggle({ variantId, initialFavorite, compact }: { variantId: string; initialFavorite: boolean; compact?: boolean }) {
   const [favorite, setFavorite] = useState(initialFavorite);
   const [pending, setPending] = useState(false);
 
@@ -16,7 +16,7 @@ export function FavoriteToggle({ variantId, initialFavorite }: { variantId: stri
   return (
     <button
       type="button"
-      className="icon-btn favbtn"
+      className={`icon-btn favbtn${compact ? " favbtn--sm" : ""}`}
       onClick={toggle}
       disabled={pending}
       aria-pressed={favorite}
