@@ -1,0 +1,27 @@
+.shell.shell {
+  --onboarding-action: #c94c12;
+  --onboarding-action-deep: #9f390b;
+  --accent: var(--onboarding-action) !important;
+  --accent-deep: var(--onboarding-action-deep) !important;
+  --accent-wash: rgba(201, 76, 18, 0.14) !important;
+  --on-accent: #f8fcff !important;
+  --bg: #050505 !important;
+  --paper: #151515 !important;
+  --paper-2: #202020 !important;
+  --rule: #303030 !important;
+  --rule-soft: #292929 !important;
+  --ink: #f5f5f5 !important;
+  --ink-2: #b1b1b1 !important;
+  --ink-3: #858585 !important;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(ellipse 80% 46% at 50% -14%, rgba(201, 76, 18, .12), transparent 62%), var(--bg);
+}
+
+.shell :global(button) { -webkit-tap-highlight-color: transparent; }
+.shell :global(button:focus-visible) { outline: 2px solid var(--onboarding-action); outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shell *, .shell *::before, .shell *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

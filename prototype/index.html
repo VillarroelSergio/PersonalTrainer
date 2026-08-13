@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tu camino — prototipo de entrenador híbrido</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__brand">
+    <button type="button" class="icon-btn" id="btnBack" aria-label="Volver" hidden>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <span class="topbar__mark" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 12h2m12 0h2M8 7v10m8-10v10M8 12h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    </span>
+    <span class="topbar__title">Tu camino</span>
+  </div>
+  <div class="topbar__tools">
+    <button type="button" class="sync-pill" id="syncStatus" aria-label="Estado de sincronización">
+      <span class="sync-dot" aria-hidden="true"></span>
+      <span class="sync-pill__icon" id="syncStatusIcon" aria-hidden="true">○</span>
+    </button>
+    <button type="button" class="icon-btn" id="btnProfile" aria-label="Perfil y demo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.6"/><path d="M5 20c1.5-4 4.2-6 7-6s5.5 2 7 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+    <button type="button" class="icon-btn" id="themeToggle" aria-label="Cambiar a modo claro" aria-pressed="false">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v2m0 14v2m9-9h-2M5 12H3m14.5-6.5l-1.4 1.4M7.9 16.1l-1.4 1.4m0-11l1.4 1.4M16.1 16.1l1.4 1.4M12 8a4 4 0 100 8 4 4 0 000-8z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- Cascarón: las vistas se construyen desde JavaScript. No dejar markup de vista aquí. -->
+<main id="mainContent"></main>
+
+<nav class="bottomnav" id="mainNav" aria-label="Navegación principal" hidden>
+  <button type="button" class="bottomnav__btn" data-nav="home">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 11l8-7 8 7v9a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1v-9z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    <span>Inicio</span>
+  </button>
+  <button type="button" class="bottomnav__btn" data-nav="plan">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M4 9h16M8 3v4m8-4v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span>Plan</span>
+  </button>
+  <button type="button" class="bottomnav__btn" data-nav="library">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h5a3 3 0 013 3v11a2.5 2.5 0 00-2.5-2.5H4V5zm16 0h-5a3 3 0 00-3 3v11a2.5 2.5 0 012.5-2.5H20V5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    <span>Ejercicios</span>
+  </button>
+  <button type="button" class="bottomnav__btn" data-nav="history">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v5l3 2M21 12a9 9 0 11-3-6.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span>Historial</span>
+  </button>
+</nav>
+
+<!-- Host único de hojas modales. App.openSheet() lo rellena por JS. -->
+<div class="sheet-overlay" id="sheetHost" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" id="sheetPanel" aria-labelledby="sheetTitle">
+    <div class="sheet__header">
+      <h2 id="sheetTitle"></h2>
+      <button type="button" class="icon-btn" id="btnCloseSheet" aria-label="Cerrar"><span aria-hidden="true">✕</span></button>
+    </div>
+    <div class="sheet__body" id="sheetBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="js/data.js"></script>
+<script src="js/core.js"></script>
+<script src="js/views/access.js"></script>
+<script src="js/views/home.js"></script>
+<script src="js/views/plan.js"></script>
+<script src="js/views/plan-builder.js"></script>
+<!-- LOTE 2: checkin y recovery quedan pendientes (fuera del alcance asignado a este lote: plan.js y plan-builder.js) -->
+<script src="js/views/checkin.js"></script>
+<script src="js/views/recovery.js"></script>
+<script src="js/views/strength.js"></script>
+<script src="js/views/library.js"></script>
+<!-- LOTE 4: biblioteca de ejercicios, variantes, guías (añadido arriba) -->
+<script src="js/views/endurance.js"></script>
+<script src="js/views/import.js"></script>
+<!-- LOTE 5: resistencia planificada, ejecución por segmentos e importación (añadido arriba) -->
+<script src="js/views/history.js"></script>
+<script src="js/views/profile.js"></script>
+<script src="js/views/share.js"></script>
+<!-- LOTE 6: historial/adherencia/logros/métricas, perfil/cuenta/privacidad y compartir (añadido arriba) -->
+<script>App.start();</script>
+</body>
+</html>

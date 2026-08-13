@@ -1,0 +1,12 @@
+.intro { margin: -6px 0 2px; color: var(--ink-3); font-size: .79rem; line-height: 1.45; }
+.environment { margin: 0 0 10px; color: var(--ink-2); font-size: .86rem; font-weight: 750; }
+.grid { display: grid; gap: 8px; }
+.card { position: relative; isolation: isolate; min-height: 70px; overflow: hidden; display: flex; align-items: center; padding: 10px 42px 10px 82px; border: 1px solid var(--rule); border-radius: 10px; background: #141310; color: var(--ink); text-align: left; transition: border-color var(--dur-state) var(--ease-out), transform var(--dur-press) var(--ease-out), box-shadow var(--dur-state) var(--ease-out); }
+.card:active:not(:focus-visible) { transform: scale(.985); }
+.cardSelected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), 0 0 20px rgba(201, 76, 18, .16); }
+.art { position: absolute; inset: 0 auto 0 0; width: 74px; z-index: -1; opacity: .95; background-image: linear-gradient(to right, transparent 62%, #141310), url('/onboarding/equipment-sprite-v1.png'); background-size: 100% 100%, 300% 200%; background-position: 0 0, var(--sprite-x) var(--sprite-y); transition: transform 280ms var(--ease-out), opacity var(--dur-state) var(--ease-out); }
+.cardSelected .art { opacity: 1; transform: scale(1.04); }
+.name { max-width: 20ch; font-size: .88rem; line-height: 1.2; font-weight: 750; }
+.check { position: absolute; top: 8px; right: 8px; width: 21px; height: 21px; display: grid; place-items: center; border: 1px solid var(--ink-3); border-radius: 50%; color: var(--on-accent); font-size: .78rem; font-weight: 900; }
+.cardSelected .check { border-color: var(--accent); background: var(--accent); }
+@media (max-width: 359px) { .card { min-height: 64px; padding-left: 72px; } .art { width: 65px; } .name { font-size: .8rem; } }

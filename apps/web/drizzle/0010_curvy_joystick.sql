@@ -1,0 +1,1 @@
+ALTER TABLE `recommendation` ADD `external_evidence_json` text;

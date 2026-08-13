@@ -1,0 +1,20 @@
+# Se admiten en git: el prototipo (prototype/) y la app real (apps/). Todo
+# lo demás en la raíz (docs de producto, notas de Obsidian, trazas de
+# agentes, config de herramientas) queda fuera por defecto, y ningún .md se
+# versiona en ninguna ruta admitida.
+/*
+!/prototype/
+!/apps/
+!/.gitignore
+
+# Artefactos de build y datos locales dentro de apps/.
+apps/**/node_modules/
+apps/**/.next/
+apps/**/coverage/
+apps/**/*.tsbuildinfo
+apps/**/.env
+apps/**/.env.local
+apps/**/private-uploads/
+
+# No versionar documentación en Markdown.
+*.md

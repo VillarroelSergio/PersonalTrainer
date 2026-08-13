@@ -1,0 +1,12 @@
+{
+  "name": "Trainer",
+  "short_name": "Trainer",
+  "description": "Plan de fuerza y adaptación diaria, usable en el gimnasio sin cobertura.",
+  "start_url": "/hoy",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#171613",
+  "theme_color": "#171613",
+  "lang": "es",
+  "icons": [{ "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

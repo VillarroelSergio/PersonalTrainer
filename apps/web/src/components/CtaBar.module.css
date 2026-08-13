@@ -1,0 +1,40 @@
+.bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+  padding: 12px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to bottom, transparent, var(--bg) 28%);
+  border-top: 0;
+}
+
+.back {
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.continue {
+  flex: 1;
+  min-height: 48px;
+  border-radius: 9px;
+  border: none;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  font-size: .96rem;
+  box-shadow: 0 6px 18px rgba(0, 118, 220, .18);
+  transition: transform var(--dur-press) var(--ease-out), opacity var(--dur-state) var(--ease-out);
+}
+
+.continue:disabled {
+  opacity: 0.45;
+}
+
+.continue:active:not(:disabled):not(:focus-visible) {
+  transform: scale(0.98);
+}
