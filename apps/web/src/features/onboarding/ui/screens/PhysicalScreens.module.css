@@ -1,0 +1,4 @@
+.singleWheel { display: flex; justify-content: center; min-height: 192px; }
+.weightWheels { display: flex; justify-content: center; align-items: flex-start; gap: 9px; min-height: 192px; }
+.decimalMark { align-self: center; margin-top: 14px; font-size: 1.5rem; font-weight: 800; line-height: 1; }
+.weightUnit { align-self: center; margin-top: 14px; color: var(--ink-2); font-size: .9rem; font-weight: 700; }

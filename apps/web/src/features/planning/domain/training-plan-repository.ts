@@ -23,3 +23,10 @@ export async function renameOwnedPlan(database: Database, planId: string, ownerI
   const [updated] = await database.update(trainingPlan).set({ name, version: 2 }).where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId))).returning();
   return updated;
 }
+
+/** Deletes only a plan belonging to the authenticated owner. The UI must ask
+ * for an explicit confirmation because dependent session rows are cascaded. */
+export async function deleteOwnedPlan(database: Database, planId: string, ownerId: string): Promise<boolean> {
+  const deleted = await database.delete(trainingPlan).where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId))).returning({ id: trainingPlan.id });
+  return deleted.length === 1;
+}

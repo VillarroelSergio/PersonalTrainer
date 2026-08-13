@@ -75,6 +75,17 @@ export function occurrencesByDay(occurrences: WeekOccurrence[]): Record<Weekday,
   return byDay;
 }
 
+/**
+ * The home screen needs the actual itinerary for a weekday, not the template
+ * it started from. Recolocated-away, removed and skipped occurrences are
+ * historical context for Plan, but are not an actionable "today" session.
+ */
+export function visibleOccurrencesForDay(occurrences: WeekOccurrence[], day: Weekday): WeekOccurrence[] {
+  return occurrences.filter((occurrence) =>
+    occurrence.day === day && !["moved_away", "removed", "skipped"].includes(occurrence.status)
+  );
+}
+
 export function occurrenceRenderKey(occurrence: WeekOccurrence): string {
   return [
     occurrence.sessionIndex,
@@ -101,6 +112,37 @@ export function sessionAction(occurrence: WeekOccurrence): SessionAction | null 
 }
 
 type PlannedSession = PlanProposal["week"]["sessions"][number];
+
+export type WeekSessionSummary = {
+  planned: number;
+  completed: number;
+  inProgress: number;
+  remaining: number;
+  plannedMinutes: number;
+};
+
+/**
+ * Compact, honest home-page snapshot. A session remains counted once even
+ * when several share a weekday: the weekly plan is the source of truth, not
+ * the seven visual day markers.
+ */
+export function summarizeWeekSessions(
+  sessions: PlannedSession[],
+  statuses: Record<number, string>
+): WeekSessionSummary {
+  const completed = sessions.reduce(
+    (count, _session, index) => count + (FINISHED_SESSION_STATUSES.has(statuses[index]) ? 1 : 0),
+    0
+  );
+  const inProgress = sessions.reduce((count, _session, index) => count + (statuses[index] === "in_progress" ? 1 : 0), 0);
+  return {
+    planned: sessions.length,
+    completed,
+    inProgress,
+    remaining: Math.max(sessions.length - completed, 0),
+    plannedMinutes: sessions.reduce((sum, session) => sum + session.estimatedMinutes, 0)
+  };
+}
 
 export type WeeklyLoadWarning = { session: PlannedSession; conflict: PlannedSession; freeDay: Weekday | null };
 

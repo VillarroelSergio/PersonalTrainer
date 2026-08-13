@@ -5,15 +5,16 @@ import type { PlanProposal } from "@/contracts/onboarding";
 import { CtaBar } from "@/components/CtaBar";
 import { ProgressHeader } from "@/components/ProgressHeader";
 import { RingTransition } from "@/components/RingTransition";
+import shell from "@/components/OnboardingShell.module.css";
 import tokens from "@/styles/tokens.module.css";
 import { RealOnboardingDataSource, type OnboardingDataSource } from "../presentation/data-source";
 import { canAdvance, createInitialState, formToDraft, onboardingReducer } from "../presentation/state";
 import { STEP_LABELS, STEP_ORDER } from "../presentation/types";
-import { ActivityScreen } from "./screens/ActivityScreen";
+import { EnduranceScreen, StrengthAvailabilityScreen } from "./screens/ActivityScreen";
 import { ModeScreen, GoalsScreen, ExperienceScreen } from "./screens/BasicSelectionScreens";
-import { DurationEnvironmentScreen } from "./screens/DurationEnvironmentScreen";
+import { DurationScreen, EnvironmentScreen } from "./screens/DurationEnvironmentScreen";
 import { EquipmentScreen } from "./screens/EquipmentScreen";
-import { FocusDiscomfortScreen } from "./screens/FocusDiscomfortScreen";
+import { DiscomfortScreen, FocusScreen } from "./screens/FocusDiscomfortScreen";
 import { BirthDateScreen, HeightScreen, WeightScreen } from "./screens/PhysicalScreens";
 import { ProposalScreen } from "./screens/ProposalScreen";
 
@@ -74,7 +75,7 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
 
   if (state.phase === "transition") {
     return (
-      <div className={tokens.root}>
+      <div className={`${tokens.root} ${shell.shell}`}>
         <RingTransition onFinished={() => dispatch({ type: "RING_FINISHED" })} />
       </div>
     );
@@ -82,7 +83,7 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
 
   if (state.phase === "proposal" && state.proposal) {
     return (
-      <div className={tokens.root}>
+      <div className={`${tokens.root} ${shell.shell}`}>
         <ProposalScreen
           proposal={state.proposal}
           onActivate={activate}
@@ -96,7 +97,7 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
   }
 
   return (
-    <div className={tokens.root}>
+    <div className={`${tokens.root} ${shell.shell}`}>
       <ProgressHeader currentIndex={state.stepIndex} totalSteps={STEP_ORDER.length} stepLabel={STEP_LABELS[step]} />
 
       {state.submitError && (
@@ -141,19 +142,27 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
           onDecimalChange={(decimal) => dispatch({ type: "SET_WEIGHT_DECIMAL", decimal })}
         />
       )}
-      {step === "activity" && (
-        <ActivityScreen
+      {step === "strength_availability" && (
+        <StrengthAvailabilityScreen
           strengthAvailability={form.strengthAvailability}
           onToggleStrengthDay={(day) => dispatch({ type: "TOGGLE_STRENGTH_DAY", day })}
+        />
+      )}
+      {step === "endurance" && (
+        <EnduranceScreen
           enduranceActivities={form.enduranceActivities}
           onUpsertEndurance={(activity) => dispatch({ type: "UPSERT_ENDURANCE_ACTIVITY", activity })}
           onRemoveEndurance={(kind) => dispatch({ type: "REMOVE_ENDURANCE_ACTIVITY", kind })}
         />
       )}
-      {step === "duration_environment" && (
-        <DurationEnvironmentScreen
+      {step === "duration" && (
+        <DurationScreen
           sessionDurationMinutes={form.sessionDurationMinutes}
           onDurationChange={(minutes) => dispatch({ type: "SET_DURATION", minutes })}
+        />
+      )}
+      {step === "environment" && (
+        <EnvironmentScreen
           selectedEnvironments={form.environments.map((env) => env.kind)}
           onToggleEnvironment={(kind) => dispatch({ type: "TOGGLE_ENVIRONMENT", kind })}
         />
@@ -164,10 +173,14 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
           onToggleEquipment={(kind, equipment) => dispatch({ type: "TOGGLE_EQUIPMENT", kind, equipment })}
         />
       )}
-      {step === "focus_discomfort" && (
-        <FocusDiscomfortScreen
+      {step === "focus" && (
+        <FocusScreen
           optionalMuscleFocus={form.optionalMuscleFocus}
           onToggleFocus={(focus) => dispatch({ type: "TOGGLE_MUSCLE_FOCUS", focus })}
+        />
+      )}
+      {step === "discomfort" && (
+        <DiscomfortScreen
           discomfort={form.discomfort}
           onDiscomfortChange={(discomfort) => dispatch({ type: "SET_DISCOMFORT", discomfort })}
         />

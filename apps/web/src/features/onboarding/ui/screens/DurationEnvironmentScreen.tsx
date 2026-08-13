@@ -5,39 +5,14 @@ import { ScreenLayout } from "@/components/ScreenLayout";
 import { DURATION_OPTIONS, ENVIRONMENT_OPTIONS } from "../../presentation/constants";
 import type { EnvironmentKind } from "../../presentation/types";
 
-type DurationEnvironmentScreenProps = {
-  sessionDurationMinutes: 20 | 40 | 60 | 90;
-  onDurationChange: (minutes: 20 | 40 | 60 | 90) => void;
-  selectedEnvironments: EnvironmentKind[];
-  onToggleEnvironment: (kind: EnvironmentKind) => void;
-};
+type DurationScreenProps = { sessionDurationMinutes: 20 | 40 | 60 | 90; onDurationChange: (minutes: 20 | 40 | 60 | 90) => void };
 
-export function DurationEnvironmentScreen({
-  sessionDurationMinutes,
-  onDurationChange,
-  selectedEnvironments,
-  onToggleEnvironment
-}: DurationEnvironmentScreenProps) {
-  return (
-    <ScreenLayout title="Duración y entorno" hint="Elige tu duración habitual y dónde entrenas normalmente.">
-      <div>
-        <p style={{ fontWeight: 600, marginBottom: 8 }}>Duración habitual</p>
-        <ChipPicker
-          ariaLabel="Duración habitual de la sesión"
-          options={DURATION_OPTIONS}
-          selected={[sessionDurationMinutes]}
-          onToggle={onDurationChange}
-        />
-      </div>
-      <div>
-        <p style={{ fontWeight: 600, marginBottom: 8 }}>Entornos habituales</p>
-        <ChipPicker
-          ariaLabel="Entornos habituales de entrenamiento"
-          options={ENVIRONMENT_OPTIONS}
-          selected={selectedEnvironments}
-          onToggle={onToggleEnvironment}
-        />
-      </div>
-    </ScreenLayout>
-  );
+export function DurationScreen({ sessionDurationMinutes, onDurationChange }: DurationScreenProps) {
+  return <ScreenLayout title="¿Cuánto tiempo quieres entrenar?" hint="Elige una duración habitual. Podrás ajustarla antes de entrenar."><ChipPicker ariaLabel="Duración habitual de la sesión" options={DURATION_OPTIONS} selected={[sessionDurationMinutes]} onToggle={onDurationChange} /></ScreenLayout>;
+}
+
+type EnvironmentScreenProps = { selectedEnvironments: EnvironmentKind[]; onToggleEnvironment: (kind: EnvironmentKind) => void };
+
+export function EnvironmentScreen({ selectedEnvironments, onToggleEnvironment }: EnvironmentScreenProps) {
+  return <ScreenLayout title="¿Dónde entrenas?" hint="Elige tu entorno habitual. Podrás cambiarlo más adelante."><ChipPicker ariaLabel="Entorno habitual de entrenamiento" options={ENVIRONMENT_OPTIONS} selected={selectedEnvironments} onToggle={onToggleEnvironment} /></ScreenLayout>;
 }

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { db, sqlite } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
-import { weeklyLoadWarning } from "@/features/planning/domain/plan-week";
+import { createPlanEditRepository } from "@/features/planning/domain/plan-edit-repository";
+import { buildWeekView, summarizeWeekSessions, visibleOccurrencesForDay, weeklyLoadWarning, type ExecutedStatus } from "@/features/planning/domain/plan-week";
 import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
 import { createWorkoutTrainingEngineRepository } from "@/features/training-engine/domain/repository";
 import { createRecoverySessionRepository } from "@/features/recovery/domain/recovery-session-repository";
@@ -28,15 +29,20 @@ export default async function HoyPage() {
   const statuses = repository.listLatestStatuses(session.user.id, activePlan.id);
 
   const today = todayWeekday();
-  const todayIndices = sessions.map((item, index) => item.day === today ? index : -1).filter((index) => index >= 0);
-  const todayIndex = todayIndices[0] ?? -1;
+  const weekStart = isoWeekStart();
+  const editRepository = createPlanEditRepository(db, sqlite);
+  const adjustments = editRepository.listWeekAdjustments(session.user.id, activePlan.id, weekStart);
+  const weekOccurrences = buildWeekView(content, true, adjustments, statuses as Record<number, ExecutedStatus>);
+  const todayOccurrences = visibleOccurrencesForDay(weekOccurrences, today);
+  const todayIndex = todayOccurrences[0]?.sessionIndex ?? -1;
   const todaySession = todayIndex >= 0 ? sessions[todayIndex] : null;
   const engineRepository = createWorkoutTrainingEngineRepository(db, sqlite);
-  const adjustment = todayIndex >= 0 ? engineRepository.getAdjustment(session.user.id, activePlan.id, isoWeekStart(), todayIndex) : undefined;
+  const adjustment = todayIndex >= 0 ? engineRepository.getAdjustment(session.user.id, activePlan.id, weekStart, todayIndex) : undefined;
   const recoveryRepository = createRecoverySessionRepository(db, sqlite);
   const recoveryStatus = todayIndex >= 0 && adjustment?.kind === "recovery" ? recoveryRepository.findLatest(session.user.id, activePlan.id, todayIndex)?.status ?? null : null;
 
   const warn = weeklyLoadWarning(sessions);
+  const weekSummary = summarizeWeekSessions(sessions, statuses);
 
   return (
     <AppShell title="Trainer">
@@ -46,16 +52,36 @@ export default async function HoyPage() {
       <h2 className="section-title">Entrenamiento de hoy</h2>
       <div className="today-stack">
         <TodayHero session={todaySession} sessionIndex={todayIndex} status={todayIndex >= 0 ? statuses[todayIndex] : undefined} adjustment={adjustment} recoveryStatus={recoveryStatus} />
-        {todayIndices.slice(1).map((index) => (
-          <TodayHero key={index} session={sessions[index]} sessionIndex={index} status={statuses[index]} adjustment={engineRepository.getAdjustment(session.user.id, activePlan.id, isoWeekStart(), index)} recoveryStatus={null} />
+        {todayOccurrences.slice(1).map((occurrence) => (
+          <TodayHero key={`${occurrence.sessionIndex}-${occurrence.day}`} session={sessions[occurrence.sessionIndex]} sessionIndex={occurrence.sessionIndex} status={statuses[occurrence.sessionIndex]} adjustment={engineRepository.getAdjustment(session.user.id, activePlan.id, weekStart, occurrence.sessionIndex)} recoveryStatus={null} />
         ))}
       </div>
+
+      <section className="week-pulse" aria-label="Ritmo de la semana">
+        <div className="week-pulse__main">
+          <p className="week-pulse__eyebrow">Ritmo de la semana</p>
+          <p className="week-pulse__value"><strong>{weekSummary.completed}</strong><span>/{weekSummary.planned} sesiones</span></p>
+          <p className="week-pulse__copy">
+            {weekSummary.planned === 0
+              ? "Aún no hay sesiones previstas."
+              : weekSummary.inProgress > 0
+                ? `Tienes ${weekSummary.inProgress} sesión${weekSummary.inProgress === 1 ? "" : "es"} en marcha.`
+                : weekSummary.remaining === 0
+                  ? "Semana completada. Buen trabajo."
+                  : `${weekSummary.remaining} por delante para cerrar la semana.`}
+          </p>
+        </div>
+        <div className="week-pulse__minutes" aria-label={`${weekSummary.plannedMinutes} minutos previstos`}>
+          <strong>{weekSummary.plannedMinutes}</strong>
+          <span>min previstos</span>
+        </div>
+      </section>
 
       <h2 className="section-title">Plan de la semana</h2>
       <ol className="weekrail" aria-label="Tu semana">
         {WEEKDAYS.map((day) => {
-          const dayIndices = sessions.map((item, index) => item.day === day ? index : -1).filter((index) => index >= 0);
-          const index = dayIndices[0] ?? -1;
+          const dayOccurrences = visibleOccurrencesForDay(weekOccurrences, day);
+          const index = dayOccurrences[0]?.sessionIndex ?? -1;
           const daySession = index >= 0 ? sessions[index] : null;
           const status = index >= 0 ? statuses[index] : undefined;
           const isToday = day === today;
@@ -82,16 +108,15 @@ export default async function HoyPage() {
               <Link href={href} className={classNames.join(" ")} aria-label={`${WEEKDAY_LABEL[day as Weekday]}: ${described}`}>
                 <span className="weekrail__label" aria-hidden="true">{WEEKDAY_ABBREV[day as Weekday]}</span>
                 <span className="weekrail__bar" aria-hidden="true" />
-                {dayIndices.length > 1 ? <span className="weekrail__count" aria-label={`${dayIndices.length} sesiones`}>{dayIndices.length}</span> : null}
+                {dayOccurrences.length > 1 ? <span className="weekrail__count" aria-label={`${dayOccurrences.length} sesiones`}>{dayOccurrences.length}</span> : null}
               </Link>
             </li>
           );
         })}
       </ol>
-      <p className="lede small">{weekStoryLine(sessions, statuses)}</p>
       {warn && <p className="notice notice--warn">{loadWarningPhrase(warn)}</p>}
 
-      {!todaySession || todayIndices.every((index) => statuses[index] && DONE_STATUSES.has(statuses[index])) ? null : (
+      {!todaySession || todayOccurrences.every((occurrence) => statuses[occurrence.sessionIndex] && DONE_STATUSES.has(statuses[occurrence.sessionIndex])) ? null : (
         <>
           <h2 className="section-title">Cómo llegas hoy</h2>
           <p className="lede small">Opcional y rápido: cuéntanos cómo llegas hoy (20 s) para ajustar la sesión si hace falta.</p>

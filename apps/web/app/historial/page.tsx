@@ -19,7 +19,7 @@ const STATUS_LABEL: Record<string, string> = { completed: "Completada", adapted:
 const STATUS_BAR: Record<string, string> = { completed: "completada", adapted: "adaptada", partial: "parcial", in_progress: "en_curso" };
 const SPORT_LABEL: Record<string, string> = { running: "Correr", cycling: "Bici", walking: "Caminar", other: "Otra actividad" };
 
-export default async function HistorialPage({ searchParams }: { searchParams: Promise<{ tab?: string; estado?: string; semana?: string }> }) {
+export default async function HistorialPage({ searchParams }: { searchParams: Promise<{ tab?: string; semana?: string }> }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
   const ownerId = session.user.id;
@@ -27,15 +27,20 @@ export default async function HistorialPage({ searchParams }: { searchParams: Pr
   const activePlan = await findActivePlanForOwner(db, ownerId);
   if (!activePlan) redirect("/onboarding");
 
-  const { tab: rawTab, estado, semana } = await searchParams;
+  const { tab: rawTab, semana } = await searchParams;
   const tab: TabKey = TABS.some((item) => item.key === rawTab) ? (rawTab as TabKey) : "registro";
 
   const historyRepo = createHistoryRepository(db, sqlite);
 
   return (
     <AppShell title="Trainer">
-      <h1 className="view-title">Historial</h1>
-      <Link href="/importar" className="btn btn--ghost btn--block">Importar actividad</Link>
+      <div className="history-heading">
+        <div>
+          <h1 className="view-title">Historial</h1>
+          <p className="lede small">Lo que has hecho, sin métricas de relleno.</p>
+        </div>
+        <Link href="/importar" className="history-heading__action">Añadir actividad</Link>
+      </div>
 
       <div className="tabs" role="tablist" aria-label="Secciones del historial">
         {TABS.map((item) => (
@@ -46,7 +51,7 @@ export default async function HistorialPage({ searchParams }: { searchParams: Pr
       </div>
 
       <div className="tabpanel" role="tabpanel" aria-labelledby={`historyTab-${tab}`}>
-        {tab === "registro" && <RegistroTab ownerId={ownerId} planId={activePlan.id} estado={estado} semana={semana} historyRepo={historyRepo} />}
+        {tab === "registro" && <RegistroTab ownerId={ownerId} planId={activePlan.id} semana={semana} historyRepo={historyRepo} />}
         {tab === "adherencia" && <AdherenciaTab historyRepo={historyRepo} ownerId={ownerId} planId={activePlan.id} />}
       </div>
     </AppShell>
@@ -75,46 +80,31 @@ function buildTimeline(sessions: SessionHistoryEntry[], activities: EnduranceAct
   return [...strength, ...endurance].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
 }
 
-function RegistroTab({ ownerId, planId, estado, semana, historyRepo }: { ownerId: string; planId: string; estado?: string; semana?: string; historyRepo: ReturnType<typeof createHistoryRepository> }) {
+function RegistroTab({ ownerId, planId, semana, historyRepo }: { ownerId: string; planId: string; semana?: string; historyRepo: ReturnType<typeof createHistoryRepository> }) {
   const allSessions = historyRepo.listSessionHistory(ownerId, planId);
-  const filteredByStatus = estado ? allSessions.filter((session) => session.status === estado) : allSessions;
-  const filteredSessions = semana ? filteredByStatus.filter((session) => isoWeekStart(session.startedAt) === semana) : filteredByStatus;
+  const selectedWeek = semana ?? isoWeekStart();
+  const filteredSessions = allSessions.filter((session) => isoWeekStart(session.startedAt) === selectedWeek);
 
-  const prevWeek = isoDate(addDays(parseIsoDateLocal(semana ?? isoWeekStart()), -7));
-  const nextWeek = isoDate(addDays(parseIsoDateLocal(semana ?? isoWeekStart()), 7));
+  const prevWeek = isoDate(addDays(parseIsoDateLocal(selectedWeek), -7));
+  const nextWeek = isoDate(addDays(parseIsoDateLocal(selectedWeek), 7));
 
   const enduranceActivities = historyRepo.listEnduranceActivities(ownerId);
-  const filteredEndurance = semana ? enduranceActivities.filter((activity) => isoWeekStart(activity.startedAt) === semana) : enduranceActivities;
+  const filteredEndurance = enduranceActivities.filter((activity) => isoWeekStart(activity.startedAt) === selectedWeek);
 
   const timeline = buildTimeline(filteredSessions, filteredEndurance);
-  const isFiltered = Boolean(estado || semana);
+  const thisWeek = isoWeekStart();
+  const periodLabel = selectedWeek === thisWeek ? "Esta semana" : `Semana del ${parseIsoDateLocal(selectedWeek).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}`;
 
   return (
     <>
-      <details className="hist-filter">
-        <summary className="icon-btn" aria-label="Filtrar por estado o semana">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-        </summary>
-        <div className="hist-filter__panel">
-          <p className="field__label">Estado</p>
-          <div className="picker picker--wide" role="group" aria-label="Filtrar por estado">
-            <Link href={`/historial?tab=registro${semana ? `&semana=${semana}` : ""}`} className="chip chip--compact" aria-disabled={!estado}>Todos</Link>
-            {Object.entries(STATUS_LABEL).map(([value, label]) => (
-              <Link key={value} href={`/historial?tab=registro&estado=${value}${semana ? `&semana=${semana}` : ""}`} className="chip chip--compact" aria-disabled={estado === value}>{label}</Link>
-            ))}
-          </div>
-
-          <p className="field__label">Semana</p>
-          <div className="picker" role="group" aria-label="Filtrar por semana">
-            <Link href={`/historial?tab=registro${estado ? `&estado=${estado}` : ""}&semana=${prevWeek}`} className="chip chip--compact">← Anterior</Link>
-            <Link href={`/historial?tab=registro${estado ? `&estado=${estado}` : ""}&semana=${nextWeek}`} className="chip chip--compact">Siguiente →</Link>
-            {semana && <Link href={`/historial?tab=registro${estado ? `&estado=${estado}` : ""}`} className="chip chip--compact">Ver todo</Link>}
-          </div>
-        </div>
-      </details>
+      <nav className="history-period" aria-label="Semana mostrada">
+        <Link href={`/historial?tab=registro&semana=${prevWeek}`} aria-label="Semana anterior">←</Link>
+        <Link href="/historial?tab=registro" className={selectedWeek === thisWeek ? "is-current" : ""}>{periodLabel}</Link>
+        <Link href={`/historial?tab=registro&semana=${nextWeek}`} aria-label="Semana siguiente">→</Link>
+      </nav>
 
       {timeline.length === 0 ? (
-        <p className="lede small">{isFiltered ? "Nada con estos filtros todavía." : "Todavía no hay actividad registrada."}</p>
+        <p className="lede small">Aún no hay actividad esta semana.</p>
       ) : (
         <ul className="log" aria-label="Cronología de actividad">
           {timeline.map((entry) => (
@@ -143,7 +133,7 @@ function ProgresoSection({ historyRepo, ownerId }: { historyRepo: ReturnType<typ
     <>
       <p className="field__label">Progresión</p>
       <div aria-label="Progresión por ejercicio">
-      {progress.map((entry) => (
+      {progress.slice(0, 2).map((entry) => (
         <div key={entry.variantId} className="progressrow">
           <span>
             {entry.exerciseName} — {entry.variantName}

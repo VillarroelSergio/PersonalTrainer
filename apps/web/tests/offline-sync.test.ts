@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { startWorkoutResponse } from "@/app/api/v1/workouts/handler";
-import { recordSetResponse } from "@/app/api/v1/workouts/[id]/sets/handler";
+import { recordSetResponse, removeSetResponse } from "@/app/api/v1/workouts/[id]/sets/handler";
 import { finishWorkoutResponse } from "@/app/api/v1/workouts/[id]/finish/handler";
 import { createMemoryOutboxStore, flushOutbox, type OutboxOperation, type SubmitResult } from "@/lib/offline/outbox";
 import * as schema from "@/lib/db/schema";
@@ -25,7 +25,7 @@ function fixture() {
   const sqlite = new Database(":memory:");
   sqlite.exec(`
     CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null);
-    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null);
+    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null, source text, source_template_id text, source_template_version text, catalog_version text);
     CREATE TABLE workout_session (id text primary key, owner_id text not null, plan_id text not null, session_index integer not null, status text not null default 'in_progress', version integer not null default 1, last_finish_operation_id text, started_at integer not null, ended_at integer, global_effort integer, comment text, discomfort_json text, created_at integer not null);
     CREATE TABLE session_exercise (id text primary key, workout_session_id text not null, variant_id text not null, position integer not null, status text not null default 'active', target_sets integer not null, target_reps_min integer not null, target_reps_max integer not null);
     CREATE TABLE set_performance (id text primary key, session_exercise_id text not null, set_number integer not null, load_kg integer, repetitions integer, difficulty text, completed_at integer not null);
@@ -37,7 +37,7 @@ function fixture() {
   `);
   const now = Date.now();
   sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run("account-a", "account-a", "account-a@example.test", 1, null, now, now);
-  sqlite.prepare("INSERT INTO training_plan VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), now);
+  sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), now);
   const db = drizzle(sqlite, { schema });
   return { db, sqlite };
 }
@@ -53,6 +53,11 @@ function makeSubmit(db: ReturnType<typeof fixture>["db"], sqlite: ReturnType<typ
             new Request("http://localhost", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(operation.payload) }),
             user, db, sqlite, operation.workoutSessionId
           )
+        : operation.kind === "remove_set"
+          ? await removeSetResponse(
+              new Request("http://localhost", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify(operation.payload) }),
+              user, db, sqlite, operation.workoutSessionId
+            )
         : await finishWorkoutResponse(
             new Request("http://localhost", { method: "POST", headers: { "content-type": "application/json", "idempotency-key": operation.id }, body: JSON.stringify({ clientOperationId: operation.id, baseVersion: operation.baseVersion, ...operation.payload }) }),
             user, db, sqlite, operation.workoutSessionId

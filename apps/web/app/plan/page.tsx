@@ -15,6 +15,7 @@ import { createHistoryRepository } from "@/features/history/domain/history-repos
 import { pickAchievements } from "@/features/history/domain/history-engine";
 import { AppShell } from "@/components/AppShell";
 import PlanSessionActions from "@/features/planning/ui/PlanSessionActions";
+import PlanManagementActions from "@/features/planning/ui/PlanManagementActions";
 import { WEEKDAY_LABEL, WEEKDAYS, isoDate, isoWeekStart, parseIsoDateLocal, type Weekday } from "@/lib/weekdays";
 import type { PlanProposal } from "@/contracts/onboarding";
 
@@ -57,7 +58,7 @@ function loadColor(seriesCount: number): string {
   return `hsl(${130 - t * 130}deg 60% 45%)`;
 }
 
-export default async function PlanPage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
+export default async function PlanPage({ searchParams }: { searchParams: Promise<{ week?: string; vista?: TabKey }> }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
   const ownerId = session.user.id;
@@ -65,8 +66,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const activePlan = await findActivePlanForOwner(db, ownerId);
   if (!activePlan) redirect("/onboarding");
 
-  const { week } = await searchParams;
-  const vista: TabKey = "semana";
+  const { week, vista: requestedVista } = await searchParams;
+  const vista: TabKey = TABS.some((tab) => tab.key === requestedVista) ? requestedVista! : "semana";
   const offset = Math.max(0, Number.parseInt(week ?? "0", 10) || 0);
   const currentWeekStart = isoWeekStart();
   const weekStart = isoDate(addDays(parseIsoDateLocal(currentWeekStart), offset * 7));
@@ -115,6 +116,19 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
       <Link href="/compartir" className="btn btn--ghost btn--sm">Compartir plan</Link>
 
+      <nav className="tabnav" aria-label="Vistas del plan">
+        {TABS.map((tab) => (
+          <Link
+            key={tab.key}
+            href={`/plan?vista=${tab.key}${offset ? `&week=${offset}` : ""}`}
+            className={`tabnav__item${vista === tab.key ? " is-active" : ""}`}
+            aria-current={vista === tab.key ? "page" : undefined}
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </nav>
+
       <div className="tabpanel">
         {vista === "semana" ? (
           <>
@@ -132,6 +146,9 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
             </ol>
           </>
         ) : null}
+
+        {vista === "fases" ? <FasesTab proposal={proposal} blockProgress={blockProgress} /> : null}
+        {vista === "planes" ? <PlanesTab plans={plans} activePlanId={activePlan.id} /> : null}
 
       </div>
 
@@ -233,10 +250,6 @@ function FasesTab({ proposal, blockProgress }: { proposal: PlanProposal; blockPr
   );
 }
 
-/** Tus planes (nota 22): lista real de todos los planes de la cuenta (draft/active/archived).
- * Solo lectura — activar, pausar, finalizar, archivar, duplicar y renombrar un plan existente
- * no tienen todavía un endpoint real en apps/web/app/api/v1/plans/**; limitación declarada,
- * no backend inventado aquí. */
 function PlanesTab({ plans, activePlanId }: { plans: Awaited<ReturnType<typeof listPlansForOwner>>; activePlanId: string }) {
   return (
     <>
@@ -259,12 +272,13 @@ function PlanesTab({ plans, activePlanId }: { plans: Awaited<ReturnType<typeof l
                 </div>
                 <span className={`state state--${PLAN_STATE_CLASS[plan.status] ?? plan.status}`}>{label}</span>
               </div>
+              <PlanManagementActions planId={plan.id} planName={plan.name} isActive={plan.id === activePlanId} />
             </li>
           );
         })}
       </ul>
-      <p className="lede small">Activar, pausar, finalizar, archivar, duplicar o renombrar un plan todavía no tiene soporte real de datos: esta lista es de solo lectura.</p>
-      <Link href="/onboarding" className="btn btn--ghost btn--block">Crear plan nuevo</Link>
+      <p className="lede small">Puedes conservar varios planes. Al activar uno nuevo, el actual quedará archivado para que las sesiones en curso sigan siendo coherentes.</p>
+      <Link href="/onboarding?new=1" className="btn btn--ghost btn--block">Crear plan nuevo</Link>
     </>
   );
 }
@@ -320,8 +334,8 @@ function ProgressSection({
       >
         <div className="loadmap__crop">
           <Image className="loadmap__img" src={BODY_MAP_IMG} alt="" aria-hidden="true" width={640} height={800} priority={false} />
-          <span className="loadmap__zone" style={{ top: "26%", left: "50%", background: loadColor(weeklyLoad.treSuperior) }} aria-hidden="true" />
-          <span className="loadmap__zone" style={{ top: "70%", left: "50%", background: loadColor(weeklyLoad.piernas) }} aria-hidden="true" />
+          <span className="loadmap__zone" style={{ top: "26%", left: "50%", background: loadColor(weeklyLoad.treSuperior), color: loadColor(weeklyLoad.treSuperior) }} aria-hidden="true" />
+          <span className="loadmap__zone" style={{ top: "70%", left: "50%", background: loadColor(weeklyLoad.piernas), color: loadColor(weeklyLoad.piernas) }} aria-hidden="true" />
         </div>
         <ul className="loadmap__legend" aria-hidden="true">
           <li><span className="loadmap__dot" style={{ background: loadColor(weeklyLoad.treSuperior) }} />Tren superior · {weeklyLoad.treSuperior} series</li>

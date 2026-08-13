@@ -1,10 +1,21 @@
 import type { OnboardingDraft, PlanProposal } from "@/contracts/onboarding";
 import { assignSessionExercises } from "./session-exercise-assignment";
+import { FOUNDATION_BLOCKS } from "@/features/catalog/data/foundation-blocks";
+import { isEquipmentRequirementSatisfied } from "@/features/catalog/domain/editorial-content";
+import { capabilitiesForEnvironment, type EquipmentProfile } from "@/features/catalog/domain/inventory";
 
 const weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
+function foundationBlocksForEnvironment(environment: EquipmentProfile) {
+  const capabilities = capabilitiesForEnvironment(environment);
+  return FOUNDATION_BLOCKS
+    .filter((block) => isEquipmentRequirementSatisfied(block.requirements, capabilities))
+    .map(({ requirements: _requirements, ...block }) => block);
+}
+
 export function buildPlanProposal(draft: OnboardingDraft): PlanProposal {
-  const environments = draft.environments.map((environment) => environment.kind);
+  const environment = draft.environments[0];
+  const foundationBlocks = foundationBlocksForEnvironment(environment);
   const strengthSessions = draft.strengthAvailability.map((day, index) => {
     const title = ["Fuerza: empuje", "Fuerza: tracción", "Fuerza: piernas"][index % 3];
     return {
@@ -12,7 +23,8 @@ export function buildPlanProposal(draft: OnboardingDraft): PlanProposal {
       kind: "strength" as const,
       title,
       estimatedMinutes: draft.sessionDurationMinutes,
-      exercises: assignSessionExercises(title, environments, draft.primaryGoal)
+      exercises: assignSessionExercises(title, environment, draft.primaryGoal),
+      blocks: foundationBlocks
     };
   });
   const occupiedDays = new Set(draft.strengthAvailability);

@@ -99,9 +99,8 @@ function toggleInArray<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
 }
 
-function withEnvironmentDefaults(environments: Environment[], kind: EnvironmentKind): Environment[] {
-  if (environments.some((env) => env.kind === kind)) return environments.filter((env) => env.kind !== kind);
-  return [...environments, { kind, equipment: [...ENVIRONMENT_COMPATIBLE_EQUIPMENT[kind]] }];
+function selectEnvironment(kind: EnvironmentKind): Environment[] {
+  return [{ kind, equipment: [...ENVIRONMENT_COMPATIBLE_EQUIPMENT[kind]] }];
 }
 
 function toggleEquipment(environments: Environment[], kind: EnvironmentKind, equipment: EquipmentCategory): Environment[] {
@@ -139,7 +138,7 @@ export function onboardingReducer(state: OnboardingState, action: Action): Onboa
     case "SET_DURATION":
       return { ...state, form: { ...state.form, sessionDurationMinutes: action.minutes } };
     case "TOGGLE_ENVIRONMENT":
-      return { ...state, form: { ...state.form, environments: withEnvironmentDefaults(state.form.environments, action.kind) } };
+      return { ...state, form: { ...state.form, environments: selectEnvironment(action.kind) } };
     case "TOGGLE_EQUIPMENT":
       return { ...state, form: { ...state.form, environments: toggleEquipment(state.form.environments, action.kind, action.equipment) } };
     case "TOGGLE_MUSCLE_FOCUS": {
@@ -204,12 +203,16 @@ export function canAdvance(state: OnboardingState): boolean {
     case "height":
     case "weight":
       return true;
-    case "activity":
+    case "strength_availability":
       return form.strengthAvailability.length > 0;
-    case "duration_environment":
+    case "endurance":
+    case "duration":
+      return true;
+    case "environment":
       return form.environments.length > 0;
     case "equipment":
-    case "focus_discomfort":
+    case "focus":
+    case "discomfort":
       return true;
     default:
       return false;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildWeekView, occurrenceRenderKey, sessionAction, computeBlockProgress, computeWeekMinutes, computeConsistencyWeeks, evolutionNote,
+  buildWeekView, occurrenceRenderKey, sessionAction, computeBlockProgress, computeWeekMinutes, computeConsistencyWeeks, evolutionNote, summarizeWeekSessions, visibleOccurrencesForDay,
   type WeekOccurrence, type FinishedSessionRow
 } from "@/features/planning/domain/plan-week";
 import type { PlanProposal } from "@/contracts/onboarding";
@@ -59,6 +59,17 @@ describe("buildWeekView", () => {
   it("a week with no session on a given day has no occurrence for it (rest day)", () => {
     const view = buildWeekView(proposal, true, [], {});
     expect(view.some((o) => o.day === "tuesday")).toBe(false);
+  });
+});
+
+describe("visibleOccurrencesForDay — home honours this week's relocations", () => {
+  it("shows every real session on its target day and hides the moved-away origin", () => {
+    const occurrences = buildWeekView(proposal, true, [
+      { sessionIndex: 0, kind: "reschedule", targetDay: "wednesday", opsJson: "[]" }
+    ], {});
+
+    expect(visibleOccurrencesForDay(occurrences, "monday")).toEqual([]);
+    expect(visibleOccurrencesForDay(occurrences, "wednesday").map((item) => item.title)).toEqual(["Piernas", "Carrera suave"]);
   });
 });
 
@@ -152,5 +163,17 @@ describe("evolutionNote — never a fabricated trend", () => {
       { startedAt: new Date(), endedAt: new Date(), status: "adapted" }
     ];
     expect(evolutionNote(history)).toContain("2 sesiones");
+  });
+});
+
+describe("summarizeWeekSessions — home uses the plan and its real statuses", () => {
+  it("counts every planned session, including two on the same day", () => {
+    const summary = summarizeWeekSessions([
+      { day: "monday", kind: "strength", title: "Empuje", estimatedMinutes: 60 },
+      { day: "monday", kind: "endurance", title: "Carrera suave", estimatedMinutes: 30 },
+      { day: "thursday", kind: "strength", title: "Piernas", estimatedMinutes: 60 }
+    ], { 0: "completed", 1: "in_progress" });
+
+    expect(summary).toEqual({ planned: 3, completed: 1, inProgress: 1, remaining: 2, plannedMinutes: 150 });
   });
 });

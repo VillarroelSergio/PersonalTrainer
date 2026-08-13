@@ -85,6 +85,13 @@
       "when": 1786449912433,
       "tag": "0011_jazzy_morlun",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1786616366271,
+      "tag": "0012_editorial_template_provenance",
+      "breakpoints": true
     }
   ]
 }

@@ -30,4 +30,47 @@ describe("onboarding proposal", () => {
     expect(proposal.week.sessions).toHaveLength(5);
     expect(proposal.week.sessions.filter((session) => session.kind === "strength")).toHaveLength(3);
   });
+
+  it("assigns only variants whose equipment category is declared in the selected environment", () => {
+    const proposal = buildPlanProposal(onboardingDraftSchema.parse({
+      ...validDraft,
+      environments: [{ kind: "full_gym", equipment: ["free_weights"] }]
+    }));
+    const variantIds = proposal.week.sessions.flatMap((session) => session.exercises?.map((exercise) => exercise.variantId) ?? []);
+
+    expect(variantIds).toContain("squat-barbell");
+    expect(variantIds).not.toContain("pull-h-cable-row");
+    expect(variantIds).not.toContain("pull-v-lat-pulldown");
+  });
+
+  it("omits a pattern when no active eligible variant can satisfy its requirements", () => {
+    const proposal = buildPlanProposal(onboardingDraftSchema.parse({
+      ...validDraft,
+      environments: [{ kind: "full_gym", equipment: [] }]
+    }));
+    const exercises = proposal.week.sessions.flatMap((session) => session.exercises ?? []);
+
+    expect(exercises).not.toContainEqual(expect.objectContaining({ variantId: "pull-h-cable-row" }));
+  });
+
+  it("includes only available foundation blocks in a strength session proposal", () => {
+    const proposal = buildPlanProposal(onboardingDraftSchema.parse(validDraft));
+    const strengthSession = proposal.week.sessions.find((session) => session.kind === "strength");
+
+    expect(strengthSession?.blocks).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "warmup" })])
+    );
+  });
+
+  it("keeps progression fields exclusive to exercises, never on non-strength blocks", () => {
+    const proposal = buildPlanProposal(onboardingDraftSchema.parse(validDraft));
+    const strengthSession = proposal.week.sessions.find((session) => session.kind === "strength");
+
+    expect(strengthSession?.exercises?.length).toBeGreaterThan(0);
+    for (const block of strengthSession?.blocks ?? []) {
+      expect(block).not.toHaveProperty("targetSets");
+      expect(block).not.toHaveProperty("targetRepsMin");
+      expect(block).not.toHaveProperty("targetRepsMax");
+    }
+  });
 });

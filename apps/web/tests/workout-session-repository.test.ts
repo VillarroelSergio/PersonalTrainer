@@ -22,7 +22,7 @@ function fixture() {
   const sqlite = new Database(":memory:");
   sqlite.exec(`
     CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null);
-    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null);
+    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null, source text, source_template_id text, source_template_version text, catalog_version text);
     CREATE TABLE workout_session (id text primary key, owner_id text not null, plan_id text not null, session_index integer not null, status text not null default 'in_progress', version integer not null default 1, last_finish_operation_id text, started_at integer not null, ended_at integer, global_effort integer, comment text, discomfort_json text, created_at integer not null);
     CREATE TABLE session_exercise (id text primary key, workout_session_id text not null, variant_id text not null, position integer not null, status text not null default 'active', target_sets integer not null, target_reps_min integer not null, target_reps_max integer not null);
     CREATE TABLE set_performance (id text primary key, session_exercise_id text not null, set_number integer not null, load_kg integer, repetitions integer, difficulty text, completed_at integer not null);
@@ -34,7 +34,7 @@ function fixture() {
   for (const id of ["account-a", "account-b"]) {
     sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, id, `${id}@example.test`, 1, null, now, now);
   }
-  sqlite.prepare("INSERT INTO training_plan VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), now);
+  sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), now);
   const db = drizzle(sqlite, { schema });
   return { db, sqlite };
 }
@@ -58,6 +58,20 @@ describe("workout session repository", () => {
     repo.recordSet("account-a", started.workoutSession.id, started.sessionExercises[0].id, 1, 40, 10, "just_right");
     const sets = sqlite.prepare("SELECT load_kg, repetitions FROM set_performance WHERE session_exercise_id = ?").all(started.sessionExercises[0].id);
     expect(sets).toEqual([{ load_kg: 40, repetitions: 10 }]);
+  });
+
+  it("removes a recorded set so resuming the workout does not mark it as completed", () => {
+    const { db, sqlite } = fixture();
+    const repo = createWorkoutSessionRepository(db, sqlite);
+    const started = repo.startOrResumeWorkout("account-a", "plan-a", 0);
+    const exerciseId = started.sessionExercises[0].id;
+
+    repo.recordSet("account-a", started.workoutSession.id, exerciseId, 1, 40, 10, "just_right");
+    repo.removeSet("account-a", started.workoutSession.id, exerciseId, 1);
+
+    expect(sqlite.prepare("SELECT COUNT(*) as count FROM set_performance WHERE session_exercise_id = ?").get(exerciseId)).toEqual({ count: 0 });
+    const resumed = repo.startOrResumeWorkout("account-a", "plan-a", 0);
+    expect((resumed.sessionExercises[0] as { sets?: unknown[] }).sets ?? []).toEqual([]);
   });
 
   it("produces correct history and an explainable suggestion after three complete exposures of a variant", () => {

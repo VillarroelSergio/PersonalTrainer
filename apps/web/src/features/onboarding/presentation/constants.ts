@@ -65,6 +65,15 @@ export const EQUIPMENT_OPTIONS: Array<{ value: EquipmentCategory; label: string 
   { value: "indoor_cardio", label: "Cardio interior" }
 ];
 
+export const EQUIPMENT_IMAGE: Record<EquipmentCategory, string> = {
+  free_weights: "/library/exercises/press-banca-mancuernas-v3.webp",
+  benches_supports: "/library/exercises/press-banca-barra-v2.webp",
+  cables_torso: "/library/exercises/jalon-polea-agarre-ancho-v2.webp",
+  leg_machines: "/library/exercises/elevacion-gemelo-maquina-v2.webp",
+  bodyweight_accessories: "/library/exercises/plancha-v3.webp",
+  indoor_cardio: "/library/exercises/sentadilla-goblet-v3.webp"
+};
+
 // Matriz de preselección confirmada por docs/CODEX-ONBOARDING-INTEGRATION-PROMPT.md
 // (tabla "Aplicar la matriz de equipamiento inicial"). Sustituye el mapeo
 // provisional anterior, marcado como pendiente en CLAUDE-ONBOARDING-NOTES.md.
@@ -76,11 +85,11 @@ export const ENVIRONMENT_COMPATIBLE_EQUIPMENT: Record<EnvironmentKind, Equipment
 };
 
 export const MUSCLE_FOCUS_OPTIONS: Array<{ value: MuscleFocus; label: string }> = [
-  { value: "upper_body", label: "Tren superior" },
-  { value: "lower_body", label: "Tren inferior" },
-  { value: "push", label: "Empuje" },
+  { value: "upper_body", label: "Pecho" },
+  { value: "lower_body", label: "Brazos" },
+  { value: "push", label: "Piernas" },
   { value: "pull", label: "Tracción" },
-  { value: "full_body", label: "Cuerpo completo" }
+  { value: "full_body", label: "Espalda" }
 ];
 
 export const DISCOMFORT_ZONE_OPTIONS: Array<{ value: DiscomfortZone; label: string; top: number; left: number }> = [

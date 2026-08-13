@@ -106,6 +106,15 @@ export function createWorkoutSessionRepository(database: Db, sqliteHandle: Datab
       .run();
   });
 
+  const runRemoveSet = sqliteHandle.transaction((ownerId: string, workoutSessionId: string, sessionExerciseId: string, setNumber: number) => {
+    const owned = database.select().from(workoutSession).where(and(eq(workoutSession.id, workoutSessionId), eq(workoutSession.ownerId, ownerId))).get();
+    if (!owned) throw new WorkoutNotFoundError();
+    const exercise = database.select().from(sessionExercise).where(and(eq(sessionExercise.id, sessionExerciseId), eq(sessionExercise.workoutSessionId, workoutSessionId))).get();
+    if (!exercise) throw new SessionExerciseNotFoundError();
+
+    database.delete(setPerformance).where(and(eq(setPerformance.sessionExerciseId, sessionExerciseId), eq(setPerformance.setNumber, setNumber))).run();
+  });
+
   const runSubstituteVariant = sqliteHandle.transaction((ownerId: string, workoutSessionId: string, sessionExerciseId: string, newVariantId: string) => {
     const owned = database.select().from(workoutSession).where(and(eq(workoutSession.id, workoutSessionId), eq(workoutSession.ownerId, ownerId))).get();
     if (!owned) throw new WorkoutNotFoundError();
@@ -154,6 +163,8 @@ export function createWorkoutSessionRepository(database: Db, sqliteHandle: Datab
     startOrResumeWorkout: (ownerId: string, planId: string, sessionIndex: number, adjustmentOps: RecommendationOp[] = []) => runStartOrResume(ownerId, planId, sessionIndex, adjustmentOps),
     recordSet: (ownerId: string, workoutSessionId: string, sessionExerciseId: string, setNumber: number, loadKg: number | null, repetitions: number | null, difficulty: SetDifficulty | null) =>
       runRecordSet(ownerId, workoutSessionId, sessionExerciseId, setNumber, loadKg, repetitions, difficulty),
+    removeSet: (ownerId: string, workoutSessionId: string, sessionExerciseId: string, setNumber: number) =>
+      runRemoveSet(ownerId, workoutSessionId, sessionExerciseId, setNumber),
     substituteVariant: (ownerId: string, workoutSessionId: string, sessionExerciseId: string, newVariantId: string) => runSubstituteVariant(ownerId, workoutSessionId, sessionExerciseId, newVariantId),
     finishWorkout: (ownerId: string, workoutSessionId: string, clientOperationId: string, baseVersion: number, status: SessionCloseStatus, globalEffort: number | null, comment: string | null, discomfortJson: string | null) =>
       runFinish(ownerId, workoutSessionId, clientOperationId, baseVersion, status, globalEffort, comment, discomfortJson),

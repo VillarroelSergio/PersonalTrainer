@@ -1,9 +1,10 @@
 "use client";
 
 import { ScreenLayout } from "@/components/ScreenLayout";
-import Image from "next/image";
+import type { CSSProperties } from "react";
 import { ENVIRONMENT_OPTIONS, EQUIPMENT_OPTIONS } from "../../presentation/constants";
 import type { Environment, EquipmentCategory, EnvironmentKind } from "../../presentation/types";
+import styles from "./EquipmentScreen.module.css";
 
 type EquipmentScreenProps = {
   environments: Environment[];
@@ -12,20 +13,21 @@ type EquipmentScreenProps = {
 
 export function EquipmentScreen({ environments, onToggleEquipment }: EquipmentScreenProps) {
   return (
-    <ScreenLayout title="Equipamiento" hint="Todo el material compatible con tu entorno está marcado. Quita lo que no tengas.">
+    <ScreenLayout title="Selecciona tu equipamiento" hint="Las ilustraciones muestran cada categoría. Quita lo que no tengas.">
+      <p className={styles.intro}>Esto solo nos ayuda a priorizar variantes compatibles para tu entrenamiento.</p>
       {environments.map((environment) => {
         const envLabel = ENVIRONMENT_OPTIONS.find((option) => option.value === environment.kind)?.label ?? environment.kind;
         return (
           <div key={environment.kind}>
-            <p style={{ fontWeight: 600, marginBottom: 8 }}>{envLabel}</p>
-            <div className="equipment-grid" role="group" aria-label={`Equipamiento en ${envLabel}`}>
-              {EQUIPMENT_OPTIONS.map((option) => {
+            <p className={styles.environment}>{envLabel}</p>
+            <div className={styles.grid} role="group" aria-label={`Equipamiento en ${envLabel}`}>
+              {EQUIPMENT_OPTIONS.map((option, index) => {
                 const selected = environment.equipment.includes(option.value);
                 return (
-                  <button key={option.value} type="button" className={`equipment-card${selected ? " is-selected" : ""}`} aria-pressed={selected} onClick={() => onToggleEquipment(environment.kind, option.value)}>
-                    <Image className="equipment-card__image" src={equipmentImage(option.value)} alt="" width={120} height={72} />
-                    <span className="equipment-card__name">{option.label}</span>
-                    <span className="equipment-card__check" aria-hidden="true">{selected ? "✓" : ""}</span>
+                  <button key={option.value} type="button" className={`${styles.card}${selected ? ` ${styles.cardSelected}` : ""}`} aria-pressed={selected} onClick={() => onToggleEquipment(environment.kind, option.value)}>
+                    <span className={styles.art} aria-hidden="true" style={{ "--sprite-x": `${(index % 3) * 50}%`, "--sprite-y": `${Math.floor(index / 3) * 100}%` } as CSSProperties} />
+                    <span className={styles.name}>{option.label}</span>
+                    <span className={styles.check} aria-hidden="true">{selected ? "✓" : ""}</span>
                   </button>
                 );
               })}
@@ -35,16 +37,4 @@ export function EquipmentScreen({ environments, onToggleEquipment }: EquipmentSc
       })}
     </ScreenLayout>
   );
-}
-
-function equipmentImage(category: EquipmentCategory): string {
-  const images: Record<EquipmentCategory, string> = {
-    free_weights: "/library/exercises/press-banca-mancuernas-v3.webp",
-    benches_supports: "/library/exercises/press-banca-barra-v2.webp",
-    cables_torso: "/library/exercises/jalon-polea-agarre-ancho-v2.webp",
-    leg_machines: "/library/exercises/elevacion-gemelo-maquina-v2.webp",
-    bodyweight_accessories: "/library/exercises/plancha-v3.webp",
-    indoor_cardio: "/library/exercises/sentadilla-goblet-v3.webp"
-  };
-  return images[category];
 }

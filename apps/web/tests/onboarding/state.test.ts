@@ -1,9 +1,33 @@
 import { describe, expect, it } from "vitest";
 import { onboardingDraftSchema } from "@/contracts/onboarding";
 import { canAdvance, createInitialState, formToDraft, onboardingReducer } from "@/features/onboarding/presentation/state";
+import { STEP_ORDER } from "@/features/onboarding/presentation/types";
+import { EQUIPMENT_IMAGE, EQUIPMENT_OPTIONS } from "@/features/onboarding/presentation/constants";
 import { percentForElapsed, phaseForPercent, TRANSITION_DURATION_MS, TRANSITION_MAX_PERCENT } from "@/features/onboarding/presentation/transition";
 
 describe("onboardingReducer", () => {
+  it("has an illustration for every selectable equipment category", () => {
+    expect(EQUIPMENT_OPTIONS.map((option) => EQUIPMENT_IMAGE[option.value])).toEqual(expect.arrayContaining(EQUIPMENT_OPTIONS.map(() => expect.any(String))));
+  });
+
+  it("keeps one decision on each activity, context and optional wellbeing step", () => {
+    expect(STEP_ORDER).toEqual([
+      "mode",
+      "goals",
+      "experience",
+      "birth_date",
+      "height",
+      "weight",
+      "strength_availability",
+      "endurance",
+      "duration",
+      "environment",
+      "equipment",
+      "focus",
+      "discomfort"
+    ]);
+  });
+
   it("blocks advancing on the goals step until at least one goal is chosen", () => {
     let state = createInitialState(new Date("2024-01-01"));
     state = onboardingReducer(state, { type: "GO_TO_STEP", stepIndex: 1 });
@@ -40,6 +64,32 @@ describe("onboardingReducer", () => {
     state = onboardingReducer(state, { type: "TOGGLE_ENVIRONMENT", kind: "home" });
     const home = state.form.environments.find((env) => env.kind === "home");
     expect(home?.equipment).toEqual(["free_weights", "benches_supports", "bodyweight_accessories"]);
+  });
+
+  it("replaces the previous environment and its equipment when a new environment is selected", () => {
+    let state = createInitialState();
+    state = onboardingReducer(state, { type: "TOGGLE_ENVIRONMENT", kind: "full_gym" });
+    state = onboardingReducer(state, { type: "TOGGLE_EQUIPMENT", kind: "full_gym", equipment: "cables_torso" });
+    state = onboardingReducer(state, { type: "TOGGLE_ENVIRONMENT", kind: "home" });
+
+    expect(state.form.environments).toEqual([{ kind: "home", equipment: ["free_weights", "benches_supports", "bodyweight_accessories"] }]);
+  });
+
+  it("rejects a draft with more than one training environment", () => {
+    const state = createInitialState(new Date("2024-06-15"));
+    expect(() => onboardingDraftSchema.parse({
+      ...formToDraft({
+        ...state.form,
+        creationMode: "guided",
+        goals: ["strength"],
+        experience: "intermediate",
+        strengthAvailability: ["monday"],
+        environments: [
+          { kind: "full_gym", equipment: ["free_weights"] },
+          { kind: "home", equipment: ["free_weights"] }
+        ]
+      })
+    })).toThrow();
   });
 
   it("toggling equipment off removes just that category", () => {

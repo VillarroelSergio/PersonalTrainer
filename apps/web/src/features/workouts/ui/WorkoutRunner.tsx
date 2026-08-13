@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { EXERCISE_CATALOG, findVariant, MUSCLE_GROUP_LABEL, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
+import { EXERCISE_CATALOG, findVariant, MUSCLE_GROUP_IMAGE, MUSCLE_GROUP_LABEL, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
 import { DISCOMFORT_ZONE_OPTIONS } from "@/features/onboarding/presentation/constants";
 import type { DiscomfortZone } from "@/features/onboarding/presentation/types";
 import { MOLESTIA_OPTIONS, type MolestiaLevel } from "@/features/training-engine/domain/checkin-discomfort";
 import { youtubeSearchUrl } from "@/features/catalog/domain/video-link";
+import { adjustRestSeconds, isRestComplete, remainingRestSeconds } from "@/features/workouts/domain/rest-timer";
 
 type PreviewExercise = { variantId: string; targetSets: number; targetRepsMin: number; targetRepsMax: number };
 type PersistedSet = { setNumber: number; loadKg: number | null; repetitions: number | null; difficulty: Difficulty | null };
@@ -49,23 +50,30 @@ export function WorkoutRunner({
   const [exerciseStats, setExerciseStats] = useState<Record<string, { total: number; done: number }>>({});
   const [restSeconds, setRestSeconds] = useState(DEFAULT_REST_SECONDS);
   const [restLabel, setRestLabel] = useState<string | null>(null);
-  const [restRemaining, setRestRemaining] = useState<number | null>(null);
+  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const [restNow, setRestNow] = useState(() => Date.now());
+  const restRemaining = restEndsAt === null ? null : remainingRestSeconds(restEndsAt, restNow);
 
   useEffect(() => {
-    if (restRemaining === null) return;
-    if (restRemaining <= 0) {
-      setRestRemaining(null);
-      return;
-    }
-    const timeout = setTimeout(() => setRestRemaining((value) => (value !== null ? value - 1 : value)), 1000);
-    return () => clearTimeout(timeout);
-  }, [restRemaining]);
+    if (restEndsAt === null) return;
+    const tick = () => {
+      const now = Date.now();
+      setRestNow(now);
+      if (isRestComplete(restEndsAt, now)) {
+        setRestEndsAt(null);
+        setRestLabel(null);
+      }
+    };
+    tick();
+    const interval = window.setInterval(tick, 1_000);
+    return () => window.clearInterval(interval);
+  }, [restEndsAt]);
 
   // El descanso solo tiene sentido entre series de una sesión activa: se detiene y
   // oculta en cuanto se pasa a cerrar la sesión, para no seguir corriendo tras terminar.
   useEffect(() => {
     if (closing) {
-      setRestRemaining(null);
+      setRestEndsAt(null);
       setRestLabel(null);
     }
   }, [closing]);
@@ -81,7 +89,8 @@ export function WorkoutRunner({
 
   function onSetConfirmed(label: string) {
     setRestLabel(label);
-    setRestRemaining((current) => (current === null ? restSeconds : current));
+    setRestNow(Date.now());
+    setRestEndsAt((current) => current ?? Date.now() + restSeconds * 1_000);
   }
 
   async function startSession() {
@@ -112,7 +121,7 @@ export function WorkoutRunner({
   if (!workout) {
     const setsTotal = previewExercises.reduce((sum, exercise) => sum + exercise.targetSets, 0);
     return (
-      <section className="view-strength">
+      <section className="view-strength view-strength--preview">
         <div className="session-meter">
           <div className="meter" role="img" aria-label="Progreso de la sesión: 0 por ciento de las series registradas">
             <div className="meter__fill" style={{ width: "0%" }} />
@@ -123,10 +132,18 @@ export function WorkoutRunner({
         <ol className="exlist">
           {previewExercises.map((exercise, index) => {
             const variant = findVariant(exercise.variantId);
+            const previewImage = variant?.mediaUrl ?? (variant ? `/library/groups/${MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]}` : null);
             return (
               <li key={exercise.variantId + index}>
                 <div className="exrow">
                   <span className="exrow__index">{index + 1}</span>
+                  {previewImage ? (
+                    <span className="exrow__thumb" aria-hidden="true">
+                      <Image src={previewImage} alt="" width={44} height={44} />
+                    </span>
+                  ) : (
+                    <span className="exrow__thumb exrow__thumb--fallback" aria-hidden="true">+</span>
+                  )}
                   <span className="exrow__body">
                     <span className="exrow__name">{variant ? `${variant.exerciseName} — ${variant.variantName}` : exercise.variantId}</span>
                     <span className="exrow__meta">{objetivoText(exercise)}</span>
@@ -141,7 +158,7 @@ export function WorkoutRunner({
         </ol>
 
         {error ? <p className="notice notice--warn" role="alert">{error}</p> : null}
-        <button type="button" className="btn btn--primary btn--block" disabled={starting} onClick={startSession}>
+        <button type="button" className="btn btn--primary btn--block session-preview__start" disabled={starting} onClick={startSession}>
           {starting ? "Preparando…" : "Empezar sesión"}
         </button>
       </section>
@@ -191,11 +208,11 @@ export function WorkoutRunner({
             <div className="sessionbar__rest">
               <span className="sessionbar__clock" aria-live="polite">{formatClock(restRemaining ?? restSeconds)}</span>
               <span className="sessionbar__restlabel">{restRemaining !== null ? `Descansando · ${restLabel}` : `Descanso terminado · ${restLabel}`}</span>
-              <span className="sessionbar__restedit">
-                <label htmlFor="rest-seconds" className="sr-only">Segundos de descanso recomendado</label>
-                <input id="rest-seconds" type="number" min={15} max={300} step={5} value={restSeconds} disabled={restRemaining !== null} onChange={(event) => setRestSeconds(Number(event.target.value) || DEFAULT_REST_SECONDS)} />
-                <span>s</span>
-              </span>
+              <div className="sessionbar__restedit" aria-label="Ajustar próximo descanso">
+                <button type="button" className="sessionbar__reststep" onClick={() => setRestSeconds((value) => adjustRestSeconds(value, -15))} aria-label="Restar 15 segundos">−15</button>
+                <span>{restSeconds}s</span>
+                <button type="button" className="sessionbar__reststep" onClick={() => setRestSeconds((value) => adjustRestSeconds(value, 15))} aria-label="Sumar 15 segundos">+15</button>
+              </div>
             </div>
           ) : null}
         </div>
@@ -282,6 +299,23 @@ function ExerciseCard({
     onSetConfirmed(variant ? `${variant.exerciseName} — ${variant.variantName}` : exercise.variantId);
   }
 
+  async function unconfirmSet(setNumber: number) {
+    const operationId = crypto.randomUUID();
+    const payload = { sessionExerciseId: exercise.id, setNumber };
+    try {
+      const response = await fetch(`/api/v1/workouts/${workoutId}/sets`, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json", "idempotency-key": operationId },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) throw new Error("request failed");
+    } catch {
+      await sync.enqueue({ id: operationId, kind: "remove_set", workoutSessionId: workoutId, payload, createdAt: Date.now(), status: "pending" });
+    }
+    setSets((current) => current.map((set) => (set.setNumber === setNumber ? { ...set, saved: false } : set)));
+  }
+
   function updateSet(setNumber: number, patch: Partial<SetRowState>) {
     setSets((current) => current.map((set) => (set.setNumber === setNumber ? { ...set, ...patch } : set)));
   }
@@ -335,13 +369,15 @@ function ExerciseCard({
     <div>
       <div className="exhead">
         {variant?.mediaUrl ? (
-          <div className="exercise-media" style={{ width: 60, height: 60, flexShrink: 0 }}>
+          <div className="exercise-media">
             <Image className="exercise-media__img" src={variant.mediaUrl} alt="" width={60} height={60} />
           </div>
-        ) : (
-          <div className="exercise-media exercise-media--pending" style={{ width: 60, height: 60, flexShrink: 0 }}>
-            <p className="exercise-media__pending">Próximamente</p>
+        ) : variant ? (
+          <div className="exercise-media exercise-media--group" aria-hidden="true">
+            <Image className="exercise-media__img" src={`/library/groups/${MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]}`} alt="" width={60} height={60} />
           </div>
+        ) : (
+          <div className="exercise-media exercise-media--pending" aria-hidden="true">?</div>
         )}
         <div className="exhead__body">
           <p className="exhead__variant">{variant ? `${variant.exerciseName} — ${variant.variantName}` : exercise.variantId}</p>
@@ -360,7 +396,7 @@ function ExerciseCard({
       <p className="section-title">Series</p>
       <ul className="lanes">
         {sets.map((set) => (
-          <SetRow key={set.setNumber} set={set} onChange={(patch) => updateSet(set.setNumber, patch)} onConfirm={() => confirmSet(set.setNumber)} />
+          <SetRow key={set.setNumber} set={set} onChange={(patch) => updateSet(set.setNumber, patch)} onConfirm={() => confirmSet(set.setNumber)} onUnconfirm={() => unconfirmSet(set.setNumber)} />
         ))}
       </ul>
 
@@ -378,10 +414,10 @@ function ExerciseCard({
   );
 }
 
-function SetRow({ set, onChange, onConfirm }: { set: SetRowState; onChange: (patch: Partial<SetRowState>) => void; onConfirm: () => void }) {
+function SetRow({ set, onChange, onConfirm, onUnconfirm }: { set: SetRowState; onChange: (patch: Partial<SetRowState>) => void; onConfirm: () => void; onUnconfirm: () => void }) {
   return (
-    <li className="lane__error-row" style={{ display: "flex", flexDirection: "column", gap: 6, borderBottom: "1px solid var(--rule-soft)", paddingBottom: 8 }}>
-      <div className={"lane" + (set.saved ? " is-done" : "")} style={{ borderBottom: "none", padding: "10px 0 4px" }}>
+    <li className="lane__error-row">
+      <div className={"lane lane--set" + (set.saved ? " is-done" : "")}>
         <span className="lane__num">{set.setNumber}</span>
         <span className="lane__field">
           <label htmlFor={`load-${set.setNumber}`} className="sr-only">Carga en kg</label>
@@ -394,7 +430,7 @@ function SetRow({ set, onChange, onConfirm }: { set: SetRowState; onChange: (pat
           <span className="lane__unit">reps</span>
         </span>
         <span className="lane__state">
-          <button type="button" className={"setbtn" + (set.saved ? " is-done" : "")} onClick={() => (set.saved ? onChange({ saved: false }) : onConfirm())}>
+          <button type="button" className={"setbtn" + (set.saved ? " is-done" : "")} onClick={() => (set.saved ? onUnconfirm() : onConfirm())}>
             {set.saved ? "Hecha ✓" : "Confirmar"}
           </button>
         </span>
@@ -560,8 +596,21 @@ function CloseForm({ workoutId, baseVersion, onClosed }: { workoutId: string; ba
       </div>
 
       <div className="field">
-        <label htmlFor="global-effort" className="field__label">Esfuerzo global (1-10)</label>
-        <input id="global-effort" type="number" min={1} max={10} required value={globalEffort} onChange={(event) => setGlobalEffort(Number(event.target.value))} />
+        <p className="field__label" id="global-effort-label">Esfuerzo global</p>
+        <div className="effort-picker" role="group" aria-labelledby="global-effort-label">
+          {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+            <button
+              key={value}
+              type="button"
+              className="effort-picker__value"
+              aria-pressed={globalEffort === value}
+              aria-label={`Esfuerzo ${value} de 10`}
+              onClick={() => setGlobalEffort(value)}
+            >
+              {value}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* P1-7: picker de 4 niveles (Ninguna/Leve/Moderada/Importante), mismo patrón que /checkin
@@ -578,12 +627,14 @@ function CloseForm({ workoutId, baseVersion, onClosed }: { workoutId: string; ba
       </div>
       {molestiaLevel !== "none" ? (
         <div className="field">
-          <label htmlFor="close-zone" className="field__label">Zona</label>
-          <select id="close-zone" value={zone} onChange={(event) => setZone(event.target.value as DiscomfortZone)}>
+          <p className="field__label">Zona aproximada</p>
+          <div className="picker picker--compact" role="group" aria-label="Zona aproximada de molestia">
             {DISCOMFORT_ZONE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+              <button key={option.value} type="button" className="picker__btn" aria-pressed={zone === option.value} onClick={() => setZone(option.value)}>
+                {option.label}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
       ) : null}
       {molestiaLevel === "important" ? (

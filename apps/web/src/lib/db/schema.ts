@@ -16,7 +16,9 @@ export const account = sqliteTable("account", {
 });
 export const verification = sqliteTable("verification", { id: text("id").primaryKey(), identifier: text("identifier").notNull(), value: text("value").notNull(), expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(), createdAt: integer("created_at", { mode: "timestamp_ms" }), updatedAt: integer("updated_at", { mode: "timestamp_ms" }) });
 export const trainingPlan = sqliteTable("training_plan", {
-  id: text("id").primaryKey(), ownerId: text("owner_id").notNull().references(() => user.id, { onDelete: "cascade" }), name: text("name").notNull(), status: text("status").notNull().default("draft"), version: integer("version").notNull().default(1), contentJson: text("content_json").notNull().default("{}"), createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull()
+  id: text("id").primaryKey(), ownerId: text("owner_id").notNull().references(() => user.id, { onDelete: "cascade" }), name: text("name").notNull(), status: text("status").notNull().default("draft"), version: integer("version").notNull().default(1), contentJson: text("content_json").notNull().default("{}"), createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  /** Procedencia editorial (plan-template.ts PlanInstance). `source` es "guided" para todo lo creado antes de esta columna y para activaciones que no pasan procedencia explícita; las demás quedan null. */
+  source: text("source"), sourceTemplateId: text("source_template_id"), sourceTemplateVersion: text("source_template_version"), catalogVersion: text("catalog_version")
 }, (table) => [uniqueIndex("training_plan_owner_id_idx").on(table.ownerId, table.id)]);
 
 /** One row per account: the in-progress onboarding form, persisted step by step so a reload never loses answers. */

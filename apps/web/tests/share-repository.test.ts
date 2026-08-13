@@ -18,7 +18,7 @@ function fixture() {
   const sqlite = new Database(":memory:");
   sqlite.exec(`
     CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null);
-    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null);
+    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null, source text, source_template_id text, source_template_version text, catalog_version text);
     CREATE TABLE share_link (id text primary key, owner_id text not null, plan_id text not null, created_at integer not null, revoked_at integer);
     CREATE TABLE share_copy (id text primary key, share_link_id text not null, copied_by_owner_id text not null, copied_plan_id text not null, created_at integer not null);
   `);
@@ -26,7 +26,7 @@ function fixture() {
   for (const id of ["account-a", "account-b"]) {
     sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, id, `${id}@example.test`, 1, null, now, now);
   }
-  sqlite.prepare("INSERT INTO training_plan VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), now);
+  sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), now);
   const db = drizzle(sqlite, { schema });
   return { db, sqlite };
 }
@@ -60,7 +60,7 @@ describe("share-repository", () => {
   it("archives the copier's previous active plan, same invariant as activating a proposal", async () => {
     const { db, sqlite } = fixture();
     const now = Date.now();
-    sqlite.prepare("INSERT INTO training_plan VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-b-old", "account-b", "Plan viejo de B", "active", 1, "{}", now);
+    sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-b-old", "account-b", "Plan viejo de B", "active", 1, "{}", now);
     const { token } = await createShareLink(db, "account-a", "plan-a");
 
     const copyRepo = createShareCopyRepository(db, sqlite);

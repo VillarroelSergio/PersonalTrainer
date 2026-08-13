@@ -14,12 +14,14 @@ function ExerciseListItem({ variant, isFavorite }: { variant: ExerciseVariant; i
   return (
     <li className="catalog-card">
       <div className="catalog-card__top">
-        <Link href={`/ejercicios/${variant.id}`} aria-hidden="true" tabIndex={-1} className={`catalog-card__thumb${variant.mediaUrl ? "" : " catalog-card__thumb--pending"}`}>
-          {variant.mediaUrl ? (
-            <Image className="catalog-card__thumb-img" src={variant.mediaUrl} alt="" width={52} height={52} />
-          ) : (
-            <span className="catalog-card__thumb-pending">Próx.</span>
-          )}
+        <Link href={`/ejercicios/${variant.id}`} aria-hidden="true" tabIndex={-1} className="catalog-card__thumb">
+          <Image
+            className="catalog-card__thumb-img"
+            src={variant.mediaUrl ?? `/library/groups/${MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]}`}
+            alt=""
+            width={52}
+            height={52}
+          />
         </Link>
         <div className="catalog-card__body">
           <Link href={`/ejercicios/${variant.id}`} className="catalog-card__name">{variant.exerciseName} — {variant.variantName}</Link>

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { TrainingBlock } from "@/features/catalog/domain/training-block";
 
 export const goalSchema = z.enum(["muscle_gain", "strength", "fat_loss", "endurance", "active_lifestyle"]);
 export const weekdaySchema = z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
@@ -18,7 +19,7 @@ export const onboardingDraftSchema = z.object({
   strengthAvailability: z.array(weekdaySchema).min(1).max(7).refine((days) => new Set(days).size === days.length, "Each day can be selected only once."),
   enduranceActivities: z.array(z.object({ kind: z.enum(["running", "cycling", "walking"]), sessionsPerWeek: z.number().int().min(1).max(7) })).max(3),
   sessionDurationMinutes: z.union([z.literal(20), z.literal(40), z.literal(60), z.literal(90)]),
-  environments: z.array(z.object({ kind: z.enum(["full_gym", "basic_gym", "home", "outdoors"]), equipment: z.array(equipmentCategorySchema) })).min(1),
+  environments: z.array(z.object({ kind: z.enum(["full_gym", "basic_gym", "home", "outdoors"]), equipment: z.array(equipmentCategorySchema) })).length(1),
   optionalMuscleFocus: z.array(z.enum(["upper_body", "lower_body", "push", "pull", "full_body"])).max(3).optional(),
   discomfort: discomfortSchema.optional()
 }).superRefine((draft, context) => {
@@ -46,6 +47,8 @@ export type PlanProposal = {
       estimatedMinutes: number;
       /** Only present for kind "strength"; empty when no compatible variant exists for the declared equipment. */
       exercises?: Array<{ variantId: string; targetSets: number; targetRepsMin: number; targetRepsMax: number }>;
+      /** Optional warmup/mobility/cooldown blocks; never a source of strength progression (see `contributesToStrengthProgression`). */
+      blocks?: TrainingBlock[];
     }>;
   };
 };
@@ -66,7 +69,7 @@ export const onboardingFormPatchSchema = z.object({
   strengthAvailability: z.array(weekdaySchema).max(7).optional(),
   enduranceActivities: z.array(z.object({ kind: z.enum(["running", "cycling", "walking"]), sessionsPerWeek: z.number().int().min(1).max(7) })).max(3).optional(),
   sessionDurationMinutes: z.union([z.literal(20), z.literal(40), z.literal(60), z.literal(90)]).optional(),
-  environments: z.array(z.object({ kind: z.enum(["full_gym", "basic_gym", "home", "outdoors"]), equipment: z.array(equipmentCategorySchema) })).optional(),
+  environments: z.array(z.object({ kind: z.enum(["full_gym", "basic_gym", "home", "outdoors"]), equipment: z.array(equipmentCategorySchema) })).length(1).optional(),
   optionalMuscleFocus: z.array(z.enum(["upper_body", "lower_body", "push", "pull", "full_body"])).max(3).optional(),
   discomfort: discomfortSchema.nullable().optional()
 });

@@ -1,10 +1,86 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import PlanSessionActions from "@/features/planning/ui/PlanSessionActions";
 import { EXERCISE_CATALOG, MUSCLE_GROUPS, MUSCLE_GROUP_LABEL, MUSCLE_GROUP_IMAGE, findVariant } from "@/features/catalog/data/exercise-catalog";
 
 const PUBLIC_DIR = join(__dirname, "..", "public");
+
+describe("Plan navigation views", () => {
+  it("renders Semana, Fases and Tus planes from a validated query value", () => {
+    const page = readFileSync(join(__dirname, "..", "app", "plan", "page.tsx"), "utf8");
+    expect(page).toContain("vista?: TabKey");
+    expect(page).toContain('vista === "fases"');
+    expect(page).toContain('vista === "planes"');
+    expect(page).not.toContain('const vista: TabKey = "semana"');
+  });
+});
+
+describe("Workout preview", () => {
+  it("uses a visual identifier in preview and active exercise cards", () => {
+    const runner = readFileSync(join(__dirname, "..", "src", "features", "workouts", "ui", "WorkoutRunner.tsx"), "utf8");
+    expect(runner).toContain('className="exrow__thumb"');
+    expect(runner).toContain("MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]");
+    expect(runner).toContain("/library/groups/${MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]}");
+    expect(runner).toContain('className="exercise-media exercise-media--group"');
+  });
+});
+
+describe("Workout close flow", () => {
+  it("uses a direct effort selector instead of a free-form numeric field", () => {
+    const runner = readFileSync(join(__dirname, "..", "src", "features", "workouts", "ui", "WorkoutRunner.tsx"), "utf8");
+    expect(runner).toContain('className="effort-picker"');
+    expect(runner).not.toContain('id="global-effort" type="number"');
+  });
+});
+
+describe("Profile edit layout", () => {
+  it("allows every compact physical field to shrink inside a mobile row", () => {
+    const css = readFileSync(join(__dirname, "..", "src", "styles", "app.css"), "utf8");
+    expect(css).toContain(".reffields .field { flex: 1; min-width: 0;");
+    expect(css).toContain(".reffields input { width: 100%; }");
+  });
+});
+
+describe("Heyy-inspired onboarding shell", () => {
+  it("uses the immersive dark shell, compact option rows and an electric primary CTA", () => {
+    const css = readFileSync(join(__dirname, "..", "src", "components", "OnboardingShell.module.css"), "utf8");
+    const choices = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "BasicSelectionScreens.module.css"), "utf8");
+    expect(css).toContain("--onboarding-action: #c94c12");
+    expect(css).toContain("min-height: 100dvh");
+    expect(choices).toContain(".modeOption");
+    expect(choices).toContain(".modeOptionSelected");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+  });
+});
+
+describe("Onboarding visual assets", () => {
+  it("ships and consumes original equipment and wellbeing illustrations", () => {
+    const equipment = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "EquipmentScreen.module.css"), "utf8");
+    const discomfort = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "FocusDiscomfortScreen.module.css"), "utf8");
+    expect(existsSync(join(PUBLIC_DIR, "onboarding", "equipment-sprite-v1.png"))).toBe(true);
+    expect(existsSync(join(PUBLIC_DIR, "onboarding", "wellbeing-zones-sprite-v1.png"))).toBe(true);
+    expect(existsSync(join(PUBLIC_DIR, "onboarding", "focus-icons-sprite-v2.png"))).toBe(true);
+    expect(existsSync(join(PUBLIC_DIR, "onboarding", "focus-body-icons-v3.png"))).toBe(true);
+    expect(existsSync(join(PUBLIC_DIR, "onboarding", "discomfort-zones-sprite-v2.png"))).toBe(true);
+    expect(equipment).toContain("/onboarding/equipment-sprite-v1.png");
+    expect(discomfort).toContain("/onboarding/discomfort-zones-sprite-v2.png");
+  });
+});
+
+describe("Onboarding physical and focus visual regressions", () => {
+  it("keeps wheel units outside the selected value and renders focus + all discomfort zones as illustrated cards", () => {
+    const physical = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "PhysicalScreens.tsx"), "utf8");
+    const focus = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "FocusDiscomfortScreen.tsx"), "utf8");
+    const css = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "FocusDiscomfortScreen.module.css"), "utf8");
+    expect(physical).toContain('formatLabel={(v) => String(v)} ariaLabel="Altura en centímetros"');
+    expect(focus).toContain('zone: "neck"');
+    expect(focus).toContain('zone: "ankle"');
+    expect(focus).toContain("focusIcon");
+    expect(focus).toContain("¿En qué grupo muscular quieres centrarte?");
+    expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+  });
+});
 
 describe("PlanSessionActions — regression for the /plan RSC crash", () => {
   it("exports one stable default client boundary for both plan actions", () => {
@@ -54,9 +130,9 @@ describe("Exercise catalog — media correspondence", () => {
     expect(squat?.mediaUrl).not.toMatch(/\/library\/groups\//);
   });
 
-  it("a variant without a real illustration leaves mediaUrl unset instead of borrowing one", () => {
+  it("a variant without a real illustration leaves mediaUrl unset so the UI can use its muscle-group fallback", () => {
     // squat-bodyweight has no exercise-specific illustration migrated from prototype/assets/ —
-    // the UI must show an explicit "coming soon" state, never fall back to the group photo.
+    // the UI uses the approved muscle-group illustration as its compact visual fallback.
     const variant = findVariant("squat-bodyweight");
     expect(variant?.mediaUrl).toBeUndefined();
   });

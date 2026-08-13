@@ -1,5 +1,5 @@
 .wrap {
-  padding: 12px 20px 8px;
+  padding: max(12px, env(safe-area-inset-top, 0px)) 20px 7px;
   position: sticky;
   top: 0;
   background: var(--bg);
@@ -7,28 +7,28 @@
 }
 
 .caption {
-  margin: 0 0 8px;
-  font-size: 0.8rem;
+  margin: 0 0 9px;
+  font-size: 0.72rem;
   color: var(--ink-2);
   font-weight: 600;
 }
 
 .rail {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   margin: 0;
   padding: 0;
 }
 
 .dot {
-  height: 4px;
+  height: 3px;
   flex: 1;
   border-radius: 999px;
   background: var(--rule);
 }
 
 .dotDone {
-  background: var(--ink-3);
+  background: var(--onboarding-action, var(--ink-3));
 }
 
 .dotCurrent {

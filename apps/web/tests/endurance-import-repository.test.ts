@@ -42,7 +42,7 @@ function fixture() {
   const sqlite = new Database(":memory:");
   sqlite.exec(`
     CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null);
-    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null);
+    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null, source text, source_template_id text, source_template_version text, catalog_version text);
     CREATE TABLE import_file (id text primary key, owner_id text not null, storage_key text not null, original_name text not null, format text not null, size_bytes integer not null, sha256 text not null, uploaded_at integer not null, deleted_at integer);
     CREATE UNIQUE INDEX import_file_owner_sha256_idx ON import_file (owner_id, sha256);
     CREATE TABLE activity_import (id text primary key, owner_id text not null, file_id text not null, format text not null, status text not null, error_code text, analysis_json text, duplicate_of_activity_id text, created_at integer not null);
@@ -50,7 +50,7 @@ function fixture() {
     CREATE TABLE activity_metric (id text primary key, activity_id text not null, metric_type text not null, value real not null, unit text not null, source text not null);
   `);
   sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run("account-a", "account-a", "a@example.test", 1, null, 0, 0);
-  sqlite.prepare("INSERT INTO training_plan VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), 0);
+  sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), 0);
   const db = drizzle(sqlite, { schema });
   return { db, sqlite };
 }

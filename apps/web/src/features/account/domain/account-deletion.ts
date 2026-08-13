@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { db as productionDb } from "@/lib/db/client";
-import { importFile, user } from "@/lib/db/schema";
+import { importFile, session, user } from "@/lib/db/schema";
 import { deleteUploadedFile } from "@/features/endurance/domain/storage";
 
 /**
@@ -15,5 +15,9 @@ export async function deleteOwnAccount(database: typeof productionDb, ownerId: s
   const remainingFiles = await database.query.importFile.findMany({ where: and(eq(importFile.ownerId, ownerId), isNull(importFile.deletedAt)) });
   for (const file of remainingFiles) deleteUploadedFile(file.storageKey);
 
+  // SQLite installations created before foreign keys were enforced can retain
+  // Better Auth session rows after the user disappears. Remove them explicitly
+  // so a deleted account never leaves a valid-looking, unusable browser cookie.
+  await database.delete(session).where(eq(session.userId, ownerId));
   await database.delete(user).where(eq(user.id, ownerId));
 }

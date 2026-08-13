@@ -16,6 +16,8 @@ export type RecordSetPayload = {
   difficulty: Difficulty | null;
 };
 
+export type RemoveSetPayload = Pick<RecordSetPayload, "sessionExerciseId" | "setNumber">;
+
 export type FinishWorkoutPayload = {
   status: CloseStatus;
   globalEffort: number | null;
@@ -25,6 +27,7 @@ export type FinishWorkoutPayload = {
 
 export type OutboxOperation =
   | { id: string; kind: "record_set"; workoutSessionId: string; payload: RecordSetPayload; createdAt: number; status: "pending" | "conflict" | "error" }
+  | { id: string; kind: "remove_set"; workoutSessionId: string; payload: RemoveSetPayload; createdAt: number; status: "pending" | "conflict" | "error" }
   | { id: string; kind: "finish_workout"; workoutSessionId: string; baseVersion: number; payload: FinishWorkoutPayload; createdAt: number; status: "pending" | "conflict" | "error"; conflictVersion?: number };
 
 export interface OutboxStore {

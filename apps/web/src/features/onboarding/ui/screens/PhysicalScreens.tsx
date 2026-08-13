@@ -4,8 +4,9 @@ import { ScreenLayout } from "@/components/ScreenLayout";
 import { WheelPicker } from "@/components/WheelPicker";
 import { MONTH_LABELS, range } from "../../presentation/constants";
 import { birthYearBounds } from "../../presentation/state";
+import styles from "./PhysicalScreens.module.css";
 
-const PRIVACY_NOTE = "Tus datos son privados y están protegidos.";
+const PRIVACY_NOTE = "Solo se usan para ajustar tu punto de partida.";
 const DAYS = range(1, 31);
 const MONTHS = range(1, 12);
 
@@ -22,7 +23,7 @@ export function BirthDateScreen({ day, month, year, onDayChange, onMonthChange, 
   const { min, max } = birthYearBounds();
   const years = range(min, max);
   return (
-    <ScreenLayout title="Fecha de nacimiento" hint="Los usamos para ajustar tu punto de partida; puedes cambiarlos después en Perfil.">
+    <ScreenLayout title="¿Cuál es tu fecha de nacimiento?" hint="Desliza cada rueda para elegirla.">
       <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: 14 }}>
         <WheelPicker label="Día" values={DAYS} value={day} formatLabel={(v) => String(v)} ariaLabel="Día de nacimiento" onChange={onDayChange} />
         <WheelPicker label="Mes" values={MONTHS} value={month} formatLabel={(v) => MONTH_LABELS[v - 1]} ariaLabel="Mes de nacimiento" onChange={onMonthChange} />
@@ -39,9 +40,9 @@ type HeightScreenProps = { heightCm: number; onChange: (heightCm: number) => voi
 
 export function HeightScreen({ heightCm, onChange }: HeightScreenProps) {
   return (
-    <ScreenLayout title="Altura" hint="Los usamos para ajustar tu punto de partida; puedes cambiarlos después en Perfil.">
-      <div style={{ display: "flex", justifyContent: "center" }}>
-        <WheelPicker label="cm" values={HEIGHTS_CM} value={heightCm} formatLabel={(v) => `${v} cm`} ariaLabel="Altura en centímetros" onChange={onChange} />
+    <ScreenLayout title="¿Cuánto mides?" hint="Selecciona tu altura en centímetros.">
+      <div className={styles.singleWheel}>
+        <WheelPicker label="cm" values={HEIGHTS_CM} value={heightCm} formatLabel={(v) => String(v)} ariaLabel="Altura en centímetros" onChange={onChange} />
       </div>
       <p style={{ textAlign: "center", color: "var(--ink-3)" }}>{PRIVACY_NOTE}</p>
     </ScreenLayout>
@@ -55,12 +56,12 @@ type WeightScreenProps = { whole: number; decimal: number; onWholeChange: (whole
 
 export function WeightScreen({ whole, decimal, onWholeChange, onDecimalChange }: WeightScreenProps) {
   return (
-    <ScreenLayout title="Peso" hint="Los usamos para ajustar tu punto de partida; puedes cambiarlos después en Perfil.">
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: 6 }}>
+    <ScreenLayout title="¿Cuánto pesas?" hint="Selecciona un valor aproximado en kilogramos.">
+      <div className={styles.weightWheels}>
         <WheelPicker label="kg" values={KG_WHOLE} value={whole} formatLabel={(v) => String(v)} ariaLabel="Peso, kilogramos enteros" onChange={onWholeChange} />
-        <span style={{ fontWeight: 700, fontSize: "1.6rem", paddingBottom: 2 }}>,</span>
+        <span className={styles.decimalMark}>,</span>
         <WheelPicker label="décimas" values={KG_DECIMAL} value={decimal} formatLabel={(v) => String(v)} ariaLabel="Peso, décimas de kilogramo" onChange={onDecimalChange} />
-        <span style={{ fontWeight: 600, color: "var(--ink-2)", paddingBottom: 2 }}>kg</span>
+        <span className={styles.weightUnit}>kg</span>
       </div>
       <p style={{ textAlign: "center", color: "var(--ink-3)" }}>{PRIVACY_NOTE}</p>
     </ScreenLayout>

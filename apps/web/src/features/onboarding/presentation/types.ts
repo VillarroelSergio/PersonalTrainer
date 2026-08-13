@@ -25,10 +25,13 @@ export type StepId =
   | "birth_date"
   | "height"
   | "weight"
-  | "activity"
-  | "duration_environment"
+  | "strength_availability"
+  | "endurance"
+  | "duration"
+  | "environment"
   | "equipment"
-  | "focus_discomfort";
+  | "focus"
+  | "discomfort";
 
 export const STEP_ORDER: StepId[] = [
   "mode",
@@ -37,10 +40,13 @@ export const STEP_ORDER: StepId[] = [
   "birth_date",
   "height",
   "weight",
-  "activity",
-  "duration_environment",
+  "strength_availability",
+  "endurance",
+  "duration",
+  "environment",
   "equipment",
-  "focus_discomfort"
+  "focus",
+  "discomfort"
 ];
 
 export const STEP_LABELS: Record<StepId, string> = {
@@ -50,10 +56,13 @@ export const STEP_LABELS: Record<StepId, string> = {
   birth_date: "Fecha de nacimiento",
   height: "Altura",
   weight: "Peso",
-  activity: "Actividad y disponibilidad",
-  duration_environment: "Duración y entorno",
+  strength_availability: "Días de fuerza",
+  endurance: "Actividad exterior",
+  duration: "Duración",
+  environment: "Entorno",
   equipment: "Equipamiento",
-  focus_discomfort: "Foco y molestia"
+  focus: "Foco muscular",
+  discomfort: "Molestias"
 };
 
 export type Phase = "form" | "transition" | "proposal";

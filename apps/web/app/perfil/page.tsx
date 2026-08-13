@@ -10,6 +10,8 @@ import { AppShell } from "@/components/AppShell";
 import { SignOutButton } from "@/features/profile/ui/SignOutButton";
 import { InstallStatus } from "@/features/profile/ui/InstallStatus";
 import { AccountDeletionControl } from "@/features/account/ui/AccountDeletionControl";
+import Image from "next/image";
+import { EQUIPMENT_IMAGE } from "@/features/onboarding/presentation/constants";
 
 function optionLabel<T extends string | number>(options: Array<{ value: T; label: string }>, value: T): string {
   return options.find((option) => option.value === value)?.label ?? String(value);
@@ -105,9 +107,14 @@ export default async function PerfilPage() {
             draft.environments.map((environment) => (
               <div key={environment.kind}>
                 <p className="field__label">{optionLabel(ENVIRONMENT_OPTIONS, environment.kind)}</p>
-                <div className="chiprow">
+                <div className="profile-equipment" aria-label={`Equipamiento en ${optionLabel(ENVIRONMENT_OPTIONS, environment.kind)}`}>
                   {environment.equipment.length ? (
-                    environment.equipment.map((item) => <span key={item} className="chip chip--compact">{optionLabel(EQUIPMENT_OPTIONS, item)}</span>)
+                    environment.equipment.map((item) => (
+                      <span key={item} className="profile-equipment__item">
+                        <Image src={EQUIPMENT_IMAGE[item]} alt="" width={44} height={32} />
+                        <span>{optionLabel(EQUIPMENT_OPTIONS, item)}</span>
+                      </span>
+                    ))
                   ) : (
                     <span className="chip chip--compact" aria-disabled="true">Sin equipamiento</span>
                   )}

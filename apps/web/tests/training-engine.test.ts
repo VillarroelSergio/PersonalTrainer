@@ -127,7 +127,7 @@ function fixture(proposal: PlanProposal) {
   const sqlite = new Database(":memory:");
   sqlite.exec(`
     CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null);
-    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null);
+    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null, source text, source_template_id text, source_template_version text, catalog_version text);
     CREATE TABLE checkin (owner_id text not null, checkin_date text not null, energy text, motivation text, time_available_minutes integer, equipment_unavailable integer not null default 0, discomfort_json text, created_at integer not null);
     CREATE UNIQUE INDEX checkin_owner_date_idx ON checkin (owner_id, checkin_date);
     CREATE TABLE recommendation (id text primary key, owner_id text not null, plan_id text not null, checkin_date text not null, session_index integer, rule_version text not null, confidence text not null, reason_codes_json text not null, human_reason text not null, changes_json text not null, alternatives_json text not null, missing_data_json text not null, external_evidence_json text, important_discomfort integer not null default 0, decision_status text not null default 'pending', decided_change_code text, decided_at integer, created_at integer not null);
@@ -144,7 +144,7 @@ function fixture(proposal: PlanProposal) {
   `);
   const now = Date.now();
   sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run("account-a", "account-a", "a@example.test", 1, null, now, now);
-  sqlite.prepare("INSERT INTO training_plan VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), now);
+  sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), now);
   const db = drizzle(sqlite, { schema });
   return { db, sqlite };
 }

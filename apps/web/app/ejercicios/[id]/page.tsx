@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { auth } from "@/lib/auth";
 import { db, sqlite } from "@/lib/db/client";
-import { findVariant, MUSCLE_GROUP_LABEL } from "@/features/catalog/data/exercise-catalog";
+import { findVariant, MUSCLE_GROUP_IMAGE, MUSCLE_GROUP_LABEL } from "@/features/catalog/data/exercise-catalog";
 import { listOwnedFavoriteVariantIds } from "@/features/catalog/domain/favorite-repository";
 import { FavoriteToggle } from "@/features/catalog/ui/FavoriteToggle";
 import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
@@ -29,15 +29,15 @@ export default async function ExerciseVariantPage({ params }: { params: Promise<
     <AppShell title="Trainer" backHref="/ejercicios">
       <h1 className="view-title">{variant.exerciseName} — {variant.variantName}</h1>
 
-      {variant.mediaUrl ? (
-        <div className="exercise-media">
-          <Image className="exercise-media__img" src={variant.mediaUrl} alt="" width={320} height={400} />
-        </div>
-      ) : (
-        <div className="exercise-media exercise-media--pending">
-          <p className="exercise-media__pending">Ilustración próximamente</p>
-        </div>
-      )}
+      <div className="exercise-media">
+        <Image
+          className="exercise-media__img"
+          src={variant.mediaUrl ?? `/library/groups/${MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]}`}
+          alt=""
+          width={320}
+          height={400}
+        />
+      </div>
 
       <div className="tags" aria-label="Músculos implicados">
         <span className="tag">{MUSCLE_GROUP_LABEL[variant.primaryMuscleGroup]} · principal</span>
