@@ -1,0 +1,17 @@
+.git
+.next
+node_modules
+coverage
+.tmp
+.tmp-*
+agent-traces
+prototype
+private-uploads
+trainer.db
+trainer.db-*
+apps/web/.next
+apps/web/node_modules
+apps/web/*.db
+apps/web/*.db-*
+apps/web/.backups
+apps/web/devserver.log
