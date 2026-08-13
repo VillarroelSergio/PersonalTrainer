@@ -1,11 +1,11 @@
 import { and, eq } from "drizzle-orm";
-import type Database from "better-sqlite3";
-import type { db as productionDb } from "@/lib/db/client";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type * as schema from "@/lib/db/schema";
 import { enduranceSessionDesign, trainingPlan } from "@/lib/db/schema";
 import type { EnduranceDesignInput } from "@/contracts/endurance";
 import type { PlanProposal } from "@/contracts/onboarding";
 
-type Db = typeof productionDb;
+type Db = PostgresJsDatabase<typeof schema>;
 
 export class ActivePlanNotFoundError extends Error {
   code = "NOT_FOUND" as const;
@@ -29,47 +29,50 @@ export type EnduranceDesignRow = typeof enduranceSessionDesign.$inferSelect;
  * creado en mi reloj" confirmations. Trainer never contacts a watch or any
  * external device; this repository only stores what the person declares.
  */
-export function createEnduranceDesignRepository(database: Db, sqliteHandle: Database.Database) {
-  const runSaveDesign = sqliteHandle.transaction((ownerId: string, input: EnduranceDesignInput) => {
-    const plan = database.select().from(trainingPlan).where(and(eq(trainingPlan.ownerId, ownerId), eq(trainingPlan.status, "active"))).get();
-    if (!plan) throw new ActivePlanNotFoundError();
-    const proposal = JSON.parse(plan.contentJson) as PlanProposal;
-    const plannedSession = proposal.week?.sessions?.[input.sessionIndex];
-    if (!plannedSession || plannedSession.kind !== "endurance") throw new SessionNotEnduranceError();
+export function createEnduranceDesignRepository(database: Db) {
+  async function runSaveDesign(ownerId: string, input: EnduranceDesignInput) {
+    return database.transaction(async (tx) => {
+      const plan = (await tx.select().from(trainingPlan).where(and(eq(trainingPlan.ownerId, ownerId), eq(trainingPlan.status, "active")))).at(0);
+      if (!plan) throw new ActivePlanNotFoundError();
+      const proposal = JSON.parse(plan.contentJson) as PlanProposal;
+      const plannedSession = proposal.week?.sessions?.[input.sessionIndex];
+      if (!plannedSession || plannedSession.kind !== "endurance") throw new SessionNotEnduranceError();
 
-    const id = crypto.randomUUID();
-    const now = new Date();
-    const values = {
-      id, ownerId, planId: plan.id, isoWeekStart: input.isoWeekStart, sessionIndex: input.sessionIndex,
-      objective: input.objective, environment: input.environment ?? null,
-      optionalLayersJson: input.optionalLayers ? JSON.stringify(input.optionalLayers) : null,
-      watchPreparedAt: null, createdAt: now
-    };
-    database
-      .insert(enduranceSessionDesign)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [enduranceSessionDesign.ownerId, enduranceSessionDesign.planId, enduranceSessionDesign.isoWeekStart, enduranceSessionDesign.sessionIndex],
-        // Editing an existing design starts a fresh watch-prep confirmation: the blocks may have changed.
-        set: { objective: values.objective, environment: values.environment, optionalLayersJson: values.optionalLayersJson, watchPreparedAt: null }
-      })
-      .run();
+      const id = crypto.randomUUID();
+      const now = new Date();
+      const values = {
+        id, ownerId, planId: plan.id, isoWeekStart: input.isoWeekStart, sessionIndex: input.sessionIndex,
+        objective: input.objective, environment: input.environment ?? null,
+        optionalLayersJson: input.optionalLayers ? JSON.stringify(input.optionalLayers) : null,
+        watchPreparedAt: null, createdAt: now
+      };
+      await tx
+        .insert(enduranceSessionDesign)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [enduranceSessionDesign.ownerId, enduranceSessionDesign.planId, enduranceSessionDesign.isoWeekStart, enduranceSessionDesign.sessionIndex],
+          // Editing an existing design starts a fresh watch-prep confirmation: the blocks may have changed.
+          set: { objective: values.objective, environment: values.environment, optionalLayersJson: values.optionalLayersJson, watchPreparedAt: null }
+        });
 
-    return database.select().from(enduranceSessionDesign).where(and(eq(enduranceSessionDesign.ownerId, ownerId), eq(enduranceSessionDesign.planId, plan.id), eq(enduranceSessionDesign.isoWeekStart, input.isoWeekStart), eq(enduranceSessionDesign.sessionIndex, input.sessionIndex))).get()!;
-  });
+      return (await tx.select().from(enduranceSessionDesign).where(and(eq(enduranceSessionDesign.ownerId, ownerId), eq(enduranceSessionDesign.planId, plan.id), eq(enduranceSessionDesign.isoWeekStart, input.isoWeekStart), eq(enduranceSessionDesign.sessionIndex, input.sessionIndex)))).at(0)!;
+    });
+  }
 
-  const runConfirmWatchPrep = sqliteHandle.transaction((ownerId: string, designId: string) => {
-    const row = database.select().from(enduranceSessionDesign).where(and(eq(enduranceSessionDesign.id, designId), eq(enduranceSessionDesign.ownerId, ownerId))).get();
-    if (!row) throw new DesignNotFoundError();
-    const watchPreparedAt = new Date();
-    database.update(enduranceSessionDesign).set({ watchPreparedAt }).where(eq(enduranceSessionDesign.id, designId)).run();
-    return { ...row, watchPreparedAt };
-  });
+  async function runConfirmWatchPrep(ownerId: string, designId: string) {
+    return database.transaction(async (tx) => {
+      const row = (await tx.select().from(enduranceSessionDesign).where(and(eq(enduranceSessionDesign.id, designId), eq(enduranceSessionDesign.ownerId, ownerId)))).at(0);
+      if (!row) throw new DesignNotFoundError();
+      const watchPreparedAt = new Date();
+      await tx.update(enduranceSessionDesign).set({ watchPreparedAt }).where(eq(enduranceSessionDesign.id, designId));
+      return { ...row, watchPreparedAt };
+    });
+  }
 
   return {
     saveDesign: (ownerId: string, input: EnduranceDesignInput) => runSaveDesign(ownerId, input),
     confirmWatchPrep: (ownerId: string, designId: string) => runConfirmWatchPrep(ownerId, designId),
-    getDesign: (ownerId: string, planId: string, isoWeekStart: string, sessionIndex: number) =>
-      database.select().from(enduranceSessionDesign).where(and(eq(enduranceSessionDesign.ownerId, ownerId), eq(enduranceSessionDesign.planId, planId), eq(enduranceSessionDesign.isoWeekStart, isoWeekStart), eq(enduranceSessionDesign.sessionIndex, sessionIndex))).get()
+    getDesign: async (ownerId: string, planId: string, isoWeekStart: string, sessionIndex: number) =>
+      (await database.select().from(enduranceSessionDesign).where(and(eq(enduranceSessionDesign.ownerId, ownerId), eq(enduranceSessionDesign.planId, planId), eq(enduranceSessionDesign.isoWeekStart, isoWeekStart), eq(enduranceSessionDesign.sessionIndex, sessionIndex)))).at(0)
   };
 }

@@ -1,5 +1,4 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   InvalidSessionIndexError,
@@ -9,7 +8,8 @@ import {
   SessionAlreadyExecutedError,
   createPlanEditRepository
 } from "@/features/planning/domain/plan-edit-repository";
-import * as schema from "@/lib/db/schema";
+import { getDb } from "@/lib/db/client";
+import { sessionAdjustment, trainingPlan, user, workoutSession } from "@/lib/db/schema";
 import { isoDate, isoWeekStart, parseIsoDateLocal } from "@/lib/weekdays";
 import type { PlanProposal } from "@/contracts/onboarding";
 
@@ -19,20 +19,17 @@ const proposal: PlanProposal = {
   week: { sessions: [{ day: "monday", kind: "strength", title: "Piernas", estimatedMinutes: 60 }] }
 };
 
-function fixture() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null);
-    CREATE TABLE recommendation (id text primary key, owner_id text not null, plan_id text not null, checkin_date text not null, session_index integer, rule_version text not null, confidence text not null, reason_codes_json text not null, human_reason text not null, changes_json text not null, alternatives_json text not null, missing_data_json text not null, important_discomfort integer not null default 0, decision_status text not null default 'pending', decided_change_code text, decided_at integer, created_at integer not null);
-    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null, source text, source_template_id text, source_template_version text, catalog_version text);
-    CREATE TABLE session_adjustment (id text primary key, owner_id text not null, plan_id text not null, iso_week_start text not null, session_index integer not null, origin_day text not null, kind text not null, target_day text, ops_json text not null, recommendation_id text, created_at integer not null);
-    CREATE UNIQUE INDEX session_adjustment_owner_week_session_idx ON session_adjustment (owner_id, plan_id, iso_week_start, session_index);
-    CREATE TABLE workout_session (id text primary key, owner_id text not null, plan_id text not null, session_index integer not null, status text not null default 'in_progress', version integer not null default 1, last_finish_operation_id text, started_at integer not null, ended_at integer, global_effort integer, comment text, discomfort_json text, created_at integer not null);
-  `);
-  sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run("account-a", "account-a", "a@example.test", 1, null, 0, 0);
-  sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), 0);
-  const db = drizzle(sqlite, { schema });
-  return { db, sqlite };
+async function fixture() {
+  const db = getDb();
+  const ownerId = `account-a-${crypto.randomUUID()}`;
+  const planId = `plan-a-${ownerId}`;
+  await db.insert(user).values({ id: ownerId, name: ownerId, email: `${ownerId}@example.test`, emailVerified: true, createdAt: new Date(0), updatedAt: new Date(0) });
+  await db.insert(trainingPlan).values({ id: planId, ownerId, name: "Plan A", status: "active", version: 1, contentJson: JSON.stringify(proposal), createdAt: new Date(0) });
+  return { db, ownerId, planId };
+}
+
+async function cleanup(db: ReturnType<typeof getDb>, ownerId: string) {
+  await db.delete(user).where(eq(user.id, ownerId));
 }
 
 function nextWeekStart(): string {
@@ -47,72 +44,90 @@ function pastWeekStart(): string {
 }
 
 describe("plan edit repository", () => {
-  it("moves a future session and re-applying the same move overwrites in place instead of duplicating the agenda entry", () => {
-    const { db, sqlite } = fixture();
-    const repo = createPlanEditRepository(db, sqlite);
+  it("moves a future session and re-applying the same move overwrites in place instead of duplicating the agenda entry", async () => {
+    const { db, ownerId, planId } = await fixture();
+    const repo = createPlanEditRepository(db);
     const week = nextWeekStart();
 
-    repo.applyEdit("account-a", "plan-a", { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "friday" });
-    repo.applyEdit("account-a", "plan-a", { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "saturday" });
+    await repo.applyEdit(ownerId, planId, { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "friday" });
+    await repo.applyEdit(ownerId, planId, { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "saturday" });
 
-    const rows = db.select().from(schema.sessionAdjustment).all();
+    const rows = await db.select().from(sessionAdjustment).where(eq(sessionAdjustment.ownerId, ownerId));
     expect(rows).toHaveLength(1);
     expect(rows[0].targetDay).toBe("saturday");
+
+    await cleanup(db, ownerId);
   });
 
-  it("moving a session to the weekday it's already on clears any adjustment instead of storing a same-day reschedule (which buildWeekView would render as two rows for the same day)", () => {
-    const { db, sqlite } = fixture();
-    const repo = createPlanEditRepository(db, sqlite);
+  it("moving a session to the weekday it's already on clears any adjustment instead of storing a same-day reschedule (which buildWeekView would render as two rows for the same day)", async () => {
+    const { db, ownerId, planId } = await fixture();
+    const repo = createPlanEditRepository(db);
     const week = nextWeekStart();
 
-    repo.applyEdit("account-a", "plan-a", { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "friday" });
-    repo.applyEdit("account-a", "plan-a", { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "monday" }); // back to its template day
+    await repo.applyEdit(ownerId, planId, { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "friday" });
+    await repo.applyEdit(ownerId, planId, { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "monday" }); // back to its template day
 
-    expect(db.select().from(schema.sessionAdjustment).all()).toHaveLength(0);
+    expect(await db.select().from(sessionAdjustment).where(eq(sessionAdjustment.ownerId, ownerId))).toHaveLength(0);
+
+    await cleanup(db, ownerId);
   });
 
-  it("rejects editing a session in a week that has already passed", () => {
-    const { db, sqlite } = fixture();
-    const repo = createPlanEditRepository(db, sqlite);
-    expect(() => repo.applyEdit("account-a", "plan-a", { kind: "skip", isoWeekStart: pastWeekStart(), sessionIndex: 0 })).toThrow(PastWeekError);
+  it("rejects editing a session in a week that has already passed", async () => {
+    const { db, ownerId, planId } = await fixture();
+    const repo = createPlanEditRepository(db);
+    await expect(repo.applyEdit(ownerId, planId, { kind: "skip", isoWeekStart: pastWeekStart(), sessionIndex: 0 })).rejects.toThrow(PastWeekError);
+
+    await cleanup(db, ownerId);
   });
 
-  it("rejects editing a session that already has an execution record for that week (never rewrites a started/closed session)", () => {
-    const { db, sqlite } = fixture();
-    const repo = createPlanEditRepository(db, sqlite);
+  it("rejects editing a session that already has an execution record for that week (never rewrites a started/closed session)", async () => {
+    const { db, ownerId, planId } = await fixture();
+    const repo = createPlanEditRepository(db);
     const week = isoWeekStart();
-    sqlite.prepare("INSERT INTO workout_session (id, owner_id, plan_id, session_index, status, started_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run("ws-1", "account-a", "plan-a", 0, "completed", Date.now(), Date.now());
+    await db.insert(workoutSession).values({
+      id: `ws-${ownerId}`, ownerId, planId, sessionIndex: 0, status: "completed", version: 1,
+      lastFinishOperationId: null, startedAt: new Date(), endedAt: null, globalEffort: null, comment: null, discomfortJson: null, createdAt: new Date()
+    });
 
-    expect(() => repo.applyEdit("account-a", "plan-a", { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "friday" })).toThrow(SessionAlreadyExecutedError);
+    await expect(repo.applyEdit(ownerId, planId, { kind: "move", isoWeekStart: week, sessionIndex: 0, targetDay: "friday" })).rejects.toThrow(SessionAlreadyExecutedError);
+
+    await cleanup(db, ownerId);
   });
 
-  it("rejects an isoWeekStart that isn't the Monday of its own ISO week", () => {
-    const { db, sqlite } = fixture();
-    const repo = createPlanEditRepository(db, sqlite);
+  it("rejects an isoWeekStart that isn't the Monday of its own ISO week", async () => {
+    const { db, ownerId, planId } = await fixture();
+    const repo = createPlanEditRepository(db);
     const weekDate = parseIsoDateLocal(nextWeekStart());
     const notMonday = isoDate(new Date(weekDate.getFullYear(), weekDate.getMonth(), weekDate.getDate() + 2));
-    expect(() => repo.applyEdit("account-a", "plan-a", { kind: "skip", isoWeekStart: notMonday, sessionIndex: 0 })).toThrow(InvalidWeekStartError);
+    await expect(repo.applyEdit(ownerId, planId, { kind: "skip", isoWeekStart: notMonday, sessionIndex: 0 })).rejects.toThrow(InvalidWeekStartError);
+
+    await cleanup(db, ownerId);
   });
 
-  it("rejects a sessionIndex that doesn't exist in the plan template", () => {
-    const { db, sqlite } = fixture();
-    const repo = createPlanEditRepository(db, sqlite);
-    expect(() => repo.applyEdit("account-a", "plan-a", { kind: "skip", isoWeekStart: nextWeekStart(), sessionIndex: 9 })).toThrow(InvalidSessionIndexError);
+  it("rejects a sessionIndex that doesn't exist in the plan template", async () => {
+    const { db, ownerId, planId } = await fixture();
+    const repo = createPlanEditRepository(db);
+    await expect(repo.applyEdit(ownerId, planId, { kind: "skip", isoWeekStart: nextWeekStart(), sessionIndex: 9 })).rejects.toThrow(InvalidSessionIndexError);
+
+    await cleanup(db, ownerId);
   });
 
-  it("restore clears any adjustment for that occurrence, returning it to the plain plan", () => {
-    const { db, sqlite } = fixture();
-    const repo = createPlanEditRepository(db, sqlite);
+  it("restore clears any adjustment for that occurrence, returning it to the plain plan", async () => {
+    const { db, ownerId, planId } = await fixture();
+    const repo = createPlanEditRepository(db);
     const week = nextWeekStart();
-    repo.applyEdit("account-a", "plan-a", { kind: "skip", isoWeekStart: week, sessionIndex: 0 });
-    repo.applyEdit("account-a", "plan-a", { kind: "restore", isoWeekStart: week, sessionIndex: 0 });
-    expect(db.select().from(schema.sessionAdjustment).all()).toHaveLength(0);
+    await repo.applyEdit(ownerId, planId, { kind: "skip", isoWeekStart: week, sessionIndex: 0 });
+    await repo.applyEdit(ownerId, planId, { kind: "restore", isoWeekStart: week, sessionIndex: 0 });
+    expect(await db.select().from(sessionAdjustment).where(eq(sessionAdjustment.ownerId, ownerId))).toHaveLength(0);
+
+    await cleanup(db, ownerId);
   });
 
-  it("never edits another account's plan", () => {
-    const { db, sqlite } = fixture();
-    const repo = createPlanEditRepository(db, sqlite);
-    expect(() => repo.applyEdit("account-b", "plan-a", { kind: "skip", isoWeekStart: nextWeekStart(), sessionIndex: 0 })).toThrow(PlanNotFoundError);
+  it("never edits another account's plan", async () => {
+    const { db, ownerId, planId } = await fixture();
+    const repo = createPlanEditRepository(db);
+    await expect(repo.applyEdit("account-b-nonexistent", planId, { kind: "skip", isoWeekStart: nextWeekStart(), sessionIndex: 0 })).rejects.toThrow(PlanNotFoundError);
+
+    await cleanup(db, ownerId);
   });
 });

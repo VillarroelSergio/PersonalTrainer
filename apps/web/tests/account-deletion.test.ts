@@ -1,53 +1,55 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { describe, expect, it, vi } from "vitest";
 import { deleteOwnAccount } from "@/features/account/domain/account-deletion";
 import { saveUploadedFile } from "@/features/endurance/domain/storage";
-import * as schema from "@/lib/db/schema";
+import { getDb } from "@/lib/db/client";
+import { importFile, session, trainingPlan, user, workoutSession } from "@/lib/db/schema";
 
-const PRIVATE_UPLOAD_ROOT = path.resolve(process.cwd(), "private-uploads", "activity-imports");
+process.env.SUPABASE_URL ??= "https://example.supabase.co";
+process.env.SUPABASE_SERVICE_ROLE_KEY ??= "service-role-key";
 
-function fixture() {
-  const sqlite = new Database(":memory:");
-  sqlite.pragma("foreign_keys = ON");
-  sqlite.exec(`
-    CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null);
-    CREATE TABLE session (id text primary key, expires_at integer not null, token text not null unique, created_at integer not null, updated_at integer not null, ip_address text, user_agent text, user_id text not null);
-    CREATE TABLE training_plan (id text primary key, owner_id text not null references user(id) on delete cascade, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null, source text, source_template_id text, source_template_version text, catalog_version text);
-    CREATE TABLE workout_session (id text primary key, owner_id text not null references user(id) on delete cascade, plan_id text not null, session_index integer not null, status text not null default 'in_progress', version integer not null default 1, last_finish_operation_id text, started_at integer not null, ended_at integer, global_effort integer, comment text, discomfort_json text, created_at integer not null);
-    CREATE TABLE import_file (id text primary key, owner_id text not null references user(id) on delete cascade, storage_key text not null, original_name text not null, format text not null, size_bytes integer not null, sha256 text not null, uploaded_at integer not null, deleted_at integer);
-  `);
-  const now = Date.now();
-  for (const id of ["account-a", "account-b"]) {
-    sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, id, `${id}@example.test`, 1, null, now, now);
+const uploadedKeys = new Set<string>();
+const upload = vi.fn(async (path: string) => { uploadedKeys.add(path); return { data: { id: "1", path, fullPath: path }, error: null }; });
+const remove = vi.fn(async (paths: string[]) => { paths.forEach((p) => uploadedKeys.delete(p)); return { data: [], error: null }; });
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: vi.fn(() => ({ storage: { from: vi.fn(() => ({ upload, remove })) } }))
+}));
+
+async function fixture() {
+  const db = getDb();
+  const now = new Date();
+  const ownerA = `account-a-${crypto.randomUUID()}`;
+  const ownerB = `account-b-${crypto.randomUUID()}`;
+  for (const id of [ownerA, ownerB]) {
+    await db.insert(user).values({ id, name: id, email: `${id}@example.test`, emailVerified: true, createdAt: now, updatedAt: now });
   }
-  sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, "{}", now);
-  sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-b", "account-b", "Plan B", "active", 1, "{}", now);
-  sqlite.prepare("INSERT INTO workout_session VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("session-a", "account-a", "plan-a", 0, "completed", 2, null, now, now, 7, null, null, now);
-  sqlite.prepare("INSERT INTO session VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("auth-session-a", now + 86_400_000, "token-a", now, now, null, null, "account-a");
-  const db = drizzle(sqlite, { schema });
-  return { db, sqlite };
+  await db.insert(trainingPlan).values({ id: `plan-a-${ownerA}`, ownerId: ownerA, name: "Plan A", status: "active", version: 1, contentJson: "{}", createdAt: now });
+  await db.insert(trainingPlan).values({ id: `plan-b-${ownerB}`, ownerId: ownerB, name: "Plan B", status: "active", version: 1, contentJson: "{}", createdAt: now });
+  await db.insert(workoutSession).values({ id: `session-a-${ownerA}`, ownerId: ownerA, planId: `plan-a-${ownerA}`, sessionIndex: 0, status: "completed", version: 2, startedAt: now, endedAt: now, globalEffort: 7, createdAt: now });
+  await db.insert(session).values({ id: `auth-session-${ownerA}`, expiresAt: new Date(now.getTime() + 86_400_000), token: `token-${ownerA}`, createdAt: now, updatedAt: now, userId: ownerA });
+  return { db, ownerA, ownerB };
 }
 
 describe("deleteOwnAccount", () => {
-  it("cascades to every owned row and unlinks any remaining private upload bytes, without touching another account", () => {
-    const { db, sqlite } = fixture();
-    const storageKey = saveUploadedFile(Buffer.from("fit-bytes"), "fit");
-    sqlite.prepare("INSERT INTO import_file VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run("file-a", "account-a", storageKey, "carrera.fit", "fit", 9, "hash", Date.now(), null);
-    expect(existsSync(path.join(PRIVATE_UPLOAD_ROOT, storageKey))).toBe(true);
+  it("cascades to every owned row and unlinks any remaining private upload bytes, without touching another account", async () => {
+    const { db, ownerA, ownerB } = await fixture();
+    const storageKey = await saveUploadedFile(ownerA, Buffer.from("fit-bytes"), "fit");
+    await db.insert(importFile).values({ id: `file-a-${ownerA}`, ownerId: ownerA, storageKey, originalName: "carrera.fit", format: "fit", sizeBytes: 9, sha256: `hash-${ownerA}`, uploadedAt: new Date() });
+    expect(uploadedKeys.has(storageKey)).toBe(true);
 
-    return deleteOwnAccount(db, "account-a").then(() => {
-      expect(sqlite.prepare("SELECT * FROM user WHERE id = 'account-a'").get()).toBeUndefined();
-      expect(sqlite.prepare("SELECT * FROM training_plan WHERE owner_id = 'account-a'").all()).toHaveLength(0);
-      expect(sqlite.prepare("SELECT * FROM workout_session WHERE owner_id = 'account-a'").all()).toHaveLength(0);
-      expect(sqlite.prepare("SELECT * FROM import_file WHERE owner_id = 'account-a'").all()).toHaveLength(0);
-      expect(sqlite.prepare("SELECT * FROM session WHERE user_id = 'account-a'").all()).toHaveLength(0);
-      expect(existsSync(path.join(PRIVATE_UPLOAD_ROOT, storageKey))).toBe(false);
+    await deleteOwnAccount(db, ownerA);
 
-      expect(sqlite.prepare("SELECT * FROM user WHERE id = 'account-b'").get()).toBeDefined();
-      expect(sqlite.prepare("SELECT * FROM training_plan WHERE owner_id = 'account-b'").all()).toHaveLength(1);
-    });
+    expect(await db.select().from(user).where(eq(user.id, ownerA))).toHaveLength(0);
+    expect(await db.select().from(trainingPlan).where(eq(trainingPlan.ownerId, ownerA))).toHaveLength(0);
+    expect(await db.select().from(workoutSession).where(eq(workoutSession.ownerId, ownerA))).toHaveLength(0);
+    expect(await db.select().from(importFile).where(eq(importFile.ownerId, ownerA))).toHaveLength(0);
+    expect(await db.select().from(session).where(eq(session.userId, ownerA))).toHaveLength(0);
+    expect(uploadedKeys.has(storageKey)).toBe(false);
+    expect(remove).toHaveBeenCalledWith([storageKey]);
+
+    expect(await db.select().from(user).where(eq(user.id, ownerB))).toHaveLength(1);
+    expect(await db.select().from(trainingPlan).where(eq(trainingPlan.ownerId, ownerB))).toHaveLength(1);
+
+    await db.delete(user).where(eq(user.id, ownerB));
   });
 });

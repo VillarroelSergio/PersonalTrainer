@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
-import type { db as productionDb } from "@/lib/db/client";
+import type { getDb } from "@/lib/db/client";
 import { trainingPlan } from "@/lib/db/schema";
 
-type Database = typeof productionDb;
+type Database = ReturnType<typeof getDb>;
 
 /** Every lookup and mutation scopes both id and owner id from the authenticated session. */
 export async function findOwnedPlan(database: Database, planId: string, ownerId: string) {

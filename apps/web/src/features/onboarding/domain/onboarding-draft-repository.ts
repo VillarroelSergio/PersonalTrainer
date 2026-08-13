@@ -1,9 +1,10 @@
 import { eq } from "drizzle-orm";
-import type { db as productionDb } from "@/lib/db/client";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import * as schema from "@/lib/db/schema";
 import { onboardingDraft } from "@/lib/db/schema";
 import type { OnboardingFormPatch } from "@/contracts/onboarding";
 
-type Database = typeof productionDb;
+type Database = PostgresJsDatabase<typeof schema>;
 
 /** Scoped by owner id from the authenticated session; never accepts a foreign owner id. */
 export async function loadOwnedDraft(database: Database, ownerId: string): Promise<OnboardingFormPatch | null> {

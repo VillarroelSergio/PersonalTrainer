@@ -1,13 +1,12 @@
 import { z } from "zod";
 import { createActivation, ProposalNotFoundError } from "@/features/planning/domain/activation";
-import type { db as productionDb } from "@/lib/db/client";
-import type Database from "better-sqlite3";
+import type { getDb } from "@/lib/db/client";
 
 type SessionUser = { id: string } | null;
 
 const activateBodySchema = z.object({ proposalId: z.string().min(1), proposalJson: z.string().optional() });
 
-export async function activatePlanResponse(request: Request, user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database): Promise<Response> {
+export async function activatePlanResponse(request: Request, user: SessionUser, database: ReturnType<typeof getDb>): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   let body: unknown;
@@ -21,8 +20,8 @@ export async function activatePlanResponse(request: Request, user: SessionUser, 
   if (!parsed.success) return error(400, "VALIDATION_ERROR", "proposalId es obligatorio.", parsed.error.flatten());
 
   try {
-    const activateOwnedProposal = createActivation(database, sqliteHandle);
-    const plan = activateOwnedProposal(user.id, parsed.data.proposalId, parsed.data.proposalJson);
+    const activateOwnedProposal = createActivation(database);
+    const plan = await activateOwnedProposal(user.id, parsed.data.proposalId, parsed.data.proposalJson);
     return Response.json({ data: plan, meta: {} });
   } catch (cause) {
     if (cause instanceof ProposalNotFoundError) return error(404, "NOT_FOUND", "No encontramos esa propuesta.");

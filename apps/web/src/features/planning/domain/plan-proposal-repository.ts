@@ -1,9 +1,9 @@
 import { and, eq } from "drizzle-orm";
-import type { db as productionDb } from "@/lib/db/client";
+import type { getDb } from "@/lib/db/client";
 import { planProposal } from "@/lib/db/schema";
 import type { PlanProposal } from "@/contracts/onboarding";
 
-type Database = typeof productionDb;
+type Database = ReturnType<typeof getDb>;
 
 /** Idempotent by proposal id (== clientOperationId): retrying the same submission overwrites, never duplicates. */
 export async function saveOwnedProposal(database: Database, ownerId: string, proposal: PlanProposal): Promise<void> {

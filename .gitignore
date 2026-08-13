@@ -6,6 +6,8 @@
 !/prototype/
 !/apps/
 !/.gitignore
+!/package.json
+!/package-lock.json
 
 # Artefactos de build y datos locales dentro de apps/.
 apps/**/node_modules/
@@ -15,6 +17,7 @@ apps/**/*.tsbuildinfo
 apps/**/.env
 apps/**/.env.local
 apps/**/private-uploads/
+apps/**/.backups/
 
 # No versionar documentación en Markdown.
 *.md

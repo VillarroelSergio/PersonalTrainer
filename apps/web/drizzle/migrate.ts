@@ -1,5 +1,12 @@
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { db, sqlite } from "@/lib/db/client";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { getDb, getSql } from "@/lib/db/client";
 
-migrate(db, { migrationsFolder: "apps/web/drizzle" });
-sqlite.close();
+async function run() {
+  await migrate(getDb(), { migrationsFolder: "apps/web/drizzle" });
+  await getSql().end();
+}
+
+run().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

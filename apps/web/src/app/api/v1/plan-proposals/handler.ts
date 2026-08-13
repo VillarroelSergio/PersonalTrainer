@@ -1,11 +1,11 @@
 import { onboardingDraftSchema } from "@/contracts/onboarding";
 import { buildPlanProposal } from "@/features/planning/domain/plan-proposal";
 import { saveOwnedProposal } from "@/features/planning/domain/plan-proposal-repository";
-import type { db as productionDb } from "@/lib/db/client";
+import type { getDb } from "@/lib/db/client";
 
 type SessionUser = { id: string } | null;
 
-export async function createPlanProposalResponse(request: Request, user: SessionUser, database?: typeof productionDb): Promise<Response> {
+export async function createPlanProposalResponse(request: Request, user: SessionUser, database?: ReturnType<typeof getDb>): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   let body: unknown;

@@ -8,12 +8,11 @@ import {
   SessionAlreadyExecutedError,
   createPlanEditRepository
 } from "@/features/planning/domain/plan-edit-repository";
-import type { db as productionDb } from "@/lib/db/client";
-import type Database from "better-sqlite3";
+import type { getDb } from "@/lib/db/client";
 
 type SessionUser = { id: string } | null;
 
-export async function createPlanSessionEditResponse(request: Request, user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database, planId: string): Promise<Response> {
+export async function createPlanSessionEditResponse(request: Request, user: SessionUser, database: ReturnType<typeof getDb>, planId: string): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   let body: unknown;
@@ -27,8 +26,8 @@ export async function createPlanSessionEditResponse(request: Request, user: Sess
   if (!parsed.success) return error(400, "VALIDATION_ERROR", "Edición de plan inválida.", parsed.error.flatten());
 
   try {
-    const repository = createPlanEditRepository(database, sqliteHandle);
-    const result = repository.applyEdit(user.id, planId, parsed.data);
+    const repository = createPlanEditRepository(database);
+    const result = await repository.applyEdit(user.id, planId, parsed.data);
     return Response.json({ data: result, meta: {} });
   } catch (cause) {
     if (cause instanceof PlanNotFoundError) return error(404, "NOT_FOUND", "No encontramos ese plan.");

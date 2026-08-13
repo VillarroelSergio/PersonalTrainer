@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
 import { listOwnedShareLinks } from "@/features/planning/domain/share-repository";
 import { AppShell } from "@/components/AppShell";
@@ -11,6 +11,7 @@ export default async function CompartirPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
 
+  const db = getDb();
   const activePlan = await findActivePlanForOwner(db, session.user.id);
   if (!activePlan) redirect("/onboarding");
 

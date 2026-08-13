@@ -2,14 +2,14 @@ import { z } from "zod";
 import { createWorkoutSessionRepository, PlanNotFoundError, SessionNotStrengthError } from "@/features/workouts/domain/workout-session-repository";
 import { createWorkoutTrainingEngineRepository } from "@/features/training-engine/domain/repository";
 import { isoWeekStart } from "@/lib/weekdays";
-import type { db as productionDb } from "@/lib/db/client";
-import type Database from "better-sqlite3";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type * as schema from "@/lib/db/schema";
 
 type SessionUser = { id: string } | null;
 
 const startWorkoutBodySchema = z.object({ planId: z.string().min(1), sessionIndex: z.number().int().nonnegative() });
 
-export async function startWorkoutResponse(request: Request, user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database): Promise<Response> {
+export async function startWorkoutResponse(request: Request, user: SessionUser, database: PostgresJsDatabase<typeof schema>): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   let body: unknown;
@@ -23,11 +23,11 @@ export async function startWorkoutResponse(request: Request, user: SessionUser, 
   if (!parsed.success) return error(400, "VALIDATION_ERROR", "planId y sessionIndex son obligatorios.", parsed.error.flatten());
 
   try {
-    const repository = createWorkoutSessionRepository(database, sqliteHandle);
-    const engineRepository = createWorkoutTrainingEngineRepository(database, sqliteHandle);
-    const adjustment = engineRepository.getAdjustment(user.id, parsed.data.planId, isoWeekStart(), parsed.data.sessionIndex);
+    const repository = createWorkoutSessionRepository(database);
+    const engineRepository = createWorkoutTrainingEngineRepository(database);
+    const adjustment = await engineRepository.getAdjustment(user.id, parsed.data.planId, isoWeekStart(), parsed.data.sessionIndex);
     const ops = adjustment && (adjustment.kind === "reduce_time" || adjustment.kind === "equipment_substitution") ? JSON.parse(adjustment.opsJson) : [];
-    const result = repository.startOrResumeWorkout(user.id, parsed.data.planId, parsed.data.sessionIndex, ops);
+    const result = await repository.startOrResumeWorkout(user.id, parsed.data.planId, parsed.data.sessionIndex, ops);
     return Response.json({ data: result, meta: {} });
   } catch (cause) {
     if (cause instanceof PlanNotFoundError) return error(404, "NOT_FOUND", "No encontramos ese plan.");

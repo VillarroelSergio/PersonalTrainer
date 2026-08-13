@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { commitImportInputSchema } from "@/contracts/endurance";
 import {
   DuplicateNotForcedError,
@@ -7,60 +8,76 @@ import {
   SessionNotEnduranceError,
   createActivityImportRepository
 } from "@/features/endurance/domain/import-repository";
-import { formatFromFilename, validateMimeType, FileTooLargeError, UnsupportedFormatError, UnsupportedMimeTypeError } from "@/features/endurance/domain/parsers";
-import { MAX_UPLOAD_BYTES } from "@/features/endurance/domain/storage";
-import type { db as productionDb } from "@/lib/db/client";
-import type Database from "better-sqlite3";
+import { FileTooLargeError, UnsupportedFormatError } from "@/features/endurance/domain/parsers";
+import { readUploadedFile, sha256Hex } from "@/features/endurance/domain/storage";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type * as schema from "@/lib/db/schema";
 
 type SessionUser = { id: string } | null;
+type Db = PostgresJsDatabase<typeof schema>;
 
-export async function uploadActivityImportResponse(request: Request, user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database): Promise<Response> {
+const confirmUploadSchema = z.object({
+  storageKey: z.string().min(1),
+  originalName: z.string().min(1),
+  sha256: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative()
+});
+
+/**
+ * Step 2 of the browser-direct-upload flow (Task 5): the browser already PUT its bytes
+ * straight to Storage (see upload-url/handler.ts) and hands us the storage key + a
+ * client-computed sha256. This downloads the bytes back, verifies ownership of the key and
+ * the hash (tamper/integrity check), then reuses the same dedupe→parse→analyze→persist
+ * path as the legacy single-step upload — it just never re-uploads.
+ */
+export async function confirmActivityImportResponse(request: Request, user: SessionUser, database: Db): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
-  // request.formData() itself buffers the whole multipart body before we can inspect
-  // any part, so it depends on the server/reverse-proxy request-body size limit —
-  // that is an infrastructure prerequisite for deployment, not something this handler
-  // configures. The file.size check below is the application-level backstop once we
-  // do have the parsed File part.
-  let formData: FormData;
+  let body: unknown;
   try {
-    formData = await request.formData();
+    body = await request.json();
   } catch {
-    return error(400, "VALIDATION_ERROR", "El cuerpo debe ser multipart/form-data.");
+    return error(400, "VALIDATION_ERROR", "El cuerpo debe ser JSON válido.");
   }
 
-  const file = formData.get("file");
-  if (!(file instanceof File)) return error(400, "VALIDATION_ERROR", "Falta el archivo (campo \"file\").");
+  const parsed = confirmUploadSchema.safeParse(body);
+  if (!parsed.success) return error(400, "VALIDATION_ERROR", "Datos de confirmación inválidos.", parsed.error.flatten());
+  const { storageKey, originalName, sha256, sizeBytes } = parsed.data;
 
-  // Reject by declared size before reading the body into memory — file.size is metadata
-  // the runtime already has from the multipart part, so this never buffers an oversized upload.
-  if (file.size > MAX_UPLOAD_BYTES) return error(413, "VALIDATION_ERROR", new FileTooLargeError(MAX_UPLOAD_BYTES).message);
+  // Owner-scoped key prefix, not the person-supplied filename: prevents confirming someone
+  // else's key or a forged path (createPrivateUploadKey always mints under this prefix).
+  if (!storageKey.startsWith(`activity-imports/${user.id}/`)) return error(404, "NOT_FOUND", "No encontramos ese archivo.");
+
+  let bytes: Buffer;
+  try {
+    bytes = await readUploadedFile(storageKey);
+  } catch {
+    return error(404, "NOT_FOUND", "No encontramos ese archivo.");
+  }
+
+  if (bytes.byteLength !== sizeBytes) return error(422, "VALIDATION_ERROR", "El tamaño del archivo subido no coincide con lo esperado.");
+  if (sha256Hex(bytes) !== sha256.toLowerCase()) return error(422, "VALIDATION_ERROR", "El archivo subido no coincide con lo esperado (verificación de integridad fallida).");
 
   try {
-    const format = formatFromFilename(file.name);
-    validateMimeType(format, file.type ?? "");
-
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const repository = createActivityImportRepository(database, sqliteHandle);
-    const importRow = repository.uploadAndAnalyze(user.id, file.name, bytes);
+    const repository = createActivityImportRepository(database);
+    const importRow = await repository.confirmUpload(user.id, storageKey, originalName, bytes);
     return Response.json({ data: toClientImport(importRow), meta: {} });
   } catch (cause) {
     if (cause instanceof UnsupportedFormatError) return error(422, "UNSUPPORTED_ACTIVITY_FILE", cause.message);
-    if (cause instanceof UnsupportedMimeTypeError) return error(422, "UNSUPPORTED_ACTIVITY_FILE", cause.message);
     if (cause instanceof FileTooLargeError) return error(413, "VALIDATION_ERROR", cause.message);
     throw cause;
   }
 }
 
-export async function getActivityImportResponse(user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database, importId: string): Promise<Response> {
+export async function getActivityImportResponse(user: SessionUser, database: Db, importId: string): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
-  const repository = createActivityImportRepository(database, sqliteHandle);
-  const importRow = repository.getImport(user.id, importId);
+  const repository = createActivityImportRepository(database);
+  const importRow = await repository.getImport(user.id, importId);
   if (!importRow) return error(404, "NOT_FOUND", "No encontramos esa importación.");
   return Response.json({ data: toClientImport(importRow), meta: {} });
 }
 
-export async function commitActivityImportResponse(request: Request, user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database, importId: string): Promise<Response> {
+export async function commitActivityImportResponse(request: Request, user: SessionUser, database: Db, importId: string): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   let body: unknown;
@@ -74,8 +91,8 @@ export async function commitActivityImportResponse(request: Request, user: Sessi
   if (!parsed.success) return error(400, "VALIDATION_ERROR", "Datos de confirmación inválidos.", parsed.error.flatten());
 
   try {
-    const repository = createActivityImportRepository(database, sqliteHandle);
-    const result = repository.commit(user.id, importId, parsed.data);
+    const repository = createActivityImportRepository(database);
+    const result = await repository.commit(user.id, importId, parsed.data);
     return Response.json({ data: result, meta: {} });
   } catch (cause) {
     if (cause instanceof ImportNotFoundError) return error(404, "NOT_FOUND", "No encontramos esa importación.");
@@ -87,14 +104,14 @@ export async function commitActivityImportResponse(request: Request, user: Sessi
 }
 
 /** Deletes the raw uploaded bytes (minimal retention, Fase 5) — the derived import/activity/metric rows are untouched and history stays intact. */
-export async function deleteActivityImportFileResponse(user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database, importId: string): Promise<Response> {
+export async function deleteActivityImportFileResponse(user: SessionUser, database: Db, importId: string): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   try {
-    const repository = createActivityImportRepository(database, sqliteHandle);
-    const importRow = repository.getImport(user.id, importId);
+    const repository = createActivityImportRepository(database);
+    const importRow = await repository.getImport(user.id, importId);
     if (!importRow) return error(404, "NOT_FOUND", "No encontramos esa importación.");
-    repository.deleteImportFile(user.id, importRow.fileId);
+    await repository.deleteImportFile(user.id, importRow.fileId);
     return Response.json({ data: { ok: true }, meta: {} });
   } catch (cause) {
     if (cause instanceof ImportFileNotFoundError) return error(404, "NOT_FOUND", "Ese archivo ya no está disponible.");

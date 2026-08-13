@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { previewSharedRoutine, ShareLinkNotFoundError } from "@/features/planning/domain/share-repository";
 import { CopySharedRoutineButton } from "@/features/planning/ui/CopySharedRoutineButton";
 
@@ -11,7 +11,7 @@ export default async function SharedRoutinePreviewPage({ params }: { params: Pro
 
   let preview;
   try {
-    preview = await previewSharedRoutine(db, token);
+    preview = await previewSharedRoutine(getDb(), token);
   } catch (cause) {
     if (cause instanceof ShareLinkNotFoundError) {
       return (

@@ -1,9 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import path from "node:path";
-
-/** Outside apps/web/public (Next.js only serves public/ statically), never web-reachable directly. */
-const PRIVATE_UPLOAD_ROOT = path.resolve(process.cwd(), "private-uploads", "activity-imports");
+import { createHash } from "node:crypto";
+import { createPrivateUploadKey, deletePrivateUpload, readPrivateUpload, uploadPrivateFile } from "@/lib/storage/supabase-server";
 
 /** Conservative default (spike question open in DATA-MODEL-PROPOSAL.md §"Preguntas para el spike técnico"): real FIT/TCX/GPX activity files are typically well under this. Adjustable without a schema change. */
 export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
@@ -12,22 +8,24 @@ export function sha256Hex(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-/** Writes bytes under a random, non-guessable key (never the person-supplied filename, avoiding path traversal from an attacker-controlled name) and returns that storageKey. */
-export function saveUploadedFile(bytes: Buffer, format: string): string {
-  mkdirSync(PRIVATE_UPLOAD_ROOT, { recursive: true });
-  const storageKey = `${randomUUID()}.${format}`;
-  writeFileSync(path.join(PRIVATE_UPLOAD_ROOT, storageKey), bytes);
+/** Uploads bytes under an owner-scoped, non-guessable key and returns that storageKey. */
+export async function saveUploadedFile(ownerId: string, bytes: Buffer, format: string): Promise<string> {
+  const storageKey = createPrivateUploadKey(ownerId, format);
+  await uploadPrivateFile(storageKey, bytes, contentTypeFor(format));
   return storageKey;
 }
 
-export function readUploadedFile(storageKey: string): Buffer {
-  return readFileSync(path.join(PRIVATE_UPLOAD_ROOT, storageKey));
+export async function readUploadedFile(storageKey: string): Promise<Buffer> {
+  return readPrivateUpload(storageKey);
 }
 
-export function deleteUploadedFile(storageKey: string): void {
-  try {
-    unlinkSync(path.join(PRIVATE_UPLOAD_ROOT, storageKey));
-  } catch {
-    // ponytail: ya borrado o nunca escrito — no es un error operable aquí.
-  }
+export async function deleteUploadedFile(storageKey: string): Promise<void> {
+  await deletePrivateUpload(storageKey);
+}
+
+function contentTypeFor(format: string): string {
+  // ponytail: only used to label the object in the bucket; the app never trusts this for parsing (parsers re-derive format from the stored `format` DB column).
+  if (format === "gpx") return "application/gpx+xml";
+  if (format === "tcx") return "application/vnd.garmin.tcx+xml";
+  return "application/octet-stream";
 }

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { auth } from "@/lib/auth";
-import { db, sqlite } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner, listPlansForOwner } from "@/features/planning/domain/training-plan-repository";
 import { createPlanEditRepository } from "@/features/planning/domain/plan-edit-repository";
 import {
@@ -62,6 +62,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
   const ownerId = session.user.id;
+  const db = getDb();
 
   const activePlan = await findActivePlanForOwner(db, ownerId);
   if (!activePlan) redirect("/onboarding");
@@ -73,15 +74,15 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const weekStart = isoDate(addDays(parseIsoDateLocal(currentWeekStart), offset * 7));
 
   const proposal = JSON.parse(activePlan.contentJson) as PlanProposal;
-  const editRepo = createPlanEditRepository(db, sqlite);
-  const workoutRepo = createWorkoutSessionRepository(db, sqlite);
-  const historyRepo = createHistoryRepository(db, sqlite);
+  const editRepo = createPlanEditRepository(db);
+  const workoutRepo = createWorkoutSessionRepository(db);
+  const historyRepo = createHistoryRepository(db);
 
-  const adjustments = editRepo.listWeekAdjustments(ownerId, activePlan.id, weekStart);
+  const adjustments = await editRepo.listWeekAdjustments(ownerId, activePlan.id, weekStart);
 
   const weekStartDate = parseIsoDateLocal(weekStart);
   const weekEndDate = addDays(weekStartDate, 7);
-  const fullHistory = workoutRepo.listSessionHistory(ownerId, activePlan.id);
+  const fullHistory = await workoutRepo.listSessionHistory(ownerId, activePlan.id);
   const executedStatuses: Record<number, ExecutedStatus> = {};
   for (const row of fullHistory) {
     if (row.startedAt >= weekStartDate && row.startedAt < weekEndDate && FINISHED_OR_ACTIVE.has(row.status)) {
@@ -287,7 +288,7 @@ function PlanesTab({ plans, activePlanId }: { plans: Awaited<ReturnType<typeof l
  * progreso de bloque, figuras de la semana, carga semanal por bloque (reutiliza
  * historyRepo.computeWeeklyLoad, la misma fuente que Historial), evolución breve de una
  * frase (MVP-DEFINITION §6: "no gráficos densos"), actividad reciente y un logro. */
-function ProgressSection({
+async function ProgressSection({
   planName, planId, ownerId, blockProgress, historyRepo, fullHistory, weekDoneCount, weekPlannedCount, weekStartDate, weekEndDate
 }: {
   planName: string;
@@ -303,10 +304,10 @@ function ProgressSection({
 }) {
   const minutes = computeWeekMinutes(fullHistory, weekStartDate, weekEndDate);
   const consistencyWeeks = computeConsistencyWeeks(fullHistory);
-  const weeklyLoad = historyRepo.computeWeeklyLoad(ownerId, isoWeekStart());
+  const weeklyLoad = await historyRepo.computeWeeklyLoad(ownerId, isoWeekStart());
   const note = evolutionNote(fullHistory);
-  const recentActivity = historyRepo.listSessionHistory(ownerId, planId).slice(0, 3);
-  const adherence = historyRepo.computeAdherence(ownerId, planId);
+  const recentActivity = (await historyRepo.listSessionHistory(ownerId, planId)).slice(0, 3);
+  const adherence = await historyRepo.computeAdherence(ownerId, planId);
   const totalAdherencia = adherence ? adherence.completadas + adherence.adaptadas : 0;
   const achievements = pickAchievements(totalAdherencia);
 

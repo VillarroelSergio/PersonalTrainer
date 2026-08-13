@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { loadOwnedDraft, saveOwnedDraft } from "@/features/onboarding/domain/onboarding-draft-repository";
 import { GOAL_OPTIONS, DURATION_OPTIONS, ENVIRONMENT_OPTIONS, EQUIPMENT_OPTIONS } from "@/features/onboarding/presentation/constants";
 import { profileFormDataToPatch } from "@/features/profile/domain/profile-patch";
@@ -30,7 +30,7 @@ async function saveProfileSection(formData: FormData) {
   "use server";
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
-  await saveOwnedDraft(db, session.user.id, profileFormDataToPatch(formData));
+  await saveOwnedDraft(getDb(), session.user.id, profileFormDataToPatch(formData));
   revalidatePath("/perfil");
 }
 
@@ -38,7 +38,7 @@ export default async function PerfilPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
 
-  const draft = await loadOwnedDraft(db, session.user.id);
+  const draft = await loadOwnedDraft(getDb(), session.user.id);
   const age = computeAge(draft?.birthDay, draft?.birthMonth, draft?.birthYear);
   const weightKg = draft?.weightWholeKg !== undefined ? draft.weightWholeKg + (draft.weightDecimalKg ?? 0) / 10 : null;
 

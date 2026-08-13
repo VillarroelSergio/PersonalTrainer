@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { auth } from "@/lib/auth";
-import { db, sqlite } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { EXERCISE_CATALOG, findVariant, MUSCLE_GROUPS, MUSCLE_GROUP_LABEL, MUSCLE_GROUP_IMAGE, type MuscleGroup, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
 import { listOwnedFavoriteVariantIds } from "@/features/catalog/domain/favorite-repository";
 import { FavoriteToggle } from "@/features/catalog/ui/FavoriteToggle";
@@ -43,9 +43,10 @@ export default async function EjerciciosPage({ searchParams }: { searchParams: P
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
 
-  const favoriteIds = new Set(await listOwnedFavoriteVariantIds(db, session.user.id));
-  const workoutRepo = createWorkoutSessionRepository(db, sqlite);
-  const recentVariants = workoutRepo.listRecentVariantIds(session.user.id, 5).map(findVariant).filter((variant): variant is ExerciseVariant => variant != null);
+  const favoriteIds = new Set(await listOwnedFavoriteVariantIds(getDb(), session.user.id));
+  const workoutRepo = createWorkoutSessionRepository(getDb());
+  const recentVariantIds = await workoutRepo.listRecentVariantIds(session.user.id, 5);
+  const recentVariants = recentVariantIds.map(findVariant).filter((variant): variant is ExerciseVariant => variant != null);
   const { grupo, q, favoritos } = await searchParams;
   const query = q?.trim().toLocaleLowerCase("es") ?? "";
   const showFavorites = favoritos === "1";

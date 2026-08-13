@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { db, sqlite } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
 import { createHistoryRepository } from "@/features/history/domain/history-repository";
 import { AppShell } from "@/components/AppShell";
@@ -27,22 +27,22 @@ export default async function HistoryEntryDetailPage({ params }: { params: Promi
   if (!session?.user) redirect("/login");
   const ownerId = session.user.id;
 
-  const activePlan = await findActivePlanForOwner(db, ownerId);
+  const activePlan = await findActivePlanForOwner(getDb(), ownerId);
   if (!activePlan) redirect("/onboarding");
 
   const { id } = await params;
-  const historyRepo = createHistoryRepository(db, sqlite);
+  const historyRepo = createHistoryRepository(getDb());
 
-  const sessionDetail = historyRepo.getSessionDetail(ownerId, activePlan.id, id);
+  const sessionDetail = await historyRepo.getSessionDetail(ownerId, activePlan.id, id);
   if (sessionDetail) return <StrengthDetail detail={sessionDetail} />;
 
-  const activityDetail = historyRepo.getEnduranceActivityDetail(ownerId, id);
+  const activityDetail = await historyRepo.getEnduranceActivityDetail(ownerId, id);
   if (activityDetail) return <EnduranceDetail activity={activityDetail} />;
 
   notFound();
 }
 
-function StrengthDetail({ detail }: { detail: NonNullable<ReturnType<ReturnType<typeof createHistoryRepository>["getSessionDetail"]>> }) {
+function StrengthDetail({ detail }: { detail: NonNullable<Awaited<ReturnType<ReturnType<typeof createHistoryRepository>["getSessionDetail"]>>> }) {
   return (
     <AppShell title="Trainer" backHref="/historial">
       <p className="kicker">Fuerza · {detail.startedAt.toLocaleDateString("es-ES")}</p>
@@ -89,7 +89,7 @@ function StrengthDetail({ detail }: { detail: NonNullable<ReturnType<ReturnType<
   );
 }
 
-function EnduranceDetail({ activity }: { activity: NonNullable<ReturnType<ReturnType<typeof createHistoryRepository>["getEnduranceActivityDetail"]>> }) {
+function EnduranceDetail({ activity }: { activity: NonNullable<Awaited<ReturnType<ReturnType<typeof createHistoryRepository>["getEnduranceActivityDetail"]>>> }) {
   const durationMin = activity.durationS != null ? Math.round(activity.durationS / 60) : null;
   const distanceKm = activity.distanceM != null ? (activity.distanceM / 1000).toFixed(1) : null;
 

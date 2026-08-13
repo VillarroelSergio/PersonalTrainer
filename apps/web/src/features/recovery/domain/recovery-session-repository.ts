@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm";
-import type Database from "better-sqlite3";
-import type { db as productionDb } from "@/lib/db/client";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import * as schema from "@/lib/db/schema";
 import { recoverySession, trainingPlan } from "@/lib/db/schema";
 import { isoWeekStart } from "@/lib/weekdays";
 
-type Db = typeof productionDb;
+type Db = PostgresJsDatabase<typeof schema>;
 
 export class PlanNotFoundError extends Error {
   code = "NOT_FOUND" as const;
@@ -26,53 +26,55 @@ export class RecoverySessionAlreadyClosedError extends Error {
  * strength volume or feed the progression baseline (progression only ever
  * reads rows reachable from workout_session).
  */
-export function createRecoverySessionRepository(database: Db, sqliteHandle: Database.Database) {
-  const runStartOrResume = sqliteHandle.transaction((ownerId: string, planId: string, sessionIndex: number) => {
-    const existing = database.select().from(recoverySession)
-      .where(and(eq(recoverySession.ownerId, ownerId), eq(recoverySession.planId, planId), eq(recoverySession.sessionIndex, sessionIndex), eq(recoverySession.status, "in_progress")))
-      .get();
-    if (existing) return existing;
+export function createRecoverySessionRepository(database: Db) {
+  async function runStartOrResume(ownerId: string, planId: string, sessionIndex: number) {
+    return database.transaction(async (tx) => {
+      const existing = (await tx.select().from(recoverySession)
+        .where(and(eq(recoverySession.ownerId, ownerId), eq(recoverySession.planId, planId), eq(recoverySession.sessionIndex, sessionIndex), eq(recoverySession.status, "in_progress")))).at(0);
+      if (existing) return existing;
 
-    const plan = database.select().from(trainingPlan).where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId))).get();
-    if (!plan) throw new PlanNotFoundError();
+      const plan = (await tx.select().from(trainingPlan).where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId)))).at(0);
+      if (!plan) throw new PlanNotFoundError();
 
-    const id = crypto.randomUUID();
-    const now = new Date();
-    database.insert(recoverySession).values({ id, ownerId, planId, sessionIndex, status: "in_progress", startedAt: now, createdAt: now }).run();
-    return database.select().from(recoverySession).where(eq(recoverySession.id, id)).get()!;
-  });
+      const id = crypto.randomUUID();
+      const now = new Date();
+      await tx.insert(recoverySession).values({ id, ownerId, planId, sessionIndex, status: "in_progress", startedAt: now, createdAt: now });
+      return (await tx.select().from(recoverySession).where(eq(recoverySession.id, id))).at(0)!;
+    });
+  }
 
-  const runFinish = sqliteHandle.transaction((ownerId: string, id: string, comment: string | null) => {
-    const row = database.select().from(recoverySession).where(and(eq(recoverySession.id, id), eq(recoverySession.ownerId, ownerId))).get();
-    if (!row) throw new RecoverySessionNotFoundError();
-    if (row.status === "completed") throw new RecoverySessionAlreadyClosedError();
-    const now = new Date();
-    database.update(recoverySession).set({ status: "completed", endedAt: now, comment }).where(eq(recoverySession.id, id)).run();
-    return database.select().from(recoverySession).where(eq(recoverySession.id, id)).get()!;
-  });
+  async function runFinish(ownerId: string, id: string, comment: string | null) {
+    return database.transaction(async (tx) => {
+      const row = (await tx.select().from(recoverySession).where(and(eq(recoverySession.id, id), eq(recoverySession.ownerId, ownerId)))).at(0);
+      if (!row) throw new RecoverySessionNotFoundError();
+      if (row.status === "completed") throw new RecoverySessionAlreadyClosedError();
+      const now = new Date();
+      await tx.update(recoverySession).set({ status: "completed", endedAt: now, comment }).where(eq(recoverySession.id, id));
+      return (await tx.select().from(recoverySession).where(eq(recoverySession.id, id))).at(0)!;
+    });
+  }
 
   return {
     startOrResume: (ownerId: string, planId: string, sessionIndex: number) => runStartOrResume(ownerId, planId, sessionIndex),
     /** Most recent recovery session for this occurrence (any status), for a page reload to show the right state without creating one. */
-    findLatest: (ownerId: string, planId: string, sessionIndex: number) =>
-      database.select().from(recoverySession)
+    findLatest: async (ownerId: string, planId: string, sessionIndex: number) =>
+      (await database.select().from(recoverySession)
         .where(and(eq(recoverySession.ownerId, ownerId), eq(recoverySession.planId, planId), eq(recoverySession.sessionIndex, sessionIndex)))
-        .orderBy(recoverySession.startedAt).all().at(-1) ?? null,
+        .orderBy(recoverySession.startedAt)).at(-1) ?? null,
     finish: (ownerId: string, id: string, comment: string | null = null) => runFinish(ownerId, id, comment),
     /** Latest known status per session index, for /hoy — same "latest wins, not week-scoped" simplification as workout_session.listLatestStatuses. */
-    listLatestStatuses: (ownerId: string, planId: string): Record<number, string> => {
-      const rows = database.select({ sessionIndex: recoverySession.sessionIndex, status: recoverySession.status, startedAt: recoverySession.startedAt })
-        .from(recoverySession).where(and(eq(recoverySession.ownerId, ownerId), eq(recoverySession.planId, planId))).orderBy(recoverySession.startedAt).all();
+    listLatestStatuses: async (ownerId: string, planId: string): Promise<Record<number, string>> => {
+      const rows = await database.select({ sessionIndex: recoverySession.sessionIndex, status: recoverySession.status, startedAt: recoverySession.startedAt })
+        .from(recoverySession).where(and(eq(recoverySession.ownerId, ownerId), eq(recoverySession.planId, planId))).orderBy(recoverySession.startedAt);
       const byIndex: Record<number, string> = {};
       for (const row of rows) byIndex[row.sessionIndex] = row.status;
       return byIndex;
     },
     /** Completed recovery sessions, shaped for history-engine's adherence computation: a completed recovery session counts as adherence ("adaptada" — a softened, non-strength version of the planned occurrence), never as full strength volume. */
-    listCompletedForAdherence: (ownerId: string, planId: string): Array<{ sessionIndex: number; isoWeekStart: string; status: "adapted" }> =>
-      database.select({ sessionIndex: recoverySession.sessionIndex, startedAt: recoverySession.startedAt })
+    listCompletedForAdherence: async (ownerId: string, planId: string): Promise<Array<{ sessionIndex: number; isoWeekStart: string; status: "adapted" }>> =>
+      (await database.select({ sessionIndex: recoverySession.sessionIndex, startedAt: recoverySession.startedAt })
         .from(recoverySession)
-        .where(and(eq(recoverySession.ownerId, ownerId), eq(recoverySession.planId, planId), eq(recoverySession.status, "completed")))
-        .all()
+        .where(and(eq(recoverySession.ownerId, ownerId), eq(recoverySession.planId, planId), eq(recoverySession.status, "completed"))))
         .map((row) => ({ sessionIndex: row.sessionIndex, isoWeekStart: isoWeekStart(row.startedAt), status: "adapted" as const }))
   };
 }

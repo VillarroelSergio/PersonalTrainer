@@ -1,10 +1,9 @@
 import { and, eq, isNull } from "drizzle-orm";
-import type Database from "better-sqlite3";
-import type { db as productionDb } from "@/lib/db/client";
+import type { getDb } from "@/lib/db/client";
 import { shareCopy, shareLink, trainingPlan } from "@/lib/db/schema";
 import type { PlanProposal } from "@/contracts/onboarding";
 
-type Db = typeof productionDb;
+type Db = ReturnType<typeof getDb>;
 
 export class PlanNotFoundError extends Error {
   code = "NOT_FOUND" as const;
@@ -49,27 +48,28 @@ export async function previewSharedRoutine(database: Db, token: string): Promise
 }
 
 /**
- * All writes wrapped in better-sqlite3's synchronous `.transaction()` (see
- * activation.ts for why), built from injected `database`/`sqliteHandle` so
- * tests can use an in-memory database. Archiving the copier's previous
- * active plan mirrors createActivation(): "only one active plan per owner"
- * is an invariant this repository never breaks either.
+ * All writes wrapped in a real Postgres transaction, built from an injected
+ * `database` so tests can use a test database. Archiving the copier's
+ * previous active plan mirrors createActivation(): "only one active plan
+ * per owner" is an invariant this repository never breaks either.
  */
-export function createShareCopyRepository(database: Db, sqliteHandle: Database.Database) {
-  const runCopy = sqliteHandle.transaction((token: string, copyingOwnerId: string) => {
-    const link = database.select().from(shareLink).where(and(eq(shareLink.id, token), isNull(shareLink.revokedAt))).get();
-    if (!link) throw new ShareLinkNotFoundError();
-    const originPlan = database.select().from(trainingPlan).where(eq(trainingPlan.id, link.planId)).get();
-    if (!originPlan) throw new ShareLinkNotFoundError();
+export function createShareCopyRepository(database: Db) {
+  async function runCopy(token: string, copyingOwnerId: string) {
+    return database.transaction(async (tx) => {
+      const link = (await tx.select().from(shareLink).where(and(eq(shareLink.id, token), isNull(shareLink.revokedAt)))).at(0);
+      if (!link) throw new ShareLinkNotFoundError();
+      const originPlan = (await tx.select().from(trainingPlan).where(eq(trainingPlan.id, link.planId))).at(0);
+      if (!originPlan) throw new ShareLinkNotFoundError();
 
-    database.update(trainingPlan).set({ status: "archived" }).where(and(eq(trainingPlan.ownerId, copyingOwnerId), eq(trainingPlan.status, "active"))).run();
+      await tx.update(trainingPlan).set({ status: "archived" }).where(and(eq(trainingPlan.ownerId, copyingOwnerId), eq(trainingPlan.status, "active")));
 
-    const copiedPlanId = crypto.randomUUID();
-    database.insert(trainingPlan).values({ id: copiedPlanId, ownerId: copyingOwnerId, name: originPlan.name, status: "active", version: 1, contentJson: originPlan.contentJson, createdAt: new Date() }).run();
-    database.insert(shareCopy).values({ id: crypto.randomUUID(), shareLinkId: link.id, copiedByOwnerId: copyingOwnerId, copiedPlanId, createdAt: new Date() }).run();
+      const copiedPlanId = crypto.randomUUID();
+      await tx.insert(trainingPlan).values({ id: copiedPlanId, ownerId: copyingOwnerId, name: originPlan.name, status: "active", version: 1, contentJson: originPlan.contentJson, createdAt: new Date() });
+      await tx.insert(shareCopy).values({ id: crypto.randomUUID(), shareLinkId: link.id, copiedByOwnerId: copyingOwnerId, copiedPlanId, createdAt: new Date() });
 
-    return { planId: copiedPlanId };
-  });
+      return { planId: copiedPlanId };
+    });
+  }
 
   return { copySharedRoutine: (token: string, copyingOwnerId: string) => runCopy(token, copyingOwnerId) };
 }

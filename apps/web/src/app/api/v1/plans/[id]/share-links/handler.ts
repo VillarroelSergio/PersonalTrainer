@@ -1,9 +1,9 @@
 import { createShareLink, PlanNotFoundError } from "@/features/planning/domain/share-repository";
-import type { db as productionDb } from "@/lib/db/client";
+import type { getDb } from "@/lib/db/client";
 
 type SessionUser = { id: string } | null;
 
-export async function createShareLinkResponse(user: SessionUser, database: typeof productionDb, planId: string): Promise<Response> {
+export async function createShareLinkResponse(user: SessionUser, database: ReturnType<typeof getDb>, planId: string): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   try {

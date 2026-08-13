@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { db, sqlite } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
 import { createEnduranceDesignRepository } from "@/features/endurance/domain/design-repository";
 import { EnduranceDesigner } from "@/features/endurance/ui/EnduranceDesigner";
@@ -15,6 +15,7 @@ export default async function ResistenciaPage({ searchParams }: { searchParams: 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
 
+  const db = getDb();
   const activePlan = await findActivePlanForOwner(db, session.user.id);
   if (!activePlan) redirect("/onboarding");
 
@@ -41,8 +42,8 @@ export default async function ResistenciaPage({ searchParams }: { searchParams: 
   }
 
   const weekStart = isoWeekStart();
-  const designRepo = createEnduranceDesignRepository(db, sqlite);
-  const design = designRepo.getDesign(session.user.id, activePlan.id, weekStart, sessionIndex);
+  const designRepo = createEnduranceDesignRepository(db);
+  const design = await designRepo.getDesign(session.user.id, activePlan.id, weekStart, sessionIndex);
 
   // Load-clash notice (prototype endurance.js L133-146): reuses the same weeklyLoadWarning
   // the /hoy page already uses, so "choque de carga" means one thing across the app.

@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { db, sqlite } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
 import { createRecoverySessionRepository } from "@/features/recovery/domain/recovery-session-repository";
 import { AppShell } from "@/components/AppShell";
@@ -12,7 +12,7 @@ export default async function RecuperarPage({ searchParams }: { searchParams: Pr
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
 
-  const activePlan = await findActivePlanForOwner(db, session.user.id);
+  const activePlan = await findActivePlanForOwner(getDb(), session.user.id);
   if (!activePlan) redirect("/onboarding");
 
   const { session: sessionParam } = await searchParams;
@@ -21,8 +21,8 @@ export default async function RecuperarPage({ searchParams }: { searchParams: Pr
   const plannedSession = Number.isInteger(sessionIndex) ? proposal.week?.sessions?.[sessionIndex] : null;
   if (!plannedSession) redirect("/hoy");
 
-  const repository = createRecoverySessionRepository(db, sqlite);
-  const existing = repository.findLatest(session.user.id, activePlan.id, sessionIndex);
+  const repository = createRecoverySessionRepository(getDb());
+  const existing = await repository.findLatest(session.user.id, activePlan.id, sessionIndex);
 
   return (
     <AppShell title="Trainer" backHref="/hoy">

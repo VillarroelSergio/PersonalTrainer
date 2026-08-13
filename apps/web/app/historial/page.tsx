@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { db, sqlite } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
 import { createHistoryRepository, type EnduranceActivityEntry, type SessionHistoryEntry } from "@/features/history/domain/history-repository";
 import { pickAchievements } from "@/features/history/domain/history-engine";
@@ -24,13 +24,13 @@ export default async function HistorialPage({ searchParams }: { searchParams: Pr
   if (!session?.user) redirect("/login");
   const ownerId = session.user.id;
 
-  const activePlan = await findActivePlanForOwner(db, ownerId);
+  const activePlan = await findActivePlanForOwner(getDb(), ownerId);
   if (!activePlan) redirect("/onboarding");
 
   const { tab: rawTab, semana } = await searchParams;
   const tab: TabKey = TABS.some((item) => item.key === rawTab) ? (rawTab as TabKey) : "registro";
 
-  const historyRepo = createHistoryRepository(db, sqlite);
+  const historyRepo = createHistoryRepository(getDb());
 
   return (
     <AppShell title="Trainer">
@@ -80,15 +80,15 @@ function buildTimeline(sessions: SessionHistoryEntry[], activities: EnduranceAct
   return [...strength, ...endurance].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
 }
 
-function RegistroTab({ ownerId, planId, semana, historyRepo }: { ownerId: string; planId: string; semana?: string; historyRepo: ReturnType<typeof createHistoryRepository> }) {
-  const allSessions = historyRepo.listSessionHistory(ownerId, planId);
+async function RegistroTab({ ownerId, planId, semana, historyRepo }: { ownerId: string; planId: string; semana?: string; historyRepo: ReturnType<typeof createHistoryRepository> }) {
+  const allSessions = await historyRepo.listSessionHistory(ownerId, planId);
   const selectedWeek = semana ?? isoWeekStart();
   const filteredSessions = allSessions.filter((session) => isoWeekStart(session.startedAt) === selectedWeek);
 
   const prevWeek = isoDate(addDays(parseIsoDateLocal(selectedWeek), -7));
   const nextWeek = isoDate(addDays(parseIsoDateLocal(selectedWeek), 7));
 
-  const enduranceActivities = historyRepo.listEnduranceActivities(ownerId);
+  const enduranceActivities = await historyRepo.listEnduranceActivities(ownerId);
   const filteredEndurance = enduranceActivities.filter((activity) => isoWeekStart(activity.startedAt) === selectedWeek);
 
   const timeline = buildTimeline(filteredSessions, filteredEndurance);
@@ -125,8 +125,8 @@ function RegistroTab({ ownerId, planId, semana, historyRepo }: { ownerId: string
   );
 }
 
-function ProgresoSection({ historyRepo, ownerId }: { historyRepo: ReturnType<typeof createHistoryRepository>; ownerId: string }) {
-  const progress = historyRepo.listVariantProgress(ownerId);
+async function ProgresoSection({ historyRepo, ownerId }: { historyRepo: ReturnType<typeof createHistoryRepository>; ownerId: string }) {
+  const progress = await historyRepo.listVariantProgress(ownerId);
   if (progress.length === 0) return null;
 
   return (
@@ -152,9 +152,9 @@ function ProgresoSection({ historyRepo, ownerId }: { historyRepo: ReturnType<typ
   );
 }
 
-function AdherenciaTab({ historyRepo, ownerId, planId }: { historyRepo: ReturnType<typeof createHistoryRepository>; ownerId: string; planId: string }) {
-  const adherence = historyRepo.computeAdherence(ownerId, planId);
-  const weekStats = historyRepo.computeWeekStats(ownerId, planId);
+async function AdherenciaTab({ historyRepo, ownerId, planId }: { historyRepo: ReturnType<typeof createHistoryRepository>; ownerId: string; planId: string }) {
+  const adherence = await historyRepo.computeAdherence(ownerId, planId);
+  const weekStats = await historyRepo.computeWeekStats(ownerId, planId);
   const totalAdherencia = adherence ? adherence.completadas + adherence.adaptadas : 0;
   const achievements = pickAchievements(totalAdherencia);
   const achievementText = achievements.alcanzado

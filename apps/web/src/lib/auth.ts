@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { db } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
 import { isTrustedDevelopmentOrigin } from "@/lib/auth-origin";
 
@@ -18,7 +18,7 @@ export function createAuth(disableSignUp = true) {
     : [localOrigin];
 
   return betterAuth({
-    database: drizzleAdapter(db, { provider: "sqlite", schema }),
+    database: drizzleAdapter(getDb(), { provider: "pg", schema }),
     emailAndPassword: { enabled: true, disableSignUp },
     trustedOrigins
   });

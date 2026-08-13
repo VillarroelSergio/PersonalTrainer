@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { db, sqlite } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
 import { createPlanEditRepository } from "@/features/planning/domain/plan-edit-repository";
 import { buildWeekView, summarizeWeekSessions, visibleOccurrencesForDay, weeklyLoadWarning, type ExecutedStatus } from "@/features/planning/domain/plan-week";
@@ -20,29 +20,34 @@ export default async function HoyPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
 
+  const db = getDb();
   const activePlan = await findActivePlanForOwner(db, session.user.id);
   if (!activePlan) redirect("/onboarding");
 
   const content = JSON.parse(activePlan.contentJson) as PlanProposal;
   const sessions = content.week?.sessions ?? [];
-  const repository = createWorkoutSessionRepository(db, sqlite);
-  const statuses = repository.listLatestStatuses(session.user.id, activePlan.id);
+  const repository = createWorkoutSessionRepository(db);
+  const statuses = await repository.listLatestStatuses(session.user.id, activePlan.id);
 
   const today = todayWeekday();
   const weekStart = isoWeekStart();
-  const editRepository = createPlanEditRepository(db, sqlite);
-  const adjustments = editRepository.listWeekAdjustments(session.user.id, activePlan.id, weekStart);
+  const editRepository = createPlanEditRepository(db);
+  const adjustments = await editRepository.listWeekAdjustments(session.user.id, activePlan.id, weekStart);
   const weekOccurrences = buildWeekView(content, true, adjustments, statuses as Record<number, ExecutedStatus>);
   const todayOccurrences = visibleOccurrencesForDay(weekOccurrences, today);
   const todayIndex = todayOccurrences[0]?.sessionIndex ?? -1;
   const todaySession = todayIndex >= 0 ? sessions[todayIndex] : null;
-  const engineRepository = createWorkoutTrainingEngineRepository(db, sqlite);
-  const adjustment = todayIndex >= 0 ? engineRepository.getAdjustment(session.user.id, activePlan.id, weekStart, todayIndex) : undefined;
-  const recoveryRepository = createRecoverySessionRepository(db, sqlite);
-  const recoveryStatus = todayIndex >= 0 && adjustment?.kind === "recovery" ? recoveryRepository.findLatest(session.user.id, activePlan.id, todayIndex)?.status ?? null : null;
+  const engineRepository = createWorkoutTrainingEngineRepository(db);
+  const adjustment = todayIndex >= 0 ? await engineRepository.getAdjustment(session.user.id, activePlan.id, weekStart, todayIndex) : undefined;
+  const recoveryRepository = createRecoverySessionRepository(db);
+  const recoveryStatus = todayIndex >= 0 && adjustment?.kind === "recovery" ? (await recoveryRepository.findLatest(session.user.id, activePlan.id, todayIndex))?.status ?? null : null;
 
   const warn = weeklyLoadWarning(sessions);
   const weekSummary = summarizeWeekSessions(sessions, statuses);
+  const extraOccurrences = todayOccurrences.slice(1);
+  const extraOccurrenceAdjustments = await Promise.all(
+    extraOccurrences.map((occurrence) => engineRepository.getAdjustment(session.user.id, activePlan.id, weekStart, occurrence.sessionIndex))
+  );
 
   return (
     <AppShell title="Trainer">
@@ -52,8 +57,8 @@ export default async function HoyPage() {
       <h2 className="section-title">Entrenamiento de hoy</h2>
       <div className="today-stack">
         <TodayHero session={todaySession} sessionIndex={todayIndex} status={todayIndex >= 0 ? statuses[todayIndex] : undefined} adjustment={adjustment} recoveryStatus={recoveryStatus} />
-        {todayOccurrences.slice(1).map((occurrence) => (
-          <TodayHero key={`${occurrence.sessionIndex}-${occurrence.day}`} session={sessions[occurrence.sessionIndex]} sessionIndex={occurrence.sessionIndex} status={statuses[occurrence.sessionIndex]} adjustment={engineRepository.getAdjustment(session.user.id, activePlan.id, weekStart, occurrence.sessionIndex)} recoveryStatus={null} />
+        {extraOccurrences.map((occurrence, index) => (
+          <TodayHero key={`${occurrence.sessionIndex}-${occurrence.day}`} session={sessions[occurrence.sessionIndex]} sessionIndex={occurrence.sessionIndex} status={statuses[occurrence.sessionIndex]} adjustment={extraOccurrenceAdjustments[index]} recoveryStatus={null} />
         ))}
       </div>
 

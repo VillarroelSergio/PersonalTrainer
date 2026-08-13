@@ -1,13 +1,13 @@
 import { z } from "zod";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { createRecoverySessionRepository, PlanNotFoundError } from "@/features/recovery/domain/recovery-session-repository";
-import type { db as productionDb } from "@/lib/db/client";
-import type Database from "better-sqlite3";
+import type * as schema from "@/lib/db/schema";
 
 type SessionUser = { id: string } | null;
 
 const startInputSchema = z.object({ planId: z.string().min(1), sessionIndex: z.number().int().nonnegative() });
 
-export async function startRecoverySessionResponse(request: Request, user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database): Promise<Response> {
+export async function startRecoverySessionResponse(request: Request, user: SessionUser, database: PostgresJsDatabase<typeof schema>): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   let body: unknown;
@@ -20,8 +20,8 @@ export async function startRecoverySessionResponse(request: Request, user: Sessi
   if (!parsed.success) return error(400, "VALIDATION_ERROR", "Datos inválidos.", parsed.error.flatten());
 
   try {
-    const repository = createRecoverySessionRepository(database, sqliteHandle);
-    const session = repository.startOrResume(user.id, parsed.data.planId, parsed.data.sessionIndex);
+    const repository = createRecoverySessionRepository(database);
+    const session = await repository.startOrResume(user.id, parsed.data.planId, parsed.data.sessionIndex);
     return Response.json({ data: session, meta: {} });
   } catch (cause) {
     if (cause instanceof PlanNotFoundError) return error(404, "NOT_FOUND", "No encontramos ese plan.");

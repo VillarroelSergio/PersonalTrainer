@@ -1,8 +1,8 @@
 import { previewSharedRoutine, ShareLinkNotFoundError } from "@/features/planning/domain/share-repository";
-import type { db as productionDb } from "@/lib/db/client";
+import type { getDb } from "@/lib/db/client";
 
 /** Preview requires no authentication — the token itself is the access control, same as a real invite link. Never returns the origin owner's identity, loads, or history (see share-repository.ts). */
-export async function previewSharedRoutineResponse(database: typeof productionDb, token: string): Promise<Response> {
+export async function previewSharedRoutineResponse(database: ReturnType<typeof getDb>, token: string): Promise<Response> {
   try {
     const preview = await previewSharedRoutine(database, token);
     return Response.json({ data: preview, meta: {} });

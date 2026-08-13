@@ -1,6 +1,5 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DuplicateNotForcedError,
   ImportFileNotFoundError,
@@ -8,8 +7,18 @@ import {
   SessionNotEnduranceError,
   createActivityImportRepository
 } from "@/features/endurance/domain/import-repository";
+import { getDb } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
 import type { PlanProposal } from "@/contracts/onboarding";
+
+process.env.SUPABASE_URL ??= "https://example.supabase.co";
+process.env.SUPABASE_SERVICE_ROLE_KEY ??= "service-role-key";
+
+vi.mock("@supabase/supabase-js", () => {
+  const upload = vi.fn(async (path: string) => ({ data: { id: "1", path, fullPath: path }, error: null }));
+  const remove = vi.fn(async () => ({ data: [], error: null }));
+  return { createClient: vi.fn(() => ({ storage: { from: vi.fn(() => ({ upload, remove })) } })) };
+});
 
 const proposal: PlanProposal = {
   proposalId: "proposal-a",
@@ -38,116 +47,121 @@ const VALID_GPX_SAME_ACTIVITY = `<?xml version="1.0" encoding="UTF-8"?>
   <trkpt lat="41.0200" lon="-4.0000"><ele>520</ele><time>2026-08-10T08:20:05Z</time></trkpt>
 </trkseg></trk></gpx>`;
 
-function fixture() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null);
-    CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null default 'draft', version integer not null default 1, content_json text not null default '{}', created_at integer not null, source text, source_template_id text, source_template_version text, catalog_version text);
-    CREATE TABLE import_file (id text primary key, owner_id text not null, storage_key text not null, original_name text not null, format text not null, size_bytes integer not null, sha256 text not null, uploaded_at integer not null, deleted_at integer);
-    CREATE UNIQUE INDEX import_file_owner_sha256_idx ON import_file (owner_id, sha256);
-    CREATE TABLE activity_import (id text primary key, owner_id text not null, file_id text not null, format text not null, status text not null, error_code text, analysis_json text, duplicate_of_activity_id text, created_at integer not null);
-    CREATE TABLE endurance_activity (id text primary key, owner_id text not null, import_id text, plan_id text, iso_week_start text, session_index integer, sport text not null, name text not null, source text not null, fingerprint text not null, started_at integer not null, duration_s integer, distance_m real, created_at integer not null);
-    CREATE TABLE activity_metric (id text primary key, activity_id text not null, metric_type text not null, value real not null, unit text not null, source text not null);
-  `);
-  sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run("account-a", "account-a", "a@example.test", 1, null, 0, 0);
-  sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "active", 1, JSON.stringify(proposal), 0);
-  const db = drizzle(sqlite, { schema });
-  return { db, sqlite };
+const createdOwnerIds: string[] = [];
+
+async function fixture() {
+  const db = getDb();
+  const ownerId = crypto.randomUUID();
+  createdOwnerIds.push(ownerId);
+  const now = new Date();
+  await db.insert(schema.user).values({ id: ownerId, name: ownerId, email: `${ownerId}@example.test`, emailVerified: true, createdAt: now, updatedAt: now });
+  const planId = crypto.randomUUID();
+  await db.insert(schema.trainingPlan).values({ id: planId, ownerId, name: "Plan A", status: "active", version: 1, contentJson: JSON.stringify(proposal), createdAt: now });
+  return { db, ownerId, planId };
 }
 
+afterEach(async () => {
+  const db = getDb();
+  // Cascades to training_plan/import_file/activity_import/endurance_activity/activity_metric.
+  while (createdOwnerIds.length) {
+    const ownerId = createdOwnerIds.pop()!;
+    await db.delete(schema.user).where(eq(schema.user.id, ownerId));
+  }
+});
+
 describe("activity import repository", () => {
-  it("analyzes a valid GPX upload and re-uploading the exact same bytes is idempotent (never re-parses, never duplicates the row)", () => {
-    const { db, sqlite } = fixture();
-    const repo = createActivityImportRepository(db, sqlite);
+  it("analyzes a valid GPX upload and re-uploading the exact same bytes is idempotent (never re-parses, never duplicates the row)", async () => {
+    const { db, ownerId } = await fixture();
+    const repo = createActivityImportRepository(db);
     const bytes = Buffer.from(VALID_GPX, "utf-8");
 
-    const first = repo.uploadAndAnalyze("account-a", "carrera.gpx", bytes);
+    const first = await repo.uploadAndAnalyze(ownerId, "carrera.gpx", bytes);
     expect(first.status).toBe("analyzed");
 
-    const second = repo.uploadAndAnalyze("account-a", "carrera.gpx", bytes);
+    const second = await repo.uploadAndAnalyze(ownerId, "carrera.gpx", bytes);
     expect(second.id).toBe(first.id);
 
-    const files = db.select().from(schema.importFile).all();
+    const files = await db.select().from(schema.importFile).where(eq(schema.importFile.ownerId, ownerId));
     expect(files).toHaveLength(1);
-    const imports = db.select().from(schema.activityImport).all();
+    const imports = await db.select().from(schema.activityImport).where(eq(schema.activityImport.ownerId, ownerId));
     expect(imports).toHaveLength(1);
   });
 
-  it("rejects an unsupported extension before touching storage or the database", () => {
-    const { db, sqlite } = fixture();
-    const repo = createActivityImportRepository(db, sqlite);
-    expect(() => repo.uploadAndAnalyze("account-a", "carrera.csv", Buffer.from("x"))).toThrow();
-    expect(db.select().from(schema.importFile).all()).toHaveLength(0);
+  it("rejects an unsupported extension before touching storage or the database", async () => {
+    const { db, ownerId } = await fixture();
+    const repo = createActivityImportRepository(db);
+    await expect(repo.uploadAndAnalyze(ownerId, "carrera.csv", Buffer.from("x"))).rejects.toThrow();
+    expect(await db.select().from(schema.importFile).where(eq(schema.importFile.ownerId, ownerId))).toHaveLength(0);
   });
 
-  it("stores an invalid (right extension, corrupt content) file as status failed, not a thrown error", () => {
-    const { db, sqlite } = fixture();
-    const repo = createActivityImportRepository(db, sqlite);
-    const result = repo.uploadAndAnalyze("account-a", "corrupto.gpx", Buffer.from("<gpx>not valid</gpx", "utf-8"));
+  it("stores an invalid (right extension, corrupt content) file as status failed, not a thrown error", async () => {
+    const { db, ownerId } = await fixture();
+    const repo = createActivityImportRepository(db);
+    const result = await repo.uploadAndAnalyze(ownerId, "corrupto.gpx", Buffer.from("<gpx>not valid</gpx", "utf-8"));
     expect(result.status).toBe("failed");
   });
 
-  it("commits an analyzed import into a real endurance_activity + activity_metric rows and marks the import saved", () => {
-    const { db, sqlite } = fixture();
-    const repo = createActivityImportRepository(db, sqlite);
-    const uploaded = repo.uploadAndAnalyze("account-a", "carrera.gpx", Buffer.from(VALID_GPX, "utf-8"));
+  it("commits an analyzed import into a real endurance_activity + activity_metric rows and marks the import saved", async () => {
+    const { db, ownerId } = await fixture();
+    const repo = createActivityImportRepository(db);
+    const uploaded = await repo.uploadAndAnalyze(ownerId, "carrera.gpx", Buffer.from(VALID_GPX, "utf-8"));
 
-    const result = repo.commit("account-a", uploaded.id, { name: "Carrera del martes", sport: "running", isoWeekStart: "2026-08-10", sessionIndex: 1 });
+    const result = await repo.commit(ownerId, uploaded.id, { name: "Carrera del martes", sport: "running", isoWeekStart: "2026-08-10", sessionIndex: 1 });
     expect(result.activity.name).toBe("Carrera del martes");
     expect(result.activity.sessionIndex).toBe(1);
 
-    const savedImport = db.select().from(schema.activityImport).all().find((row) => row.id === uploaded.id);
+    const savedImport = (await db.select().from(schema.activityImport).where(eq(schema.activityImport.id, uploaded.id))).at(0);
     expect(savedImport?.status).toBe("saved");
   });
 
-  it("refuses to associate a commit with a strength session", () => {
-    const { db, sqlite } = fixture();
-    const repo = createActivityImportRepository(db, sqlite);
-    const uploaded = repo.uploadAndAnalyze("account-a", "carrera.gpx", Buffer.from(VALID_GPX, "utf-8"));
-    expect(() => repo.commit("account-a", uploaded.id, { name: "x", sport: "running", isoWeekStart: "2026-08-10", sessionIndex: 0 })).toThrow(SessionNotEnduranceError);
+  it("refuses to associate a commit with a strength session", async () => {
+    const { db, ownerId } = await fixture();
+    const repo = createActivityImportRepository(db);
+    const uploaded = await repo.uploadAndAnalyze(ownerId, "carrera.gpx", Buffer.from(VALID_GPX, "utf-8"));
+    await expect(repo.commit(ownerId, uploaded.id, { name: "x", sport: "running", isoWeekStart: "2026-08-10", sessionIndex: 0 })).rejects.toThrow(SessionNotEnduranceError);
   });
 
-  it("a second activity that fingerprints the same as an already-saved one is flagged duplicate and never silently double-counted", () => {
-    const { db, sqlite } = fixture();
-    const repo = createActivityImportRepository(db, sqlite);
+  it("a second activity that fingerprints the same as an already-saved one is flagged duplicate and never silently double-counted", async () => {
+    const { db, ownerId } = await fixture();
+    const repo = createActivityImportRepository(db);
 
-    const uploaded1 = repo.uploadAndAnalyze("account-a", "carrera-1.gpx", Buffer.from(VALID_GPX, "utf-8"));
-    repo.commit("account-a", uploaded1.id, { name: "Carrera", sport: "running" });
+    const uploaded1 = await repo.uploadAndAnalyze(ownerId, "carrera-1.gpx", Buffer.from(VALID_GPX, "utf-8"));
+    await repo.commit(ownerId, uploaded1.id, { name: "Carrera", sport: "running" });
 
-    const uploaded2 = repo.uploadAndAnalyze("account-a", "carrera-2.gpx", Buffer.from(VALID_GPX_SAME_ACTIVITY, "utf-8"));
+    const uploaded2 = await repo.uploadAndAnalyze(ownerId, "carrera-2.gpx", Buffer.from(VALID_GPX_SAME_ACTIVITY, "utf-8"));
     expect(uploaded2.status).toBe("duplicate");
 
-    expect(() => repo.commit("account-a", uploaded2.id, { name: "Carrera otra vez", sport: "running" })).toThrow(DuplicateNotForcedError);
-    expect(db.select().from(schema.enduranceActivity).all()).toHaveLength(1);
+    await expect(repo.commit(ownerId, uploaded2.id, { name: "Carrera otra vez", sport: "running" })).rejects.toThrow(DuplicateNotForcedError);
+    expect(await db.select().from(schema.enduranceActivity).where(eq(schema.enduranceActivity.ownerId, ownerId))).toHaveLength(1);
 
-    const forced = repo.commit("account-a", uploaded2.id, { name: "Carrera otra vez", sport: "running", force: true });
+    const forced = await repo.commit(ownerId, uploaded2.id, { name: "Carrera otra vez", sport: "running", force: true });
     expect(forced.activity.id).not.toBe(uploaded1.id);
-    expect(db.select().from(schema.enduranceActivity).all()).toHaveLength(2);
+    expect(await db.select().from(schema.enduranceActivity).where(eq(schema.enduranceActivity.ownerId, ownerId))).toHaveLength(2);
   });
 
-  it("refuses to commit an import that failed to parse", () => {
-    const { db, sqlite } = fixture();
-    const repo = createActivityImportRepository(db, sqlite);
-    const failed = repo.uploadAndAnalyze("account-a", "corrupto.gpx", Buffer.from("<gpx>not valid</gpx", "utf-8"));
-    expect(() => repo.commit("account-a", failed.id, { name: "x", sport: "running" })).toThrow(ImportNotReadyError);
+  it("refuses to commit an import that failed to parse", async () => {
+    const { db, ownerId } = await fixture();
+    const repo = createActivityImportRepository(db);
+    const failed = await repo.uploadAndAnalyze(ownerId, "corrupto.gpx", Buffer.from("<gpx>not valid</gpx", "utf-8"));
+    await expect(repo.commit(ownerId, failed.id, { name: "x", sport: "running" })).rejects.toThrow(ImportNotReadyError);
   });
 
-  it("deletes the raw file's bytes and marks it deleted, but keeps the committed activity in history", () => {
-    const { db, sqlite } = fixture();
-    const repo = createActivityImportRepository(db, sqlite);
-    const uploaded = repo.uploadAndAnalyze("account-a", "carrera.gpx", Buffer.from(VALID_GPX, "utf-8"));
-    repo.commit("account-a", uploaded.id, { name: "Carrera", sport: "running" });
+  it("deletes the raw file's bytes and marks it deleted, but keeps the committed activity in history", async () => {
+    const { db, ownerId } = await fixture();
+    const repo = createActivityImportRepository(db);
+    const uploaded = await repo.uploadAndAnalyze(ownerId, "carrera.gpx", Buffer.from(VALID_GPX, "utf-8"));
+    await repo.commit(ownerId, uploaded.id, { name: "Carrera", sport: "running" });
 
-    const fileRow = sqlite.prepare("SELECT id, deleted_at FROM import_file WHERE owner_id = ?").get("account-a") as { id: string; deleted_at: number | null };
-    expect(fileRow.deleted_at).toBeNull();
+    const fileRow = (await db.select({ id: schema.importFile.id, deletedAt: schema.importFile.deletedAt }).from(schema.importFile).where(eq(schema.importFile.ownerId, ownerId))).at(0)!;
+    expect(fileRow.deletedAt).toBeNull();
 
-    repo.deleteImportFile("account-a", fileRow.id);
+    await repo.deleteImportFile(ownerId, fileRow.id);
 
-    const afterDelete = sqlite.prepare("SELECT deleted_at FROM import_file WHERE id = ?").get(fileRow.id) as { deleted_at: number | null };
-    expect(afterDelete.deleted_at).not.toBeNull();
-    expect(db.select().from(schema.enduranceActivity).all()).toHaveLength(1);
+    const afterDelete = (await db.select({ deletedAt: schema.importFile.deletedAt }).from(schema.importFile).where(eq(schema.importFile.id, fileRow.id))).at(0)!;
+    expect(afterDelete.deletedAt).not.toBeNull();
+    expect(await db.select().from(schema.enduranceActivity).where(eq(schema.enduranceActivity.ownerId, ownerId))).toHaveLength(1);
 
-    expect(() => repo.deleteImportFile("account-a", fileRow.id)).toThrow(ImportFileNotFoundError);
-    expect(() => repo.deleteImportFile("account-b", fileRow.id)).toThrow(ImportFileNotFoundError);
+    await expect(repo.deleteImportFile(ownerId, fileRow.id)).rejects.toThrow(ImportFileNotFoundError);
+    await expect(repo.deleteImportFile("account-b-does-not-exist", fileRow.id)).rejects.toThrow(ImportFileNotFoundError);
   });
 });

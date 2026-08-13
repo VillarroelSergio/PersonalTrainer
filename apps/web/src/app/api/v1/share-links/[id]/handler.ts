@@ -1,9 +1,9 @@
 import { revokeOwnedShareLink, ShareLinkNotFoundError } from "@/features/planning/domain/share-repository";
-import type { db as productionDb } from "@/lib/db/client";
+import type { getDb } from "@/lib/db/client";
 
 type SessionUser = { id: string } | null;
 
-export async function revokeShareLinkResponse(user: SessionUser, database: typeof productionDb, linkId: string): Promise<Response> {
+export async function revokeShareLinkResponse(user: SessionUser, database: ReturnType<typeof getDb>, linkId: string): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
   try {
     await revokeOwnedShareLink(database, user.id, linkId);

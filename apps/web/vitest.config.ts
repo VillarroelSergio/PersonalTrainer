@@ -9,6 +9,12 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // ponytail: defaults to the disposable local test Postgres (docker run
+    // postgres:16-alpine -p 55432:5432, db trainer_test, user/pass postgres/trainer)
+    // so `auth.ts`'s eager `getDb()` at import time doesn't throw and live-DB
+    // tests actually run instead of skipping. Override DATABASE_URL to point
+    // elsewhere (e.g. CI's own disposable Postgres) when this default isn't running.
+    env: { DATABASE_URL: process.env.DATABASE_URL ?? "postgres://postgres:trainer@localhost:55432/trainer_test" },
     include: ["apps/web/tests/**/*.test.ts"],
     coverage: {
       provider: "v8",

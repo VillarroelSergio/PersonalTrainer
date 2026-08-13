@@ -3,7 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { auth } from "@/lib/auth";
-import { db, sqlite } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { findVariant, MUSCLE_GROUP_IMAGE, MUSCLE_GROUP_LABEL } from "@/features/catalog/data/exercise-catalog";
 import { listOwnedFavoriteVariantIds } from "@/features/catalog/domain/favorite-repository";
 import { FavoriteToggle } from "@/features/catalog/ui/FavoriteToggle";
@@ -19,9 +19,9 @@ export default async function ExerciseVariantPage({ params }: { params: Promise<
   const variant = findVariant(id);
   if (!variant) notFound();
 
-  const favoriteIds = new Set(await listOwnedFavoriteVariantIds(db, session.user.id));
-  const workoutRepo = createWorkoutSessionRepository(db, sqlite);
-  const baseline = workoutRepo.getBaseline(session.user.id, id);
+  const favoriteIds = new Set(await listOwnedFavoriteVariantIds(getDb(), session.user.id));
+  const workoutRepo = createWorkoutSessionRepository(getDb());
+  const baseline = await workoutRepo.getBaseline(session.user.id, id);
 
   const summary = baseline?.summaryJson ? JSON.parse(baseline.summaryJson) as { lastLoadKg: number | null; lastRepetitions: number | null } : null;
 

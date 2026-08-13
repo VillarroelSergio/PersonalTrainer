@@ -1,59 +1,73 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { PLAN_TEMPLATES } from "@/features/planning/data/plan-templates";
 import { deleteOwnedPlan, findOwnedPlan, renameOwnedPlan } from "@/features/planning/domain/training-plan-repository";
-import * as schema from "@/lib/db/schema";
+import { getDb } from "@/lib/db/client";
+import { trainingPlan, user } from "@/lib/db/schema";
 
-function fixture() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec("CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null); CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null, version integer not null, content_json text not null default '{}', created_at integer not null, source text, source_template_id text, source_template_version text, catalog_version text);");
+async function fixture() {
+  const db = getDb();
+  const suffix = crypto.randomUUID();
+  const ownerA = `account-a-${suffix}`;
+  const ownerB = `account-b-${suffix}`;
+  const planA = `plan-a-${suffix}`;
   const now = new Date();
-  sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run("account-a", "A", "a@example.test", 1, null, now.valueOf(), now.valueOf());
-  sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run("account-b", "B", "b@example.test", 1, null, now.valueOf(), now.valueOf());
-  sqlite.prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run("plan-a", "account-a", "Plan A", "draft", 1, "{}", now.valueOf());
-  return drizzle(sqlite, { schema });
+  await db.insert(user).values({ id: ownerA, name: "A", email: `${ownerA}@example.test`, emailVerified: true, createdAt: now, updatedAt: now });
+  await db.insert(user).values({ id: ownerB, name: "B", email: `${ownerB}@example.test`, emailVerified: true, createdAt: now, updatedAt: now });
+  await db.insert(trainingPlan).values({ id: planA, ownerId: ownerA, name: "Plan A", status: "draft", version: 1, contentJson: "{}", createdAt: now });
+  return { db, ownerA, ownerB, planA };
+}
+
+async function cleanup(db: ReturnType<typeof getDb>, ...ownerIds: string[]) {
+  for (const id of ownerIds) await db.delete(user).where(eq(user.id, id));
 }
 
 describe("training plan owner repository", () => {
   it("does not return or update another account's plan", async () => {
-    const db = fixture();
-    expect(await findOwnedPlan(db, "plan-a", "account-b")).toBeUndefined();
-    expect(await renameOwnedPlan(db, "plan-a", "account-b", "Intrusión")).toBeUndefined();
-    expect((await findOwnedPlan(db, "plan-a", "account-a"))?.name).toBe("Plan A");
+    const { db, ownerA, ownerB, planA } = await fixture();
+    expect(await findOwnedPlan(db, planA, ownerB)).toBeUndefined();
+    expect(await renameOwnedPlan(db, planA, ownerB, "Intrusión")).toBeUndefined();
+    expect((await findOwnedPlan(db, planA, ownerA))?.name).toBe("Plan A");
+
+    await cleanup(db, ownerA, ownerB);
   });
 
   it("deletes only the authenticated owner's plan", async () => {
-    const db = fixture();
+    const { db, ownerA, ownerB, planA } = await fixture();
 
-    expect(await deleteOwnedPlan(db, "plan-a", "account-b")).toBe(false);
-    expect(await findOwnedPlan(db, "plan-a", "account-a")).toBeDefined();
+    expect(await deleteOwnedPlan(db, planA, ownerB)).toBe(false);
+    expect(await findOwnedPlan(db, planA, ownerA)).toBeDefined();
 
-    expect(await deleteOwnedPlan(db, "plan-a", "account-a")).toBe(true);
-    expect(await findOwnedPlan(db, "plan-a", "account-a")).toBeUndefined();
+    expect(await deleteOwnedPlan(db, planA, ownerA)).toBe(true);
+    expect(await findOwnedPlan(db, planA, ownerA)).toBeUndefined();
+
+    await cleanup(db, ownerA, ownerB);
   });
 
   it("keeps an activated template copy's content unchanged when the library template is updated afterwards", async () => {
-    const sqlite = new Database(":memory:");
-    sqlite.exec("CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null); CREATE TABLE training_plan (id text primary key, owner_id text not null, name text not null, status text not null, version integer not null, content_json text not null default '{}', created_at integer not null, source text, source_template_id text, source_template_version text, catalog_version text);");
-    const now = Date.now();
-    sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run("account-a", "A", "a@example.test", 1, null, now, now);
+    const db = getDb();
+    const ownerA = `account-a-${crypto.randomUUID()}`;
+    const planId = `plan-template-copy-${ownerA}`;
+    const now = new Date();
+    await db.insert(user).values({ id: ownerA, name: "A", email: `${ownerA}@example.test`, emailVerified: true, createdAt: now, updatedAt: now });
 
     const template = PLAN_TEMPLATES.find((candidate) => candidate.templateId === "full-body-gym")!;
     const originalVersion = template.versions.find((candidate) => candidate.version === "1.0.0")!;
     // The snapshot is taken (and persisted) at activation time, matching what activation.ts does with contentJson.
     const snapshotAtActivation = JSON.stringify(originalVersion.content);
-    sqlite
-      .prepare("INSERT INTO training_plan (id, owner_id, name, status, version, content_json, created_at, source, source_template_id, source_template_version, catalog_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run("plan-template-copy", "account-a", "Plan activo", "active", 1, snapshotAtActivation, now, "template", template.templateId, originalVersion.version, originalVersion.catalogVersion);
+    await db.insert(trainingPlan).values({
+      id: planId, ownerId: ownerA, name: "Plan activo", status: "active", version: 1, contentJson: snapshotAtActivation, createdAt: now,
+      source: "template", sourceTemplateId: template.templateId, sourceTemplateVersion: originalVersion.version, catalogVersion: originalVersion.catalogVersion
+    });
 
     // A newer library version is published afterwards (mutating the in-memory catalog, as a real
     // content update to plan-templates.ts would).
     template.versions.push({ ...originalVersion, version: "2.0.0", content: { ...originalVersion.content, blockBlueprints: [] } });
 
-    const db = drizzle(sqlite, { schema });
-    const activated = await findOwnedPlan(db, "plan-template-copy", "account-a");
+    const activated = await findOwnedPlan(db, planId, ownerA);
     expect(activated?.contentJson).toBe(snapshotAtActivation);
     expect(activated?.sourceTemplateVersion).toBe("1.0.0");
+
+    await cleanup(db, ownerA);
   });
 });

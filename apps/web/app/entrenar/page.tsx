@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { db, sqlite } from "@/lib/db/client";
+import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
 import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
 import { listOwnedFavoriteVariantIds } from "@/features/catalog/domain/favorite-repository";
@@ -14,6 +14,7 @@ export default async function EntrenarPage({ searchParams }: { searchParams: Pro
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
 
+  const db = getDb();
   const activePlan = await findActivePlanForOwner(db, session.user.id);
   if (!activePlan) redirect("/onboarding");
 
@@ -26,13 +27,13 @@ export default async function EntrenarPage({ searchParams }: { searchParams: Pro
   // Vista previa (P0-1): la lista y los favoritos/recientes se resuelven aquí, en el
   // servidor, con los mismos repositorios que ya usa /ejercicios — la sesión real
   // (POST /api/v1/workouts) no se crea hasta que la persona pulsa "Empezar sesión".
-  const workoutRepo = createWorkoutSessionRepository(db, sqlite);
+  const workoutRepo = createWorkoutSessionRepository(db);
   const favoriteVariantIds = await listOwnedFavoriteVariantIds(db, session.user.id);
-  const recentVariantIds = workoutRepo.listRecentVariantIds(session.user.id, 6);
+  const recentVariantIds = await workoutRepo.listRecentVariantIds(session.user.id, 6);
   // "Continuar sesión" en /hoy enlaza aquí igual que "Empezar sesión": si ya existe una
   // sesión in_progress para este índice, se entra directo a ella sin pasar por la vista
   // previa ni exigir un segundo toque en "Empezar sesión".
-  const isResuming = workoutRepo.listLatestStatuses(session.user.id, activePlan.id)[sessionIndex] === "in_progress";
+  const isResuming = (await workoutRepo.listLatestStatuses(session.user.id, activePlan.id))[sessionIndex] === "in_progress";
 
   return (
     <AppShell title="Entrenar" backHref="/hoy">

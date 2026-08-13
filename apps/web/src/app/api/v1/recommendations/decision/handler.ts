@@ -5,12 +5,12 @@ import {
   RecommendationNotFoundError,
   createWorkoutTrainingEngineRepository
 } from "@/features/training-engine/domain/repository";
-import type { db as productionDb } from "@/lib/db/client";
-import type Database from "better-sqlite3";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type * as schema from "@/lib/db/schema";
 
 type SessionUser = { id: string } | null;
 
-export async function decideRecommendationResponse(request: Request, user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database): Promise<Response> {
+export async function decideRecommendationResponse(request: Request, user: SessionUser, database: PostgresJsDatabase<typeof schema>): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   let body: unknown;
@@ -25,8 +25,8 @@ export async function decideRecommendationResponse(request: Request, user: Sessi
   if (parsed.data.decision === "apply" && !parsed.data.changeCode) return error(400, "VALIDATION_ERROR", "changeCode es obligatorio para aplicar una propuesta.");
 
   try {
-    const repository = createWorkoutTrainingEngineRepository(database, sqliteHandle);
-    const recommendation = repository.decideRecommendation(user.id, parsed.data);
+    const repository = createWorkoutTrainingEngineRepository(database);
+    const recommendation = await repository.decideRecommendation(user.id, parsed.data);
     return Response.json({ data: recommendation, meta: {} });
   } catch (cause) {
     if (cause instanceof RecommendationNotFoundError) return error(404, "NOT_FOUND", "No encontramos esa recomendación.");

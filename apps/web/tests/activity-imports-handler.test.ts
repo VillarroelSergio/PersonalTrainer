@@ -1,58 +1,137 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { describe, expect, it } from "vitest";
-import { uploadActivityImportResponse } from "@/app/api/v1/activity-imports/handler";
+import { createHash } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { confirmActivityImportResponse } from "@/app/api/v1/activity-imports/handler";
+import { getDb } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
 import { MAX_UPLOAD_BYTES } from "@/features/endurance/domain/storage";
 
-function fixture() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE user (id text primary key, name text not null, email text not null unique, email_verified integer not null, image text, created_at integer not null, updated_at integer not null);
-    CREATE TABLE import_file (id text primary key, owner_id text not null, storage_key text not null, original_name text not null, format text not null, size_bytes integer not null, sha256 text not null, uploaded_at integer not null, deleted_at integer);
-    CREATE UNIQUE INDEX import_file_owner_sha256_idx ON import_file (owner_id, sha256);
-    CREATE TABLE activity_import (id text primary key, owner_id text not null, file_id text not null, format text not null, status text not null, error_code text, analysis_json text, duplicate_of_activity_id text, created_at integer not null);
-  `);
-  sqlite.prepare("INSERT INTO user VALUES (?, ?, ?, ?, ?, ?, ?)").run("account-a", "account-a", "a@example.test", 1, null, 0, 0);
-  const db = drizzle(sqlite, { schema });
-  return { db, sqlite };
+process.env.SUPABASE_URL ??= "https://example.supabase.co";
+process.env.SUPABASE_SERVICE_ROLE_KEY ??= "service-role-key";
+
+const VALID_GPX = `<?xml version="1.0" encoding="UTF-8"?><gpx><trk><type>running</type><trkseg><trkpt lat="1" lon="1"><time>2026-08-10T08:00:00Z</time></trkpt><trkpt lat="1" lon="1"><time>2026-08-10T08:05:00Z</time></trkpt></trkseg></trk></gpx>`;
+const VALID_GPX_BYTES = Buffer.from(VALID_GPX, "utf-8");
+const VALID_GPX_SHA256 = createHash("sha256").update(VALID_GPX_BYTES).digest("hex");
+
+const download = vi.fn(async () => ({ data: new Blob([VALID_GPX_BYTES]), error: null }));
+
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: vi.fn(() => ({ storage: { from: vi.fn(() => ({ download })) } }))
+}));
+
+const createdOwnerIds: string[] = [];
+
+async function fixture() {
+  const db = getDb();
+  const ownerId = crypto.randomUUID();
+  createdOwnerIds.push(ownerId);
+  const now = new Date();
+  await db.insert(schema.user).values({ id: ownerId, name: ownerId, email: `${ownerId}@example.test`, emailVerified: true, createdAt: now, updatedAt: now });
+  return { db, ownerId };
 }
 
-function requestWithFile(file: File): Request {
-  const formData = new FormData();
-  formData.set("file", file);
-  return new Request("http://localhost/api/v1/activity-imports", { method: "POST", body: formData });
+beforeEach(() => {
+  download.mockClear();
+  download.mockResolvedValue({ data: new Blob([VALID_GPX_BYTES]), error: null } as never);
+});
+
+afterEach(async () => {
+  const db = getDb();
+  while (createdOwnerIds.length) {
+    const ownerId = createdOwnerIds.pop()!;
+    await db.delete(schema.user).where(eq(schema.user.id, ownerId));
+  }
+});
+
+function confirmRequest(body: unknown): Request {
+  return new Request("http://localhost/api/v1/activity-imports", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
 }
 
-describe("POST /api/v1/activity-imports — Bloqueante 4 hardening", () => {
-  it("rejects an oversized file by declared size", async () => {
-    const { db, sqlite } = fixture();
-    const oversized = new File([new Uint8Array(MAX_UPLOAD_BYTES + 1)], "carrera.gpx", { type: "" });
-    expect(oversized.size).toBe(MAX_UPLOAD_BYTES + 1);
-
-    const response = await uploadActivityImportResponse(requestWithFile(oversized), { id: "account-a" }, db, sqlite);
-    expect(response.status).toBe(413);
+describe("POST /api/v1/activity-imports — confirm (browser-direct-upload flow)", () => {
+  it("rejects when unauthenticated", async () => {
+    const response = await confirmActivityImportResponse(
+      confirmRequest({ storageKey: "activity-imports/x/f.gpx", originalName: "carrera.gpx", sha256: VALID_GPX_SHA256, sizeBytes: VALID_GPX_BYTES.byteLength }),
+      null,
+      getDb()
+    );
+    expect(response.status).toBe(401);
   });
 
-  it("rejects a MIME type that doesn't match the extension", async () => {
-    const { db, sqlite } = fixture();
-    const file = new File([new Uint8Array(10)], "carrera.gpx", { type: "application/pdf" });
-    const response = await uploadActivityImportResponse(requestWithFile(file), { id: "account-a" }, db, sqlite);
+  it("rejects a storageKey that does not belong to the authenticated owner", async () => {
+    const { db, ownerId } = await fixture();
+    const response = await confirmActivityImportResponse(
+      confirmRequest({ storageKey: "activity-imports/someone-else/f.gpx", originalName: "carrera.gpx", sha256: VALID_GPX_SHA256, sizeBytes: VALID_GPX_BYTES.byteLength }),
+      { id: ownerId },
+      db
+    );
+    expect(response.status).toBe(404);
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the client-declared sha256 does not match the downloaded bytes", async () => {
+    const { db, ownerId } = await fixture();
+    const response = await confirmActivityImportResponse(
+      confirmRequest({ storageKey: `activity-imports/${ownerId}/f.gpx`, originalName: "carrera.gpx", sha256: "0".repeat(64), sizeBytes: VALID_GPX_BYTES.byteLength }),
+      { id: ownerId },
+      db
+    );
     expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("UNSUPPORTED_ACTIVITY_FILE");
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
-  it("allows an empty or generic application/octet-stream MIME (common for watch exports)", async () => {
-    const validGpx = `<?xml version="1.0"?><gpx><trk><type>running</type><trkseg><trkpt lat="1" lon="1"><time>2026-08-10T08:00:00Z</time></trkpt><trkpt lat="1" lon="1"><time>2026-08-10T08:05:00Z</time></trkpt></trkseg></trk></gpx>`;
+  it("rejects when the client-declared sizeBytes does not match the downloaded bytes", async () => {
+    const { db, ownerId } = await fixture();
+    const response = await confirmActivityImportResponse(
+      confirmRequest({ storageKey: `activity-imports/${ownerId}/f.gpx`, originalName: "carrera.gpx", sha256: VALID_GPX_SHA256, sizeBytes: VALID_GPX_BYTES.byteLength + 1 }),
+      { id: ownerId },
+      db
+    );
+    expect(response.status).toBe(422);
+  });
 
-    const { db: dbA, sqlite: sqliteA } = fixture();
-    const emptyMime = new File([validGpx], "carrera.gpx", { type: "" });
-    const responseEmpty = await uploadActivityImportResponse(requestWithFile(emptyMime), { id: "account-a" }, dbA, sqliteA);
-    expect(responseEmpty.status).toBe(200);
+  it("confirms a valid upload: downloads, verifies, parses, and persists — same dedupe/parse/analyze behavior as the legacy single-step upload", async () => {
+    const { db, ownerId } = await fixture();
+    const storageKey = `activity-imports/${ownerId}/f.gpx`;
+    const response = await confirmActivityImportResponse(
+      confirmRequest({ storageKey, originalName: "carrera.gpx", sha256: VALID_GPX_SHA256, sizeBytes: VALID_GPX_BYTES.byteLength }),
+      { id: ownerId },
+      db
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.status).toBe("analyzed");
+    expect(download).toHaveBeenCalledTimes(1);
 
-    const { db: dbB, sqlite: sqliteB } = fixture();
-    const octetStream = new File([validGpx], "carrera.gpx", { type: "application/octet-stream" });
-    const responseOctet = await uploadActivityImportResponse(requestWithFile(octetStream), { id: "account-a" }, dbB, sqliteB);
-    expect(responseOctet.status).toBe(200);
+    const files = await db.select().from(schema.importFile).where(eq(schema.importFile.ownerId, ownerId));
+    expect(files).toHaveLength(1);
+    expect(files[0]!.storageKey).toBe(storageKey);
+
+    // Confirming the exact same content again (e.g. duplicate confirm call) is idempotent: no re-upload, no duplicate rows.
+    const second = await confirmActivityImportResponse(
+      confirmRequest({ storageKey: `activity-imports/${ownerId}/other.gpx`, originalName: "carrera.gpx", sha256: VALID_GPX_SHA256, sizeBytes: VALID_GPX_BYTES.byteLength }),
+      { id: ownerId },
+      db
+    );
+    expect(second.status).toBe(200);
+    expect((await db.select().from(schema.importFile).where(eq(schema.importFile.ownerId, ownerId)))).toHaveLength(1);
+  });
+
+  it("rejects when the downloaded bytes exceed MAX_UPLOAD_BYTES", async () => {
+    const { db, ownerId } = await fixture();
+    const oversized = Buffer.alloc(MAX_UPLOAD_BYTES + 1);
+    const oversizedSha256 = createHash("sha256").update(oversized).digest("hex");
+    download.mockResolvedValueOnce({ data: new Blob([oversized]), error: null } as never);
+
+    const response = await confirmActivityImportResponse(
+      confirmRequest({ storageKey: `activity-imports/${ownerId}/f.gpx`, originalName: "carrera.gpx", sha256: oversizedSha256, sizeBytes: oversized.byteLength }),
+      { id: ownerId },
+      db
+    );
+    expect(response.status).toBe(413);
   });
 });

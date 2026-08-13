@@ -1,16 +1,17 @@
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { onboardingFormPatchSchema } from "@/contracts/onboarding";
 import { loadOwnedDraft, saveOwnedDraft } from "@/features/onboarding/domain/onboarding-draft-repository";
-import type { db as productionDb } from "@/lib/db/client";
+import type * as schema from "@/lib/db/schema";
 
 type SessionUser = { id: string } | null;
 
-export async function getOnboardingDraftResponse(user: SessionUser, database: typeof productionDb): Promise<Response> {
+export async function getOnboardingDraftResponse(user: SessionUser, database: PostgresJsDatabase<typeof schema>): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
   const draft = await loadOwnedDraft(database, user.id);
   return Response.json({ data: draft, meta: {} });
 }
 
-export async function putOnboardingDraftResponse(request: Request, user: SessionUser, database: typeof productionDb): Promise<Response> {
+export async function putOnboardingDraftResponse(request: Request, user: SessionUser, database: PostgresJsDatabase<typeof schema>): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   let body: unknown;

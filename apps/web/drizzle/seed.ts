@@ -1,5 +1,5 @@
 import { createAuth } from "@/lib/auth";
-import { sqlite } from "@/lib/db/client";
+import { getSql } from "@/lib/db/client";
 
 async function seed() {
   const password = process.env.DEVELOPMENT_SEED_PASSWORD;
@@ -11,11 +11,11 @@ async function seed() {
       if (error.body?.code !== "USER_ALREADY_EXISTS") throw error;
     });
   }
-  sqlite.close();
+  await getSql().end();
 }
 
-void seed().catch((error) => {
-  sqlite.close();
+void seed().catch(async (error) => {
+  await getSql().end();
   console.error(error);
   process.exitCode = 1;
 });

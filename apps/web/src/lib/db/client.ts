@@ -1,10 +1,22 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import postgres, { type Sql } from "postgres";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "./schema";
 
-const databasePath = process.env.DATABASE_URL ?? "./trainer.db";
-const sqlite = new Database(databasePath);
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
-export const db = drizzle(sqlite, { schema });
-export { sqlite };
+let sql: Sql | undefined;
+let db: PostgresJsDatabase<typeof schema> | undefined;
+
+function connectionString(): string {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL is required");
+  return url;
+}
+
+export function getSql(): Sql {
+  if (!sql) sql = postgres(connectionString());
+  return sql;
+}
+
+export function getDb(): PostgresJsDatabase<typeof schema> {
+  if (!db) db = drizzle(getSql(), { schema });
+  return db;
+}

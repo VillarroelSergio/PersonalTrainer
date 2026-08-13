@@ -1,11 +1,12 @@
 import { enduranceDesignInputSchema } from "@/contracts/endurance";
 import { ActivePlanNotFoundError, DesignNotFoundError, SessionNotEnduranceError, createEnduranceDesignRepository } from "@/features/endurance/domain/design-repository";
-import type { db as productionDb } from "@/lib/db/client";
-import type Database from "better-sqlite3";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import type * as schema from "@/lib/db/schema";
 
 type SessionUser = { id: string } | null;
+type Db = PostgresJsDatabase<typeof schema>;
 
-export async function saveEnduranceDesignResponse(request: Request, user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database): Promise<Response> {
+export async function saveEnduranceDesignResponse(request: Request, user: SessionUser, database: Db): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   let body: unknown;
@@ -19,8 +20,8 @@ export async function saveEnduranceDesignResponse(request: Request, user: Sessio
   if (!parsed.success) return error(400, "VALIDATION_ERROR", "Diseño de sesión inválido.", parsed.error.flatten());
 
   try {
-    const repository = createEnduranceDesignRepository(database, sqliteHandle);
-    const design = repository.saveDesign(user.id, parsed.data);
+    const repository = createEnduranceDesignRepository(database);
+    const design = await repository.saveDesign(user.id, parsed.data);
     return Response.json({ data: design, meta: {} });
   } catch (cause) {
     if (cause instanceof ActivePlanNotFoundError) return error(404, "NOT_FOUND", "No tienes un plan activo todavía.");
@@ -29,12 +30,12 @@ export async function saveEnduranceDesignResponse(request: Request, user: Sessio
   }
 }
 
-export async function confirmWatchPrepResponse(user: SessionUser, database: typeof productionDb, sqliteHandle: Database.Database, designId: string): Promise<Response> {
+export async function confirmWatchPrepResponse(user: SessionUser, database: Db, designId: string): Promise<Response> {
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
 
   try {
-    const repository = createEnduranceDesignRepository(database, sqliteHandle);
-    const design = repository.confirmWatchPrep(user.id, designId);
+    const repository = createEnduranceDesignRepository(database);
+    const design = await repository.confirmWatchPrep(user.id, designId);
     return Response.json({ data: design, meta: {} });
   } catch (cause) {
     if (cause instanceof DesignNotFoundError) return error(404, "NOT_FOUND", "No encontramos ese diseño de sesión.");

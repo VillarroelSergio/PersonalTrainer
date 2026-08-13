@@ -1,12 +1,11 @@
 import { and, eq } from "drizzle-orm";
-import type Database from "better-sqlite3";
-import type { db as productionDb } from "@/lib/db/client";
+import type { getDb } from "@/lib/db/client";
 import { sessionAdjustment, trainingPlan, workoutSession } from "@/lib/db/schema";
 import { isoWeekStart, parseIsoDateLocal } from "@/lib/weekdays";
 import type { PlanEditInput } from "@/contracts/plan";
 import type { PlanProposal } from "@/contracts/onboarding";
 
-type Db = typeof productionDb;
+type Db = ReturnType<typeof getDb>;
 
 export class PlanNotFoundError extends Error {
   code = "NOT_FOUND" as const;
@@ -44,9 +43,11 @@ function addDays(date: Date, days: number): Date {
  * sessionIndex) — so a moved session is never a second agenda entry, and
  * re-applying the same edit overwrites rather than duplicating.
  */
-export function createPlanEditRepository(database: Db, sqliteHandle: Database.Database) {
-  function loadOwnedPlan(ownerId: string, planId: string) {
-    const plan = database.select().from(trainingPlan).where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId))).get();
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+export function createPlanEditRepository(database: Db) {
+  async function loadOwnedPlan(tx: Tx, ownerId: string, planId: string) {
+    const plan = (await tx.select().from(trainingPlan).where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId)))).at(0);
     if (!plan) throw new PlanNotFoundError();
     return { plan, proposal: JSON.parse(plan.contentJson) as PlanProposal };
   }
@@ -57,61 +58,62 @@ export function createPlanEditRepository(database: Db, sqliteHandle: Database.Da
   }
 
   /** A workout_session shares (planId, sessionIndex) identity across every week it recurs in; "already executed for this week" means a real row whose startedAt falls inside this week's date range. */
-  function assertNotExecutedThisWeek(ownerId: string, planId: string, sessionIndex: number, weekStartIso: string) {
+  async function assertNotExecutedThisWeek(tx: Tx, ownerId: string, planId: string, sessionIndex: number, weekStartIso: string) {
     const weekStart = parseIsoDateLocal(weekStartIso);
     const weekEnd = addDays(weekStart, 7);
-    const rows = database.select({ startedAt: workoutSession.startedAt }).from(workoutSession)
-      .where(and(eq(workoutSession.ownerId, ownerId), eq(workoutSession.planId, planId), eq(workoutSession.sessionIndex, sessionIndex))).all();
+    const rows = await tx.select({ startedAt: workoutSession.startedAt }).from(workoutSession)
+      .where(and(eq(workoutSession.ownerId, ownerId), eq(workoutSession.planId, planId), eq(workoutSession.sessionIndex, sessionIndex)));
     if (rows.some((row) => row.startedAt >= weekStart && row.startedAt < weekEnd)) throw new SessionAlreadyExecutedError();
   }
 
-  function upsertAdjustment(ownerId: string, planId: string, weekStartIso: string, sessionIndex: number, originDay: string, kind: string, targetDay: string | null, opsJson: string) {
+  async function upsertAdjustment(tx: Tx, ownerId: string, planId: string, weekStartIso: string, sessionIndex: number, originDay: string, kind: string, targetDay: string | null, opsJson: string) {
     const id = crypto.randomUUID();
     const now = new Date();
-    database.insert(sessionAdjustment)
+    await tx.insert(sessionAdjustment)
       .values({ id, ownerId, planId, isoWeekStart: weekStartIso, sessionIndex, originDay, kind, targetDay, opsJson, recommendationId: null, createdAt: now })
       .onConflictDoUpdate({
         target: [sessionAdjustment.ownerId, sessionAdjustment.planId, sessionAdjustment.isoWeekStart, sessionAdjustment.sessionIndex],
         set: { id, originDay, kind, targetDay, opsJson, recommendationId: null, createdAt: now }
-      })
-      .run();
-    return database.select().from(sessionAdjustment)
-      .where(and(eq(sessionAdjustment.ownerId, ownerId), eq(sessionAdjustment.planId, planId), eq(sessionAdjustment.isoWeekStart, weekStartIso), eq(sessionAdjustment.sessionIndex, sessionIndex))).get()!;
+      });
+    return (await tx.select().from(sessionAdjustment)
+      .where(and(eq(sessionAdjustment.ownerId, ownerId), eq(sessionAdjustment.planId, planId), eq(sessionAdjustment.isoWeekStart, weekStartIso), eq(sessionAdjustment.sessionIndex, sessionIndex)))).at(0)!;
   }
 
-  const runEdit = sqliteHandle.transaction((ownerId: string, planId: string, input: PlanEditInput) => {
-    assertFutureWeek(input.isoWeekStart);
+  async function runEdit(ownerId: string, planId: string, input: PlanEditInput) {
+    return database.transaction(async (tx) => {
+      assertFutureWeek(input.isoWeekStart);
 
-    if (input.kind === "restore") {
-      database.delete(sessionAdjustment).where(and(eq(sessionAdjustment.ownerId, ownerId), eq(sessionAdjustment.planId, planId), eq(sessionAdjustment.isoWeekStart, input.isoWeekStart), eq(sessionAdjustment.sessionIndex, input.sessionIndex))).run();
-      return { deleted: true as const };
-    }
-
-    // move / skip / remove all target an existing template occurrence.
-    const { plan, proposal } = loadOwnedPlan(ownerId, planId);
-    const plannedSession = proposal.week?.sessions?.[input.sessionIndex];
-    if (!plannedSession) throw new InvalidSessionIndexError();
-    assertNotExecutedThisWeek(ownerId, plan.id, input.sessionIndex, input.isoWeekStart);
-
-    if (input.kind === "move") {
-      // Moving a session to the weekday it already occupies is a no-op, not a
-      // reschedule: buildWeekView always renders a reschedule as two rows
-      // (moved_away at origin + moved_here at target), so storing target ===
-      // origin would visually duplicate the same session on the same day.
-      // Clear any existing adjustment instead, same as "restore".
-      if (input.targetDay === plannedSession.day) {
-        database.delete(sessionAdjustment).where(and(eq(sessionAdjustment.ownerId, ownerId), eq(sessionAdjustment.planId, planId), eq(sessionAdjustment.isoWeekStart, input.isoWeekStart), eq(sessionAdjustment.sessionIndex, input.sessionIndex))).run();
+      if (input.kind === "restore") {
+        await tx.delete(sessionAdjustment).where(and(eq(sessionAdjustment.ownerId, ownerId), eq(sessionAdjustment.planId, planId), eq(sessionAdjustment.isoWeekStart, input.isoWeekStart), eq(sessionAdjustment.sessionIndex, input.sessionIndex)));
         return { deleted: true as const };
       }
-      const ops = JSON.stringify([{ op: "reschedule", targetDay: input.targetDay }]);
-      return upsertAdjustment(ownerId, plan.id, input.isoWeekStart, input.sessionIndex, plannedSession.day, "reschedule", input.targetDay, ops);
-    }
-    if (input.kind === "skip") {
-      return upsertAdjustment(ownerId, plan.id, input.isoWeekStart, input.sessionIndex, plannedSession.day, "skipped", null, "[]");
-    }
-    // remove
-    return upsertAdjustment(ownerId, plan.id, input.isoWeekStart, input.sessionIndex, plannedSession.day, "removed", null, "[]");
-  });
+
+      // move / skip / remove all target an existing template occurrence.
+      const { plan, proposal } = await loadOwnedPlan(tx, ownerId, planId);
+      const plannedSession = proposal.week?.sessions?.[input.sessionIndex];
+      if (!plannedSession) throw new InvalidSessionIndexError();
+      await assertNotExecutedThisWeek(tx, ownerId, plan.id, input.sessionIndex, input.isoWeekStart);
+
+      if (input.kind === "move") {
+        // Moving a session to the weekday it already occupies is a no-op, not a
+        // reschedule: buildWeekView always renders a reschedule as two rows
+        // (moved_away at origin + moved_here at target), so storing target ===
+        // origin would visually duplicate the same session on the same day.
+        // Clear any existing adjustment instead, same as "restore".
+        if (input.targetDay === plannedSession.day) {
+          await tx.delete(sessionAdjustment).where(and(eq(sessionAdjustment.ownerId, ownerId), eq(sessionAdjustment.planId, planId), eq(sessionAdjustment.isoWeekStart, input.isoWeekStart), eq(sessionAdjustment.sessionIndex, input.sessionIndex)));
+          return { deleted: true as const };
+        }
+        const ops = JSON.stringify([{ op: "reschedule", targetDay: input.targetDay }]);
+        return upsertAdjustment(tx, ownerId, plan.id, input.isoWeekStart, input.sessionIndex, plannedSession.day, "reschedule", input.targetDay, ops);
+      }
+      if (input.kind === "skip") {
+        return upsertAdjustment(tx, ownerId, plan.id, input.isoWeekStart, input.sessionIndex, plannedSession.day, "skipped", null, "[]");
+      }
+      // remove
+      return upsertAdjustment(tx, ownerId, plan.id, input.isoWeekStart, input.sessionIndex, plannedSession.day, "removed", null, "[]");
+    });
+  }
 
   return {
     applyEdit: (ownerId: string, planId: string, input: PlanEditInput) => runEdit(ownerId, planId, input),
@@ -119,6 +121,5 @@ export function createPlanEditRepository(database: Db, sqliteHandle: Database.Da
       database.select({ sessionIndex: sessionAdjustment.sessionIndex, kind: sessionAdjustment.kind, targetDay: sessionAdjustment.targetDay, opsJson: sessionAdjustment.opsJson })
         .from(sessionAdjustment)
         .where(and(eq(sessionAdjustment.ownerId, ownerId), eq(sessionAdjustment.planId, planId), eq(sessionAdjustment.isoWeekStart, weekStartIso)))
-        .all()
   };
 }

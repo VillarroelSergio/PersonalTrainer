@@ -27,6 +27,12 @@ function formatMetric(metricType: string, value: number, unit: string): string {
 
 type EnduranceSessionOption = { sessionIndex: number; label: string; title: string; estimatedMinutes: number };
 
+/** Browser-side integrity hash for the direct-to-Storage upload flow (Task 5): the server re-derives this from the downloaded bytes and rejects a mismatch. */
+async function sha256Hex(data: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIndex }: { isoWeekStart: string; enduranceSessions: EnduranceSessionOption[]; initialSessionIndex: number | null }) {
   const [importData, setImportData] = useState<ImportData | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -49,12 +55,37 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
     setUploading(true);
     setError(null);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch("/api/v1/activity-imports", { method: "POST", credentials: "same-origin", body: formData });
+      const arrayBuffer = await file.arrayBuffer();
+      const sha256 = await sha256Hex(arrayBuffer);
+
+      const urlResponse = await fetch("/api/v1/activity-imports/upload-url", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: file.name, sizeBytes: file.size, mimeType: file.type })
+      });
+      const urlBody = await urlResponse.json();
+      if (!urlResponse.ok) {
+        setError(urlBody?.error?.message ?? "No pudimos preparar la subida.");
+        return;
+      }
+      const { storageKey, signedUrl } = urlBody.data as { storageKey: string; signedUrl: string };
+
+      const putResponse = await fetch(signedUrl, { method: "PUT", body: file, headers: { "content-type": file.type || "application/octet-stream" } });
+      if (!putResponse.ok) {
+        setError("No pudimos subir el archivo. Comprueba tu conexión e inténtalo de nuevo.");
+        return;
+      }
+
+      const response = await fetch("/api/v1/activity-imports", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ storageKey, originalName: file.name, sha256, sizeBytes: file.size })
+      });
       const body = await response.json();
       if (!response.ok) {
-        setError(body?.error?.message ?? "No pudimos subir el archivo.");
+        setError(body?.error?.message ?? "No pudimos analizar el archivo.");
         return;
       }
       const data = body.data as ImportData;

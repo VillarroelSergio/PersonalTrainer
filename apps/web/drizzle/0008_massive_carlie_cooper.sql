@@ -1,1 +1,0 @@
-ALTER TABLE `workout_session` ADD `last_finish_operation_id` text;
