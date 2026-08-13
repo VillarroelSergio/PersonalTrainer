@@ -1,13 +1,18 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createAuth } from "@/lib/auth";
+import { createAuth, productionTrustedOrigins } from "@/lib/auth";
 
 // Note: createAuth's parameter IS disableSignUp (default true), passed straight
 // through to betterAuth's emailAndPassword.disableSignUp. The production export
 // is `createAuth(process.env.NODE_ENV !== "development")`, which evaluates to
 // createAuth(true) outside development — i.e. sign-up disabled.
 describe("production auth keeps sign-up closed", () => {
+  it("trusts Vercel's canonical production domain alongside the configured origin", () => {
+    expect(productionTrustedOrigins("https://legacy.example.com", "personaltrainerhub.vercel.app"))
+      .toEqual(["https://legacy.example.com", "https://personaltrainerhub.vercel.app"]);
+  });
+
   it("disables sign-up for the production-shaped call (NODE_ENV !== development)", () => {
     const productionAuth = createAuth(process.env.NODE_ENV !== "development");
     expect(productionAuth.options.emailAndPassword?.disableSignUp).toBe(true);
