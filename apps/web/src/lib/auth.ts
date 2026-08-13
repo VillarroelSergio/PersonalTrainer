@@ -6,16 +6,27 @@ import { isTrustedDevelopmentOrigin } from "@/lib/auth-origin";
 
 export function productionTrustedOrigins(
   configuredOrigin: string,
-  vercelProductionDomain = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  vercelProductionDomain = process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  vercelDeploymentDomain = process.env.VERCEL_URL,
+  vercelBranchDomain = process.env.VERCEL_BRANCH_URL
 ): string[] {
   const origins = [configuredOrigin];
-  if (vercelProductionDomain) {
+
+  for (const domain of [vercelProductionDomain, vercelDeploymentDomain, vercelBranchDomain]) {
+    if (!domain) continue;
     try {
-      origins.push(new URL(`https://${vercelProductionDomain}`).origin);
+      origins.push(new URL(`https://${domain}`).origin);
     } catch {
-      // Vercel's system value is optional; an invalid value must not broaden CORS.
+      // Vercel's system values are optional; invalid values must not broaden trust.
     }
   }
+
+  // Vercel creates project-scoped aliases such as
+  // personaltrainerhub-git-main-lupercal.vercel.app. An installed PWA can keep
+  // one of those aliases even after a later deployment is promoted, so allow
+  // only aliases belonging to this project — never arbitrary Vercel domains.
+  origins.push("https://personaltrainerhub-*.vercel.app");
+
   return [...new Set(origins)];
 }
 

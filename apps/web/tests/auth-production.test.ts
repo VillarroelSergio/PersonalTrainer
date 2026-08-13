@@ -8,9 +8,19 @@ import { createAuth, productionTrustedOrigins } from "@/lib/auth";
 // is `createAuth(process.env.NODE_ENV !== "development")`, which evaluates to
 // createAuth(true) outside development — i.e. sign-up disabled.
 describe("production auth keeps sign-up closed", () => {
-  it("trusts Vercel's canonical production domain alongside the configured origin", () => {
-    expect(productionTrustedOrigins("https://legacy.example.com", "personaltrainerhub.vercel.app"))
-      .toEqual(["https://legacy.example.com", "https://personaltrainerhub.vercel.app"]);
+  it("trusts the canonical domain and the project's deployment aliases", () => {
+    expect(productionTrustedOrigins(
+      "https://legacy.example.com",
+      "personaltrainerhub.vercel.app",
+      "personaltrainerhub-y1je6nunr-lupercal.vercel.app",
+      "personaltrainerhub-git-main-lupercal.vercel.app"
+    )).toEqual([
+      "https://legacy.example.com",
+      "https://personaltrainerhub.vercel.app",
+      "https://personaltrainerhub-y1je6nunr-lupercal.vercel.app",
+      "https://personaltrainerhub-git-main-lupercal.vercel.app",
+      "https://personaltrainerhub-*.vercel.app"
+    ]);
   });
 
   it("disables sign-up for the production-shaped call (NODE_ENV !== development)", () => {
