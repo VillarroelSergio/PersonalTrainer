@@ -14,7 +14,7 @@ function ExerciseListItem({ variant, isFavorite }: { variant: ExerciseVariant; i
   return (
     <li className="catalog-card">
       <div className="catalog-card__top">
-        <Link href={`/ejercicios/${variant.id}`} aria-hidden="true" tabIndex={-1} className="catalog-card__thumb">
+        <div className="catalog-card__thumb" aria-hidden="true">
           <Image
             className="catalog-card__thumb-img"
             src={exerciseMediaSrc(variant)}
@@ -22,7 +22,7 @@ function ExerciseListItem({ variant, isFavorite }: { variant: ExerciseVariant; i
             width={52}
             height={52}
           />
-        </Link>
+        </div>
         <div className="catalog-card__body">
           <Link href={`/ejercicios/${variant.id}`} className="catalog-card__name">{variant.exerciseName} — {variant.variantName}</Link>
           <p className="catalog-card__group">{MUSCLE_GROUP_LABEL[variant.primaryMuscleGroup]}</p>
@@ -43,9 +43,13 @@ export default async function EjerciciosPage({ searchParams }: { searchParams: P
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/login");
 
-  const favoriteIds = new Set(await listOwnedFavoriteVariantIds(getDb(), session.user.id));
-  const workoutRepo = createWorkoutSessionRepository(getDb());
-  const recentVariantIds = await workoutRepo.listRecentVariantIds(session.user.id, 5);
+  const db = getDb();
+  const workoutRepo = createWorkoutSessionRepository(db);
+  const [favoriteVariantIds, recentVariantIds] = await Promise.all([
+    listOwnedFavoriteVariantIds(db, session.user.id),
+    workoutRepo.listRecentVariantIds(session.user.id, 5)
+  ]);
+  const favoriteIds = new Set(favoriteVariantIds);
   const recentVariants = recentVariantIds.map(findVariant).filter((variant): variant is ExerciseVariant => variant != null);
   const { grupo, q, favoritos } = await searchParams;
   const query = q?.trim().toLocaleLowerCase("es") ?? "";

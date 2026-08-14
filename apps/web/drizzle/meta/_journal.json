@@ -8,6 +8,13 @@
       "when": 1786620061569,
       "tag": "0000_cultured_kate_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786740039000,
+      "tag": "0002_bizarre_mandroid",
+      "breakpoints": true
     }
   ]
 }

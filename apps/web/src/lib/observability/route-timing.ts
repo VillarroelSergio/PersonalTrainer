@@ -4,7 +4,8 @@ export type RouteTimingLog = {
   route: string;
   requestId: string | null;
   ms: number;
-  timings: Record<string, number>;
+  /** Common keys: authMs, dbMs, renderMs. Extra safe, non-sensitive keys are allowed. */
+  timings: Record<string, number> & { dbMs?: number };
 };
 
 /** Keep Vercel logs queryable without exposing account data, credentials, or payloads. */

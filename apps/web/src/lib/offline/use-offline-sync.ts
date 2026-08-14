@@ -21,8 +21,10 @@ export function useOfflineSync() {
 
   const refresh = useCallback(async () => {
     const all = await getStore().all();
-    setPending(all.filter((operation) => operation.status === "pending").length);
+    const pendingCount = all.filter((operation) => operation.status === "pending").length;
+    setPending(pendingCount);
     setConflicts(all.filter((operation) => operation.status === "conflict"));
+    return pendingCount;
   }, [getStore]);
 
   const flush = useCallback(async () => {
@@ -40,8 +42,9 @@ export function useOfflineSync() {
   }, [getStore, refresh]);
 
   useEffect(() => {
-    refresh();
-    flush();
+    void refresh().then((pendingCount) => {
+      if (pendingCount > 0) void flush();
+    });
     function handleOnline() { flush(); }
     function handleOffline() { setState("local"); }
     window.addEventListener("online", handleOnline);

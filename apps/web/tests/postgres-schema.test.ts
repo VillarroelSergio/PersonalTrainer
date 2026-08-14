@@ -42,6 +42,16 @@ describe("postgres schema", () => {
     expect(columnNames(idx?.config.columns ?? [])).toEqual(["owner_id", "plan_id", "iso_week_start", "session_index"]);
   });
 
+  it("keeps owner-scoped history paths indexed and gives composite rows a primary key", () => {
+    const sessionExerciseIndexes = getTableConfig(schema.sessionExercise).indexes.map((index) => index.config.name);
+    const activityMetricIndexes = getTableConfig(schema.activityMetric).indexes.map((index) => index.config.name);
+    expect(sessionExerciseIndexes).toContain("session_exercise_workout_session_id_idx");
+    expect(activityMetricIndexes).toContain("activity_metric_activity_id_idx");
+    expect(getTableConfig(schema.favoriteVariant).primaryKeys).toHaveLength(1);
+    expect(getTableConfig(schema.performanceBaseline).primaryKeys).toHaveLength(1);
+    expect(getTableConfig(schema.checkin).primaryKeys).toHaveLength(1);
+  });
+
   it.skipIf(!process.env.DATABASE_URL)("can connect and execute a query against a live Postgres instance", async () => {
     const { getDb, getSql } = await import("@/lib/db/client");
     const result = await getDb().execute("select 1 as value");

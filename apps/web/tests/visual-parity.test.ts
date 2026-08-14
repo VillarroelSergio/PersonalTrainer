@@ -164,11 +164,11 @@ describe("Exercise catalog — media correspondence", () => {
     expect(squat?.mediaUrl).not.toMatch(/\/library\/groups\//);
   });
 
-  it("a variant without a real illustration leaves mediaUrl unset so the UI can use its muscle-group fallback", () => {
+  it("uses the exercise-specific illustration when editorial media is available", () => {
     // squat-bodyweight has no exercise-specific illustration migrated from prototype/assets/ —
     // the UI uses the approved muscle-group illustration as its compact visual fallback.
     const variant = findVariant("squat-bodyweight");
-    expect(variant?.mediaUrl).toBeUndefined();
+    expect(variant?.mediaUrl).toBe("/library/exercises/sentadilla-peso-corporal-v1.webp");
   });
 
   it("every mediaUrl in the catalog resolves to a file actually present under public/", () => {
