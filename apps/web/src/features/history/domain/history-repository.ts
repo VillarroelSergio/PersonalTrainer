@@ -156,12 +156,16 @@ export function createHistoryRepository(database: Db) {
         .from(enduranceActivity)
         .where(eq(enduranceActivity.ownerId, ownerId))
         .orderBy(desc(enduranceActivity.startedAt));
-      return Promise.all(
-        rows.map(async (row) => ({
-          id: row.id, sport: row.sport, name: row.name, source: row.source, startedAt: row.startedAt, durationS: row.durationS, distanceM: row.distanceM,
-          metrics: await database.select({ metricType: activityMetric.metricType, value: activityMetric.value, unit: activityMetric.unit }).from(activityMetric).where(eq(activityMetric.activityId, row.id))
-        }))
-      );
+      const metricRows = rows.length === 0 ? [] : await database
+        .select({ activityId: activityMetric.activityId, metricType: activityMetric.metricType, value: activityMetric.value, unit: activityMetric.unit })
+        .from(activityMetric)
+        .where(inArray(activityMetric.activityId, rows.map((row) => row.id)));
+      const metricsByActivity = new Map<string, typeof metricRows>();
+      for (const metric of metricRows) metricsByActivity.set(metric.activityId, [...(metricsByActivity.get(metric.activityId) ?? []), metric]);
+      return rows.map((row) => ({
+        id: row.id, sport: row.sport, name: row.name, source: row.source, startedAt: row.startedAt, durationS: row.durationS, distanceM: row.distanceM,
+        metrics: (metricsByActivity.get(row.id) ?? []).map(({ metricType, value, unit }) => ({ metricType, value, unit }))
+      }));
     },
 
     /**
@@ -236,18 +240,22 @@ export function createHistoryRepository(database: Db) {
         .from(sessionExercise)
         .where(and(eq(sessionExercise.workoutSessionId, session.id), eq(sessionExercise.status, "active")))
         .orderBy(sessionExercise.position);
-      const exercises = await Promise.all(
-        exerciseRows.map(async (exercise) => {
-          const variant = findVariant(exercise.variantId);
-          const sets = await database.select().from(setPerformance).where(eq(setPerformance.sessionExerciseId, exercise.id)).orderBy(setPerformance.setNumber);
-          return {
-            variantId: exercise.variantId,
-            exerciseName: variant?.exerciseName ?? exercise.variantId,
-            variantName: variant?.variantName ?? "",
-            sets: sets.map((set) => ({ setNumber: set.setNumber, loadKg: set.loadKg, repetitions: set.repetitions, difficulty: set.difficulty }))
-          };
-        })
-      );
+      const setRows = exerciseRows.length === 0 ? [] : await database
+        .select()
+        .from(setPerformance)
+        .where(inArray(setPerformance.sessionExerciseId, exerciseRows.map((row) => row.id)))
+        .orderBy(setPerformance.setNumber);
+      const setsByExercise = new Map<string, typeof setRows>();
+      for (const set of setRows) setsByExercise.set(set.sessionExerciseId, [...(setsByExercise.get(set.sessionExerciseId) ?? []), set]);
+      const exercises = exerciseRows.map((exercise) => {
+        const variant = findVariant(exercise.variantId);
+        return {
+          variantId: exercise.variantId,
+          exerciseName: variant?.exerciseName ?? exercise.variantId,
+          variantName: variant?.variantName ?? "",
+          sets: (setsByExercise.get(exercise.id) ?? []).map((set) => ({ setNumber: set.setNumber, loadKg: set.loadKg, repetitions: set.repetitions, difficulty: set.difficulty }))
+        };
+      });
 
       const discomfort = session.discomfortJson ? (JSON.parse(session.discomfortJson) as { zone: string; intensity: string }) : null;
       return {

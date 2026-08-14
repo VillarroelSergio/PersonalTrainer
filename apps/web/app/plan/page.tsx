@@ -69,6 +69,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const ownerId = session.user.id;
   const db = getDb();
 
+  const dbStartedAt = Date.now();
   const activePlan = await findActivePlanForOwner(db, ownerId);
   if (!activePlan) redirect("/onboarding");
 
@@ -83,11 +84,13 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const workoutRepo = createWorkoutSessionRepository(db);
   const historyRepo = createHistoryRepository(db);
 
-  const adjustments = await editRepo.listWeekAdjustments(ownerId, activePlan.id, weekStart);
-
   const weekStartDate = parseIsoDateLocal(weekStart);
   const weekEndDate = addDays(weekStartDate, 7);
-  const fullHistory = await workoutRepo.listSessionHistory(ownerId, activePlan.id);
+  const [adjustments, fullHistory, plans] = await Promise.all([
+    editRepo.listWeekAdjustments(ownerId, activePlan.id, weekStart),
+    workoutRepo.listSessionHistory(ownerId, activePlan.id),
+    vista === "planes" ? listPlansForOwner(db, ownerId) : Promise.resolve([])
+  ]);
   const executedStatuses: Record<number, ExecutedStatus> = {};
   for (const row of fullHistory) {
     if (row.startedAt >= weekStartDate && row.startedAt < weekEndDate && FINISHED_OR_ACTIVE.has(row.status)) {
@@ -103,8 +106,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const weekPlannedMinutes = visibleOccurrences.reduce((sum, occurrence) => sum + occurrence.estimatedMinutes, 0);
 
   const blockProgress = computeBlockProgress(activePlan.createdAt, proposal.initialBlock?.weeks ?? 1);
-  const plans = await listPlansForOwner(db, ownerId);
-  logRouteTiming("/plan", requestId, startedAt, { data: Date.now() - startedAt });
+  logRouteTiming("/plan", requestId, startedAt, { dbMs: Date.now() - dbStartedAt });
 
   return (
     <AppShell title="Trainer">
@@ -318,10 +320,13 @@ async function ProgressSection({
 }) {
   const minutes = computeWeekMinutes(fullHistory, weekStartDate, weekEndDate);
   const consistencyWeeks = computeConsistencyWeeks(fullHistory);
-  const weeklyLoad = await historyRepo.computeWeeklyLoad(ownerId, isoWeekStart());
+  const [weeklyLoad, adherence, recentHistory] = await Promise.all([
+    historyRepo.computeWeeklyLoad(ownerId, isoWeekStart()),
+    historyRepo.computeAdherence(ownerId, planId),
+    historyRepo.listSessionHistory(ownerId, planId)
+  ]);
   const note = evolutionNote(fullHistory);
-  const recentActivity = (await historyRepo.listSessionHistory(ownerId, planId)).slice(0, 3);
-  const adherence = await historyRepo.computeAdherence(ownerId, planId);
+  const recentActivity = recentHistory.slice(0, 3);
   const totalAdherencia = adherence ? adherence.completadas + adherence.adaptadas : 0;
   const achievements = pickAchievements(totalAdherencia);
 

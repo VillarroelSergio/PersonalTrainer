@@ -11,7 +11,7 @@ describe("mobile performance regressions", () => {
 
     expect(serviceWorker).toContain("NAVIGATION_TIMEOUT_MS");
     expect(serviceWorker).toContain("Promise.race");
-    expect(serviceWorker).toContain("offline_and_uncached");
+    expect(serviceWorker).toContain("return fetch(request);");
   });
 
   it("does not route an authenticated login through the root database redirect", () => {
@@ -28,9 +28,18 @@ describe("mobile performance regressions", () => {
     const exercises = readFileSync(app("ejercicios", "page.tsx"), "utf8");
 
     expect(plan).toContain("const [adjustments, fullHistory, plans] = await Promise.all([");
-    expect(history).toContain("const [allSessions, enduranceActivities] = await Promise.all([");
+    expect(history).toContain("const [allSessions, enduranceActivities, progress] = await Promise.all([");
     expect(history).toContain("const [adherence, weekStats] = await Promise.all([");
-    expect(exercises).toContain("const [favoriteIds, recentVariantIds] = await Promise.all([");
+    expect(exercises).toContain("const [favoriteVariantIds, recentVariantIds] = await Promise.all([");
+  });
+
+  it("batches history child records instead of issuing one query per row", () => {
+    const historyRepository = readFileSync(src("features", "history", "domain", "history-repository.ts"), "utf8");
+    const workoutRepository = readFileSync(src("features", "workouts", "domain", "workout-session-repository.ts"), "utf8");
+
+    expect(historyRepository).toContain("inArray(activityMetric.activityId, rows.map((row) => row.id))");
+    expect(historyRepository).toContain("inArray(setPerformance.sessionExerciseId, exerciseRows.map((row) => row.id))");
+    expect(workoutRepository).toContain("inArray(setPerformance.sessionExerciseId, rows.map((row) => row.sessionExerciseId))");
   });
 });
 

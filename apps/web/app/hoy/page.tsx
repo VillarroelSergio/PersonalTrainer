@@ -25,6 +25,7 @@ export default async function HoyPage() {
   if (!session?.user) redirect("/login");
 
   const db = getDb();
+  const dbStartedAt = Date.now();
   const activePlan = await findActivePlanForOwner(db, session.user.id);
   if (!activePlan) redirect("/onboarding");
 
@@ -59,7 +60,7 @@ export default async function HoyPage() {
   const weekSummary = summarizeWeekSessions(sessions, statuses);
   const extraOccurrenceAdjustments = allAdjustments.slice(1);
 
-  logRouteTiming("/hoy", requestId, startedAt, { data: Date.now() - startedAt });
+  logRouteTiming("/hoy", requestId, startedAt, { dbMs: Date.now() - dbStartedAt });
 
   return (
     <AppShell title="Trainer">
@@ -180,11 +181,13 @@ function TodayHero({
   adjustment?: { kind: string; targetDay: string | null };
   recoveryStatus?: string | null;
 }) {
+  const titleId = `todayTitle-${sessionIndex}`;
+
   if (session && adjustment?.kind === "reschedule" && adjustment.targetDay) {
     return (
-      <article className="today today--recovery" aria-labelledby="todayTitle">
+      <article className="today today--recovery" aria-labelledby={titleId}>
         <p className="today__eyebrow">Hoy · movida</p>
-        <h2 className="today__title" id="todayTitle">{session.title}</h2>
+        <h2 className="today__title" id={titleId}>{session.title}</h2>
         <p className="today__why">Aceptaste moverla a {WEEKDAY_LABEL[adjustment.targetDay as Weekday]}. Hoy no aparece como prevista.</p>
       </article>
     );
@@ -192,9 +195,9 @@ function TodayHero({
 
   if (session && adjustment?.kind === "recovery") {
     return (
-      <article className="today today--recovery" aria-labelledby="todayTitle">
+      <article className="today today--recovery" aria-labelledby={titleId}>
         <p className="today__eyebrow">Hoy · recuperación</p>
-        <h2 className="today__title" id="todayTitle">Versión de recuperación</h2>
+        <h2 className="today__title" id={titleId}>Versión de recuperación</h2>
         <p className="today__why">Aceptaste cambiar {session.title.toLowerCase()} por una versión más suave hoy. Vuelves al plan normal en la próxima sesión prevista.</p>
         <Link href={`/recuperar?session=${sessionIndex}`} className="btn btn--primary btn--block btn--compact">
           {recoveryStatus === "completed" ? "Ver recuperación registrada" : recoveryStatus === "in_progress" ? "Continuar recuperación" : "Empezar recuperación"}
@@ -205,9 +208,9 @@ function TodayHero({
 
   if (!session) {
     return (
-      <article className="today today--recovery" aria-labelledby="todayTitle">
+      <article className="today today--recovery" aria-labelledby={titleId}>
         <p className="today__eyebrow">Hoy · descanso</p>
-        <h2 className="today__title" id="todayTitle">Día libre</h2>
+        <h2 className="today__title" id={titleId}>Día libre</h2>
         <p className="today__why">No hay ninguna sesión planificada hoy.</p>
       </article>
     );
@@ -215,9 +218,9 @@ function TodayHero({
 
   if (status && DONE_STATUSES.has(status)) {
     return (
-      <article className="today today--done" aria-labelledby="todayTitle">
+      <article className="today today--done" aria-labelledby={titleId}>
         <p className="today__eyebrow">Hoy · {status === "completed" ? "sesión completada" : status === "adapted" ? "versión adaptada terminada" : "sesión parcial"}</p>
-        <h2 className="today__title" id="todayTitle">{session.title}</h2>
+        <h2 className="today__title" id={titleId}>{session.title}</h2>
         <p className="today__why">Registrada: {session.estimatedMinutes} min activos aproximados.</p>
         <div className="today__alts">
           <TodayAlt kind="recovery" title="Cambiar a recuperación" meta="10–15 min, sin carga" href={`/recuperar?session=${sessionIndex}`} />
@@ -228,9 +231,9 @@ function TodayHero({
 
   if (session.kind === "endurance") {
     return (
-      <article className="today today--cardio" aria-labelledby="todayTitle">
+      <article className="today today--cardio" aria-labelledby={titleId}>
         <p className="today__eyebrow">Hoy · resistencia</p>
-        <h2 className="today__title" id="todayTitle">{session.title}</h2>
+        <h2 className="today__title" id={titleId}>{session.title}</h2>
         <p className="today__why">Prevista para hoy · {session.estimatedMinutes} min aproximados. Trainer diseña los bloques; tú la creas en tu reloj y la haces fuera de la app.</p>
         <Link href={`/resistencia?session=${sessionIndex}`} className="btn btn--primary btn--block btn--compact">Preparar sesión de resistencia</Link>
         <div className="today__alts">
@@ -242,9 +245,9 @@ function TodayHero({
   }
 
   return (
-    <article className="today" aria-labelledby="todayTitle">
+    <article className="today" aria-labelledby={titleId}>
       <p className="today__eyebrow">Hoy · {WEEKDAY_LABEL[session.day as Weekday]}</p>
-      <h2 className="today__title" id="todayTitle">{session.title}</h2>
+      <h2 className="today__title" id={titleId}>{session.title}</h2>
       <p className="today__why">Prevista para hoy · {session.estimatedMinutes} min aproximados.</p>
       <Link href={`/entrenar?session=${sessionIndex}`} className="btn btn--primary btn--block btn--compact">
         {status === "in_progress" ? "Continuar sesión" : "Empezar sesión"}

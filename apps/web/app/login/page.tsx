@@ -57,7 +57,8 @@ function LoginForm() {
       }
       return;
     }
-    router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
+    const destination = next && next.startsWith("/") && !next.startsWith("//") ? next : "/hoy";
+    router.push(destination);
     router.refresh();
   }
 

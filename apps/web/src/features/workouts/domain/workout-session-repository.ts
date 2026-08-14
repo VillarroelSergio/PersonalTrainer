@@ -232,14 +232,18 @@ async function loadExposures(database: Pick<Db, "select">, ownerId: string, vari
     .where(and(eq(workoutSession.ownerId, ownerId), eq(sessionExercise.variantId, variantId), inArray(workoutSession.status, FINISHED_STATUSES)))
     .orderBy(workoutSession.startedAt);
 
-  return Promise.all(rows.map(async (row) => {
-    const sets = await database.select().from(setPerformance).where(eq(setPerformance.sessionExerciseId, row.sessionExerciseId)).orderBy(setPerformance.setNumber);
-    return {
-      targetSets: row.targetSets,
-      targetRepsMin: row.targetRepsMin,
-      targetRepsMax: row.targetRepsMax,
-      sessionStatus: row.sessionStatus as SessionCloseStatus,
-      sets: sets.map((set) => ({ loadKg: set.loadKg, repetitions: set.repetitions, difficulty: set.difficulty as SetDifficulty | null }))
-    };
+  const setRows = rows.length === 0 ? [] : await database
+    .select()
+    .from(setPerformance)
+    .where(inArray(setPerformance.sessionExerciseId, rows.map((row) => row.sessionExerciseId)))
+    .orderBy(setPerformance.setNumber);
+  const setsByExercise = new Map<string, typeof setRows>();
+  for (const set of setRows) setsByExercise.set(set.sessionExerciseId, [...(setsByExercise.get(set.sessionExerciseId) ?? []), set]);
+  return rows.map((row) => ({
+    targetSets: row.targetSets,
+    targetRepsMin: row.targetRepsMin,
+    targetRepsMax: row.targetRepsMax,
+    sessionStatus: row.sessionStatus as SessionCloseStatus,
+    sets: (setsByExercise.get(row.sessionExerciseId) ?? []).map((set) => ({ loadKg: set.loadKg, repetitions: set.repetitions, difficulty: set.difficulty as SetDifficulty | null }))
   }));
 }

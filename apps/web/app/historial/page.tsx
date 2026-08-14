@@ -30,6 +30,7 @@ export default async function HistorialPage({ searchParams }: { searchParams: Pr
   if (!session?.user) redirect("/login");
   const ownerId = session.user.id;
 
+  const dbStartedAt = Date.now();
   const activePlan = await findActivePlanForOwner(getDb(), ownerId);
   if (!activePlan) redirect("/onboarding");
 
@@ -37,7 +38,7 @@ export default async function HistorialPage({ searchParams }: { searchParams: Pr
   const tab: TabKey = TABS.some((item) => item.key === rawTab) ? (rawTab as TabKey) : "registro";
 
   const historyRepo = createHistoryRepository(getDb());
-  logRouteTiming("/historial", requestId, startedAt, { data: Date.now() - startedAt });
+  logRouteTiming("/historial", requestId, startedAt, { dbMs: Date.now() - dbStartedAt });
 
   return (
     <AppShell title="Trainer">
@@ -51,13 +52,13 @@ export default async function HistorialPage({ searchParams }: { searchParams: Pr
 
       <div className="tabs" role="tablist" aria-label="Secciones del historial">
         {TABS.map((item) => (
-          <Link key={item.key} href={`/historial?tab=${item.key}`} className="tab" role="tab" aria-selected={tab === item.key} id={`historyTab-${item.key}`}>
+          <Link key={item.key} href={`/historial?tab=${item.key}`} className="tab" role="tab" aria-selected={tab === item.key} aria-controls="historyPanel" id={`historyTab-${item.key}`}>
             {item.label}
           </Link>
         ))}
       </div>
 
-      <div className="tabpanel" role="tabpanel" aria-labelledby={`historyTab-${tab}`}>
+      <div id="historyPanel" className="tabpanel" role="tabpanel" aria-labelledby={`historyTab-${tab}`}>
         {tab === "registro" && <RegistroTab ownerId={ownerId} planId={activePlan.id} semana={semana} historyRepo={historyRepo} />}
         {tab === "adherencia" && <AdherenciaTab historyRepo={historyRepo} ownerId={ownerId} planId={activePlan.id} />}
       </div>
@@ -88,14 +89,17 @@ function buildTimeline(sessions: SessionHistoryEntry[], activities: EnduranceAct
 }
 
 async function RegistroTab({ ownerId, planId, semana, historyRepo }: { ownerId: string; planId: string; semana?: string; historyRepo: ReturnType<typeof createHistoryRepository> }) {
-  const allSessions = await historyRepo.listSessionHistory(ownerId, planId);
+  const [allSessions, enduranceActivities, progress] = await Promise.all([
+    historyRepo.listSessionHistory(ownerId, planId),
+    historyRepo.listEnduranceActivities(ownerId),
+    historyRepo.listVariantProgress(ownerId)
+  ]);
   const selectedWeek = semana ?? isoWeekStart();
   const filteredSessions = allSessions.filter((session) => isoWeekStart(session.startedAt) === selectedWeek);
 
   const prevWeek = isoDate(addDays(parseIsoDateLocal(selectedWeek), -7));
   const nextWeek = isoDate(addDays(parseIsoDateLocal(selectedWeek), 7));
 
-  const enduranceActivities = await historyRepo.listEnduranceActivities(ownerId);
   const filteredEndurance = enduranceActivities.filter((activity) => isoWeekStart(activity.startedAt) === selectedWeek);
 
   const timeline = buildTimeline(filteredSessions, filteredEndurance);
@@ -127,13 +131,12 @@ async function RegistroTab({ ownerId, planId, semana, historyRepo }: { ownerId: 
         </ul>
       )}
 
-      <ProgresoSection historyRepo={historyRepo} ownerId={ownerId} />
+      <ProgresoSection progress={progress} />
     </>
   );
 }
 
-async function ProgresoSection({ historyRepo, ownerId }: { historyRepo: ReturnType<typeof createHistoryRepository>; ownerId: string }) {
-  const progress = await historyRepo.listVariantProgress(ownerId);
+function ProgresoSection({ progress }: { progress: Awaited<ReturnType<ReturnType<typeof createHistoryRepository>["listVariantProgress"]>> }) {
   if (progress.length === 0) return null;
 
   return (
@@ -165,8 +168,10 @@ async function ProgresoSection({ historyRepo, ownerId }: { historyRepo: ReturnTy
 }
 
 async function AdherenciaTab({ historyRepo, ownerId, planId }: { historyRepo: ReturnType<typeof createHistoryRepository>; ownerId: string; planId: string }) {
-  const adherence = await historyRepo.computeAdherence(ownerId, planId);
-  const weekStats = await historyRepo.computeWeekStats(ownerId, planId);
+  const [adherence, weekStats] = await Promise.all([
+    historyRepo.computeAdherence(ownerId, planId),
+    historyRepo.computeWeekStats(ownerId, planId)
+  ]);
   const totalAdherencia = adherence ? adherence.completadas + adherence.adaptadas : 0;
   const achievements = pickAchievements(totalAdherencia);
   const achievementText = achievements.alcanzado
