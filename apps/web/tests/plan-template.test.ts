@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { templateCompatibility } from "@/features/planning/domain/plan-template";
+import { templateCompatibility, templatePreviewExercises } from "@/features/planning/domain/plan-template";
 import { PLAN_TEMPLATES } from "@/features/planning/data/plan-templates";
 
 function templateVersion(templateId: string) {
@@ -9,6 +9,17 @@ function templateVersion(templateId: string) {
 }
 
 describe("templateCompatibility", () => {
+  it("publishes the seven full-gym catalog templates by weekly frequency", () => {
+    const gymTemplates = PLAN_TEMPLATES.flatMap((template) => template.versions)
+      .filter((version) => version.environmentKind === "full_gym");
+
+    expect(gymTemplates).toHaveLength(7);
+    expect(gymTemplates.filter((version) => version.content.blockBlueprints.length === 3)).toHaveLength(3);
+    expect(gymTemplates.filter((version) => version.content.blockBlueprints.length === 4)).toHaveLength(2);
+    expect(gymTemplates.filter((version) => version.content.blockBlueprints.length === 5)).toHaveLength(2);
+    expect(gymTemplates.every((version) => version.catalog != null)).toBe(true);
+  });
+
   it("marks a gym template incompatible when essential capabilities are missing", () => {
     const pplGym = templateVersion("ppl-gym");
     const result = templateCompatibility(pplGym, ["free_weights"]);
@@ -30,5 +41,16 @@ describe("templateCompatibility", () => {
 
     expect(result.status).toBe("compatible");
     expect(result.missingCapabilities).toEqual([]);
+  });
+
+  it("previews the resolved exercise variants for each routine block", () => {
+    const preview = templatePreviewExercises(templateVersion("upper-lower-gym"), {
+      kind: "full_gym",
+      equipment: ["free_weights", "benches_supports", "cables_torso", "leg_machines"]
+    });
+
+    expect(preview).toHaveLength(4);
+    expect(preview[0]?.exercises.length).toBeGreaterThan(0);
+    expect(preview[0]?.exercises[0]).toEqual(expect.objectContaining({ variantName: expect.any(String) }));
   });
 });
