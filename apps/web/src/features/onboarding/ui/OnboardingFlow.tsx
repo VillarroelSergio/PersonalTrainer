@@ -88,6 +88,7 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
       <div className={`${tokens.root} ${shell.shell}`}>
         <ProposalScreen
           proposal={state.proposal}
+          environment={form.environments[0]}
           onActivate={activate}
           onRestart={() => dispatch({ type: "RESTART_FROM_FORM" })}
           activating={state.activating}

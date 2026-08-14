@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPlanProposal } from "@/features/planning/domain/plan-proposal";
+import { replaceProposalExerciseVariant } from "@/features/planning/domain/plan-proposal-editor";
 import { onboardingDraftSchema } from "@/contracts/onboarding";
 
 const validDraft = {
@@ -72,5 +73,15 @@ describe("onboarding proposal", () => {
       expect(block).not.toHaveProperty("targetRepsMin");
       expect(block).not.toHaveProperty("targetRepsMax");
     }
+  });
+
+  it("replaces only the selected exercise variant and preserves targets", () => {
+    const proposal = buildPlanProposal(onboardingDraftSchema.parse(validDraft));
+    const sessionIndex = proposal.week.sessions.findIndex((session) => session.kind === "strength");
+    const original = proposal.week.sessions[sessionIndex]?.exercises?.[0];
+    const updated = replaceProposalExerciseVariant(proposal, sessionIndex, 0, "push-h-dumbbell");
+
+    expect(updated.week.sessions[sessionIndex]?.exercises?.[0]).toEqual({ ...original, variantId: "push-h-dumbbell" });
+    expect(proposal.week.sessions[sessionIndex]?.exercises?.[0]).toEqual(original);
   });
 });
