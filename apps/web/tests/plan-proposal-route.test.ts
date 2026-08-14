@@ -30,7 +30,7 @@ describe("POST /api/v1/plan-proposals", () => {
     const response = await createPlanProposalResponse(new Request("http://localhost/api/v1/plan-proposals", { method: "POST", body: JSON.stringify(selected), headers: { "content-type": "application/json", "idempotency-key": body.clientOperationId } }), { id: "account-a" });
 
     expect(response.status).toBe(200);
-    expect((await response.json()).data.initialBlock.name).toBe("Tren superior / tren inferior en gimnasio");
+    expect((await response.json()).data.initialBlock.name).toBe("Torso y pierna · gimnasio completo");
   });
 
   it("rejects malformed JSON and invalid drafts at the HTTP boundary", async () => {

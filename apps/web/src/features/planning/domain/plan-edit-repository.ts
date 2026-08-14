@@ -3,7 +3,9 @@ import type { getDb } from "@/lib/db/client";
 import { sessionAdjustment, trainingPlan, workoutSession } from "@/lib/db/schema";
 import { isoWeekStart, parseIsoDateLocal } from "@/lib/weekdays";
 import type { PlanEditInput } from "@/contracts/plan";
+import type { PlanSessionContentInput } from "@/contracts/plan";
 import type { PlanProposal } from "@/contracts/onboarding";
+import { EXERCISE_CATALOG } from "@/features/catalog/data/exercise-catalog";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -22,6 +24,10 @@ export class SessionAlreadyExecutedError extends Error {
 export class InvalidSessionIndexError extends Error {
   code = "VALIDATION_ERROR" as const;
   constructor() { super("This session does not exist in the plan template."); }
+}
+export class InvalidSessionContentError extends Error {
+  code = "VALIDATION_ERROR" as const;
+  constructor(message = "La sesión debe conservar ejercicios válidos y no repetidos.") { super(message); }
 }
 export class AdjustmentNotFoundError extends Error {
   code = "NOT_FOUND" as const;
@@ -115,8 +121,43 @@ export function createPlanEditRepository(database: Db) {
     });
   }
 
+  async function updateSessionContent(ownerId: string, planId: string, input: PlanSessionContentInput) {
+    return database.transaction(async (tx) => {
+      assertFutureWeek(input.isoWeekStart);
+      const { plan, proposal } = await loadOwnedPlan(tx, ownerId, planId);
+      const plannedSession = proposal.week?.sessions?.[input.sessionIndex];
+      if (!plannedSession) throw new InvalidSessionIndexError();
+      if (plannedSession.kind !== "strength") throw new InvalidSessionContentError("Solo se pueden editar ejercicios de sesiones de fuerza.");
+      await assertNotExecutedThisWeek(tx, ownerId, plan.id, input.sessionIndex, input.isoWeekStart);
+
+      const seen = new Set<string>();
+      for (const exercise of input.exercises) {
+        if (seen.has(exercise.variantId)) throw new InvalidSessionContentError("No puedes añadir dos veces la misma variante.");
+        if (!EXERCISE_CATALOG.some((variant) => variant.id === exercise.variantId)) {
+          throw new InvalidSessionContentError("La variante seleccionada no está disponible en el catálogo.");
+        }
+        seen.add(exercise.variantId);
+      }
+
+      const updatedProposal: PlanProposal = {
+        ...proposal,
+        week: {
+          ...proposal.week,
+          sessions: proposal.week.sessions.map((session, sessionIndex) => (
+            sessionIndex === input.sessionIndex ? { ...session, exercises: input.exercises } : session
+          ))
+        }
+      };
+      await tx.update(trainingPlan)
+        .set({ contentJson: JSON.stringify(updatedProposal), version: plan.version + 1 })
+        .where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId)));
+      return { sessionIndex: input.sessionIndex, exercises: input.exercises };
+    });
+  }
+
   return {
     applyEdit: (ownerId: string, planId: string, input: PlanEditInput) => runEdit(ownerId, planId, input),
+    updateSessionContent: (ownerId: string, planId: string, input: PlanSessionContentInput) => updateSessionContent(ownerId, planId, input),
     listWeekAdjustments: (ownerId: string, planId: string, weekStartIso: string) =>
       database.select({ sessionIndex: sessionAdjustment.sessionIndex, kind: sessionAdjustment.kind, targetDay: sessionAdjustment.targetDay, opsJson: sessionAdjustment.opsJson })
         .from(sessionAdjustment)

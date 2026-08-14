@@ -15,6 +15,7 @@ import { createHistoryRepository } from "@/features/history/domain/history-repos
 import { pickAchievements } from "@/features/history/domain/history-engine";
 import { AppShell } from "@/components/AppShell";
 import PlanSessionActions from "@/features/planning/ui/PlanSessionActions";
+import PlanSessionEditor from "@/features/planning/ui/PlanSessionEditor";
 import PlanManagementActions from "@/features/planning/ui/PlanManagementActions";
 import { WEEKDAY_LABEL, WEEKDAYS, isoDate, isoWeekStart, parseIsoDateLocal, type Weekday } from "@/lib/weekdays";
 import type { PlanProposal } from "@/contracts/onboarding";
@@ -147,7 +148,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
             <ol className="daylist" aria-label="Semana del plan">
               {WEEKDAYS.map((day) => (
-                <DayRow key={day} day={day as Weekday} occurrences={byDay[day as Weekday]} planId={activePlan.id} weekStart={weekStart} />
+                <DayRow key={day} day={day as Weekday} occurrences={byDay[day as Weekday]} proposal={proposal} planId={activePlan.id} weekStart={weekStart} />
               ))}
             </ol>
           </>
@@ -175,7 +176,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   );
 }
 
-function DayRow({ day, occurrences, planId, weekStart }: { day: Weekday; occurrences: ReturnType<typeof occurrencesByDay>[Weekday]; planId: string; weekStart: string }) {
+function DayRow({ day, occurrences, proposal, planId, weekStart }: { day: Weekday; occurrences: ReturnType<typeof occurrencesByDay>[Weekday]; proposal: PlanProposal; planId: string; weekStart: string }) {
   const isToday = day === (WEEKDAYS[(new Date().getDay() + 6) % 7] as Weekday);
 
   if (occurrences.length === 0) {
@@ -218,6 +219,14 @@ function DayRow({ day, occurrences, planId, weekStart }: { day: Weekday; occurre
                   const action = sessionAction(occurrence);
                   return action ? <Link href={action.href} className="chip chip--primary">{action.label}</Link> : null;
                 })()}
+                {occurrence.kind === "strength" && (occurrence.status === "planned" || occurrence.status === "moved_here") ? (
+                  <PlanSessionEditor
+                    planId={planId}
+                    weekStart={weekStart}
+                    sessionIndex={occurrence.sessionIndex}
+                    session={proposal.week.sessions[occurrence.sessionIndex]}
+                  />
+                ) : null}
                 <PlanSessionActions planId={planId} weekStart={weekStart} sessionIndex={occurrence.sessionIndex} status={occurrence.status} currentDay={day} />
               </div>
             ) : null}

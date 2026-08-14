@@ -1,8 +1,8 @@
 "use client";
 
 import { ScreenLayout } from "@/components/ScreenLayout";
-import type { CSSProperties } from "react";
-import { ENVIRONMENT_OPTIONS, EQUIPMENT_OPTIONS } from "../../presentation/constants";
+import Image from "next/image";
+import { ENVIRONMENT_OPTIONS, EQUIPMENT_IMAGE, EQUIPMENT_OPTIONS } from "../../presentation/constants";
 import type { Environment, EquipmentCategory, EnvironmentKind } from "../../presentation/types";
 import styles from "./EquipmentScreen.module.css";
 
@@ -21,11 +21,13 @@ export function EquipmentScreen({ environments, onToggleEquipment }: EquipmentSc
           <div key={environment.kind}>
             <p className={styles.environment}>{envLabel}</p>
             <div className={styles.grid} role="group" aria-label={`Equipamiento en ${envLabel}`}>
-              {EQUIPMENT_OPTIONS.map((option, index) => {
+              {EQUIPMENT_OPTIONS.map((option) => {
                 const selected = environment.equipment.includes(option.value);
                 return (
                   <button key={option.value} type="button" className={`${styles.card}${selected ? ` ${styles.cardSelected}` : ""}`} aria-pressed={selected} onClick={() => onToggleEquipment(environment.kind, option.value)}>
-                    <span className={styles.art} aria-hidden="true" style={{ "--sprite-x": `${(index % 3) * 50}%`, "--sprite-y": `${Math.floor(index / 3) * 100}%` } as CSSProperties} />
+                    <span className={styles.art} aria-hidden="true">
+                      <Image src={EQUIPMENT_IMAGE[option.value]} alt="" width={74} height={64} />
+                    </span>
                     <span className={styles.name}>{option.label}</span>
                     <span className={styles.check} aria-hidden="true">{selected ? "✓" : ""}</span>
                   </button>

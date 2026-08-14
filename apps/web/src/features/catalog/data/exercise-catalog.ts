@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import type { equipmentCategorySchema } from "@/contracts/onboarding";
+import type { ExerciseTrackingMode } from "@/features/catalog/domain/editorial-content";
 
 export type MovementPattern = "squat" | "hinge" | "lunge" | "push_horizontal" | "push_vertical" | "pull_horizontal" | "pull_vertical" | "core" | "elbow_flexion" | "elbow_extension" | "plantarflexion";
 export type MuscleGroup = "pecho" | "espalda" | "hombros" | "biceps" | "triceps" | "cuadriceps" | "isquios_gluteos" | "gemelos" | "core";
@@ -30,6 +31,7 @@ export type ExerciseVariant = {
   /** Environments where this variant is realistically available. */
   environments: EnvironmentKind[];
   loadType: "external" | "bodyweight";
+  trackingMode: ExerciseTrackingMode;
   guide: string;
   /** Path under public/library/exercises/, copied consciously from prototype/assets/ (Bloqueante 5) — only set when a real illustration exists for this exact variant. Absent, never a placeholder or an invented URL. */
   mediaUrl?: string;
@@ -61,6 +63,7 @@ export const EXERCISE_CATALOG: ExerciseVariant[] = EDITORIAL_VARIANTS.filter((va
     equipment: equipmentFromRequirement(variant),
     environments: variant.environments,
     loadType: variant.loadType,
+    trackingMode: variant.trackingMode,
     guide: variant.guide,
     ...(variant.mediaUrl ? { mediaUrl: variant.mediaUrl } : {})
   };
@@ -68,4 +71,36 @@ export const EXERCISE_CATALOG: ExerciseVariant[] = EDITORIAL_VARIANTS.filter((va
 
 export function findVariant(id: string): ExerciseVariant | undefined {
   return EXERCISE_CATALOG.find((variant) => variant.id === id);
+}
+
+/** Every exercise card has a stable visual: use its exact illustration when available,
+ * otherwise the approved muscle-group visual rather than rendering text alone. */
+type ExerciseVisualSource = {
+  mediaUrl?: string;
+  movementPattern?: string;
+  primaryMuscleGroup?: MuscleGroup;
+  targets?: Array<{ muscleGroup: MuscleGroup; role?: string }>;
+};
+
+const MOVEMENT_IMAGE: Record<string, string> = {
+  squat: "/library/exercises/sentadilla-barra-v2.webp",
+  hinge: "/library/exercises/peso-muerto-rumano-v2.webp",
+  lunge: "/library/exercises/zancada-mancuernas-v3.webp",
+  push_horizontal: "/library/exercises/press-banca-barra-v2.webp",
+  push_vertical: "/library/exercises/press-maquina-v3.webp",
+  pull_horizontal: "/library/exercises/remo-sentado-maquina-v2.webp",
+  pull_vertical: "/library/exercises/jalon-polea-agarre-ancho-v2.webp",
+  elbow_flexion: "/library/exercises/curl-biceps-barra-v3.webp",
+  elbow_extension: "/library/exercises/extension-triceps-cuerda-v2.webp",
+  plantarflexion: "/library/exercises/elevacion-gemelo-maquina-v2.webp",
+  core: "/library/exercises/plancha-v3.webp"
+};
+
+export function exerciseMediaSrc(variant: ExerciseVisualSource): string {
+  const primaryMuscleGroup = variant.primaryMuscleGroup ?? variant.targets?.find((target) => target.role === "primary")?.muscleGroup ?? variant.targets?.[0]?.muscleGroup ?? "core";
+  return variant.mediaUrl ?? MOVEMENT_IMAGE[variant.movementPattern ?? ""] ?? `/library/groups/${MUSCLE_GROUP_IMAGE[primaryMuscleGroup]}`;
+}
+
+export function exerciseMediaAlt(variant: Pick<ExerciseVariant, "exerciseName" | "variantName">): string {
+  return `${variant.exerciseName} — ${variant.variantName}`;
 }

@@ -1,5 +1,6 @@
-import type { EquipmentCapability, EquipmentRequirement, EditorialVariant, TargetContribution } from "@/features/catalog/domain/editorial-content";
+import { trackingModeForEquipment, type EquipmentCapability, type EquipmentRequirement, type EditorialVariant, type TargetContribution } from "@/features/catalog/domain/editorial-content";
 import type { EnvironmentKind, EquipmentCategory, MovementPattern, MuscleGroup } from "@/features/catalog/data/exercise-catalog";
+import { CATALOG_EXPANSION_V3 } from "@/features/catalog/data/editorial-exercises-v3";
 
 /** Deriva un requirement estructurado desde la categoría plana original del catálogo. */
 function requirementFor(equipment: EquipmentCategory | "bodyweight"): EquipmentRequirement {
@@ -13,6 +14,21 @@ function targetsFor(primary: MuscleGroup, secondary?: MuscleGroup[]): TargetCont
     ...(secondary ?? []).map((muscleGroup): TargetContribution => ({ muscleGroup, role: "secondary" }))
   ];
 }
+
+const SPECIFIC_EQUIPMENT: Partial<Record<string, EquipmentCategory>> = {
+  "hinge-band": "resistance_bands",
+  "pull-h-band-row": "resistance_bands",
+  "pull-v-pullup-bar": "pullup_dip_station",
+  "pull-v-assisted-machine": "pullup_dip_station",
+  "squat-smith": "racks_smith",
+  "pullup-neutral": "pullup_dip_station",
+  "chinup-bodyweight": "pullup_dip_station",
+  "australian-row": "pullup_dip_station",
+  "band-pull-apart": "resistance_bands",
+  "band-lateral-walk": "resistance_bands",
+  "dip-machine": "pullup_dip_station",
+  "extension-triceps-dip-machine": "pullup_dip_station"
+};
 
 type Seed = {
   id: string;
@@ -85,16 +101,20 @@ const GYM_EXPANSION: Seed[] = [
   { id: "face-pull-cable", exerciseName: "Tracción horizontal", variantName: "Face pull con cuerda", movementPattern: "pull_horizontal", primaryMuscleGroup: "hombros", secondaryMuscleGroups: ["espalda"], equipment: "cables_torso", environments: ["full_gym"], loadType: "external", guide: "Tira de la cuerda hacia la cara con los codos altos y sin arquear la espalda." }
 ];
 
-export const EDITORIAL_VARIANTS: EditorialVariant[] = [...SEEDS, ...GYM_EXPANSION].map((seed) => ({
-  id: seed.id,
-  exerciseName: seed.exerciseName,
-  variantName: seed.variantName,
-  movementPattern: seed.movementPattern,
-  targets: targetsFor(seed.primaryMuscleGroup, seed.secondaryMuscleGroups),
-  requirements: requirementFor(seed.equipment),
-  environments: seed.environments,
-  loadType: seed.loadType,
-  guide: seed.guide,
-  mediaUrl: seed.mediaUrl,
-  active: true
-}));
+export const EDITORIAL_VARIANTS: EditorialVariant[] = [...SEEDS, ...GYM_EXPANSION, ...CATALOG_EXPANSION_V3].map((seed) => {
+  const equipment = SPECIFIC_EQUIPMENT[seed.id] ?? seed.equipment;
+  return {
+    id: seed.id,
+    exerciseName: seed.exerciseName,
+    variantName: seed.variantName,
+    movementPattern: seed.movementPattern,
+    targets: targetsFor(seed.primaryMuscleGroup, seed.secondaryMuscleGroups),
+    requirements: requirementFor(equipment),
+    environments: seed.environments,
+    loadType: seed.loadType,
+    trackingMode: trackingModeForEquipment(equipment),
+    guide: seed.guide,
+    mediaUrl: seed.mediaUrl,
+    active: true
+  };
+});

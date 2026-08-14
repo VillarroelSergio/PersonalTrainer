@@ -59,17 +59,23 @@ export const ENVIRONMENT_OPTIONS: Array<{ value: EnvironmentKind; label: string 
 export const EQUIPMENT_OPTIONS: Array<{ value: EquipmentCategory; label: string }> = [
   { value: "free_weights", label: "Pesas y barras" },
   { value: "benches_supports", label: "Bancos y soportes" },
+  { value: "racks_smith", label: "Rack y multipower" },
   { value: "cables_torso", label: "Poleas y torso" },
   { value: "leg_machines", label: "Máquinas de pierna" },
   { value: "bodyweight_accessories", label: "Peso corporal y accesorios" },
+  { value: "pullup_dip_station", label: "Dominadas y fondos" },
+  { value: "resistance_bands", label: "Bandas elasticas" },
   { value: "indoor_cardio", label: "Cardio interior" }
 ];
 
 export const EQUIPMENT_IMAGE: Record<EquipmentCategory, string> = {
   free_weights: "/library/exercises/press-banca-mancuernas-v3.webp",
   benches_supports: "/library/exercises/press-banca-barra-v2.webp",
+  racks_smith: "/library/exercises/sentadilla-barra-v2.webp",
   cables_torso: "/library/exercises/jalon-polea-agarre-ancho-v2.webp",
   leg_machines: "/library/exercises/elevacion-gemelo-maquina-v2.webp",
+  pullup_dip_station: "/library/exercises/dominada-asistida-v3.webp",
+  resistance_bands: "/library/exercises/plancha-v3.webp",
   bodyweight_accessories: "/library/exercises/plancha-v3.webp",
   indoor_cardio: "/library/exercises/sentadilla-goblet-v3.webp"
 };
@@ -78,9 +84,9 @@ export const EQUIPMENT_IMAGE: Record<EquipmentCategory, string> = {
 // (tabla "Aplicar la matriz de equipamiento inicial"). Sustituye el mapeo
 // provisional anterior, marcado como pendiente en CLAUDE-ONBOARDING-NOTES.md.
 export const ENVIRONMENT_COMPATIBLE_EQUIPMENT: Record<EnvironmentKind, EquipmentCategory[]> = {
-  full_gym: ["free_weights", "benches_supports", "cables_torso", "leg_machines", "bodyweight_accessories", "indoor_cardio"],
-  basic_gym: ["free_weights", "benches_supports", "cables_torso", "leg_machines", "indoor_cardio"],
-  home: ["free_weights", "benches_supports", "bodyweight_accessories"],
+  full_gym: ["free_weights", "benches_supports", "racks_smith", "cables_torso", "leg_machines", "pullup_dip_station", "resistance_bands", "bodyweight_accessories", "indoor_cardio"],
+  basic_gym: ["free_weights", "benches_supports", "racks_smith", "cables_torso", "leg_machines", "pullup_dip_station", "resistance_bands", "indoor_cardio"],
+  home: ["free_weights", "benches_supports", "pullup_dip_station", "resistance_bands", "bodyweight_accessories"],
   outdoors: []
 };
 

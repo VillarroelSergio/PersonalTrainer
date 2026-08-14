@@ -84,7 +84,7 @@ describe("onboardingReducer", () => {
     let state = createInitialState();
     state = onboardingReducer(state, { type: "TOGGLE_ENVIRONMENT", kind: "home" });
     const home = state.form.environments.find((env) => env.kind === "home");
-    expect(home?.equipment).toEqual(["free_weights", "benches_supports", "bodyweight_accessories"]);
+    expect(home?.equipment).toEqual(["free_weights", "benches_supports", "pullup_dip_station", "resistance_bands", "bodyweight_accessories"]);
   });
 
   it("replaces the previous environment and its equipment when a new environment is selected", () => {
@@ -93,7 +93,7 @@ describe("onboardingReducer", () => {
     state = onboardingReducer(state, { type: "TOGGLE_EQUIPMENT", kind: "full_gym", equipment: "cables_torso" });
     state = onboardingReducer(state, { type: "TOGGLE_ENVIRONMENT", kind: "home" });
 
-    expect(state.form.environments).toEqual([{ kind: "home", equipment: ["free_weights", "benches_supports", "bodyweight_accessories"] }]);
+    expect(state.form.environments).toEqual([{ kind: "home", equipment: ["free_weights", "benches_supports", "pullup_dip_station", "resistance_bands", "bodyweight_accessories"] }]);
   });
 
   it("rejects a draft with more than one training environment", () => {
@@ -118,7 +118,7 @@ describe("onboardingReducer", () => {
     state = onboardingReducer(state, { type: "TOGGLE_ENVIRONMENT", kind: "home" });
     state = onboardingReducer(state, { type: "TOGGLE_EQUIPMENT", kind: "home", equipment: "free_weights" });
     const home = state.form.environments.find((env) => env.kind === "home");
-    expect(home?.equipment).toEqual(["benches_supports", "bodyweight_accessories"]);
+    expect(home?.equipment).toEqual(["benches_supports", "pullup_dip_station", "resistance_bands", "bodyweight_accessories"]);
   });
 
   it("caps optional muscle focus at three selections", () => {

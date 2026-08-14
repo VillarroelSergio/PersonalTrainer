@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { EXERCISE_CATALOG, findVariant, MUSCLE_GROUP_IMAGE, MUSCLE_GROUP_LABEL, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
+import { EXERCISE_CATALOG, exerciseMediaAlt, exerciseMediaSrc, findVariant, MUSCLE_GROUP_LABEL, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
 import { DISCOMFORT_ZONE_OPTIONS } from "@/features/onboarding/presentation/constants";
 import type { DiscomfortZone } from "@/features/onboarding/presentation/types";
 import { MOLESTIA_OPTIONS, type MolestiaLevel } from "@/features/training-engine/domain/checkin-discomfort";
 import { youtubeSearchUrl } from "@/features/catalog/domain/video-link";
 import { adjustRestSeconds, isRestComplete, remainingRestSeconds } from "@/features/workouts/domain/rest-timer";
+import type { ExerciseTrackingMode } from "@/features/catalog/domain/editorial-content";
 
 type PreviewExercise = { variantId: string; targetSets: number; targetRepsMin: number; targetRepsMax: number };
 type PersistedSet = { setNumber: number; loadKg: number | null; repetitions: number | null; difficulty: Difficulty | null };
@@ -17,6 +18,10 @@ type SessionExercise = { id: string; variantId: string; position: number; status
 type WorkoutSession = { id: string; status: string; version: number };
 type Difficulty = "too_easy" | "just_right" | "too_hard";
 type CloseStatus = "completed" | "adapted" | "partial";
+
+export function showLoadInput(trackingMode: ExerciseTrackingMode | undefined): boolean {
+  return trackingMode !== "reps_only";
+}
 
 const DIFFICULTY_LABEL: Record<Difficulty, string> = { too_easy: "Fácil", just_right: "Justa", too_hard: "Demasiado dura" };
 const DEFAULT_REST_SECONDS = 90;
@@ -132,17 +137,19 @@ export function WorkoutRunner({
         <ol className="exlist">
           {previewExercises.map((exercise, index) => {
             const variant = findVariant(exercise.variantId);
-            const previewImage = variant?.mediaUrl ?? (variant ? `/library/groups/${MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]}` : null);
+            const previewImage = variant ? exerciseMediaSrc(variant) : null;
             return (
               <li key={exercise.variantId + index}>
                 <div className="exrow">
                   <span className="exrow__index">{index + 1}</span>
                   {previewImage ? (
                     <span className="exrow__thumb" aria-hidden="true">
-                      <Image src={previewImage} alt="" width={44} height={44} />
+                      <Image src={previewImage} alt={variant ? exerciseMediaAlt(variant) : "Ejercicio"} width={44} height={44} />
                     </span>
                   ) : (
-                    <span className="exrow__thumb exrow__thumb--fallback" aria-hidden="true">+</span>
+                    <span className="exrow__thumb" aria-hidden="true">
+                      <Image src="/library/groups/core-card-v1.webp" alt={`Ejercicio ${exercise.variantId}`} width={44} height={44} />
+                    </span>
                   )}
                   <span className="exrow__body">
                     <span className="exrow__name">{variant ? `${variant.exerciseName} — ${variant.variantName}` : exercise.variantId}</span>
@@ -230,14 +237,14 @@ function formatClock(totalSeconds: number) {
 
 type SetRowState = { setNumber: number; loadKg: string; reps: string; difficulty: Difficulty | ""; saved: boolean };
 
-function initialSets(targetSets: number, persisted?: PersistedSet[]): SetRowState[] {
+function initialSets(targetSets: number, persisted: PersistedSet[] | undefined, trackingMode: ExerciseTrackingMode | undefined): SetRowState[] {
   const byNumber = new Map((persisted ?? []).map((set) => [set.setNumber, set]));
   const count = Math.max(targetSets, byNumber.size);
   return Array.from({ length: count }, (_, index) => {
     const setNumber = index + 1;
     const saved = byNumber.get(setNumber);
     return saved
-      ? { setNumber, loadKg: saved.loadKg?.toString() ?? "", reps: saved.repetitions?.toString() ?? "", difficulty: saved.difficulty ?? "", saved: true }
+      ? { setNumber, loadKg: showLoadInput(trackingMode) ? saved.loadKg?.toString() ?? "" : "", reps: saved.repetitions?.toString() ?? "", difficulty: saved.difficulty ?? "", saved: true }
       : { setNumber, loadKg: "", reps: "", difficulty: "", saved: false };
   });
 }
@@ -260,7 +267,8 @@ function ExerciseCard({
   onSetConfirmed: (label: string) => void;
 }) {
   const variant = findVariant(exercise.variantId);
-  const [sets, setSets] = useState<SetRowState[]>(() => initialSets(exercise.targetSets, exercise.sets));
+  const trackingMode = variant?.trackingMode;
+  const [sets, setSets] = useState<SetRowState[]>(() => initialSets(exercise.targetSets, exercise.sets, trackingMode));
   const [lastAction, setLastAction] = useState<{ type: "repeat" | "addSet"; setNumber: number; prev: Omit<SetRowState, "setNumber"> } | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [variantSheetOpen, setVariantSheetOpen] = useState(false);
@@ -291,7 +299,7 @@ function ExerciseCard({
   async function confirmSet(setNumber: number) {
     const row = sets.find((set) => set.setNumber === setNumber);
     if (!row) return;
-    const loadKg = row.loadKg ? Number(row.loadKg) : null;
+    const loadKg = showLoadInput(trackingMode) && row.loadKg ? Number(row.loadKg) : null;
     const repetitions = row.reps ? Number(row.reps) : null;
     const difficulty = row.difficulty || null;
     await persistSet(setNumber, loadKg, repetitions, difficulty);
@@ -328,8 +336,9 @@ function ExerciseCard({
     const done = sets.filter((set) => set.saved);
     const source = done.length ? done[done.length - 1] : target;
     setLastAction({ type: "repeat", setNumber: target.setNumber, prev: { loadKg: target.loadKg, reps: target.reps, difficulty: target.difficulty, saved: target.saved } });
-    setSets((current) => current.map((set) => (set.setNumber === target.setNumber ? { ...set, loadKg: source.loadKg, reps: source.reps, saved: true } : set)));
-    await persistSet(target.setNumber, source.loadKg ? Number(source.loadKg) : null, source.reps ? Number(source.reps) : null, source.difficulty || null);
+    const sourceLoadKg = showLoadInput(trackingMode) ? source.loadKg : "";
+    setSets((current) => current.map((set) => (set.setNumber === target.setNumber ? { ...set, loadKg: sourceLoadKg, reps: source.reps, saved: true } : set)));
+    await persistSet(target.setNumber, sourceLoadKg ? Number(sourceLoadKg) : null, source.reps ? Number(source.reps) : null, source.difficulty || null);
     onSetConfirmed(variant ? `${variant.exerciseName} — ${variant.variantName}` : exercise.variantId);
   }
 
@@ -337,7 +346,7 @@ function ExerciseCard({
     const last = sets[sets.length - 1];
     const setNumber = sets.length + 1;
     setLastAction({ type: "addSet", setNumber, prev: { loadKg: "", reps: "", difficulty: "", saved: false } });
-    setSets((current) => [...current, { setNumber, loadKg: last?.loadKg ?? "", reps: last?.reps ?? "", difficulty: "", saved: false }]);
+    setSets((current) => [...current, { setNumber, loadKg: showLoadInput(trackingMode) ? last?.loadKg ?? "" : "", reps: last?.reps ?? "", difficulty: "", saved: false }]);
   }
 
   async function undo() {
@@ -368,16 +377,14 @@ function ExerciseCard({
   return (
     <div>
       <div className="exhead">
-        {variant?.mediaUrl ? (
+        {variant ? (
           <div className="exercise-media">
-            <Image className="exercise-media__img" src={variant.mediaUrl} alt="" width={60} height={60} />
-          </div>
-        ) : variant ? (
-          <div className="exercise-media exercise-media--group" aria-hidden="true">
-            <Image className="exercise-media__img" src={`/library/groups/${MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]}`} alt="" width={60} height={60} />
+            <Image className="exercise-media__img" src={exerciseMediaSrc(variant)} alt={exerciseMediaAlt(variant)} width={60} height={60} />
           </div>
         ) : (
-          <div className="exercise-media exercise-media--pending" aria-hidden="true">?</div>
+          <div className="exercise-media">
+            <Image className="exercise-media__img" src="/library/groups/core-card-v1.webp" alt={`Ejercicio ${exercise.variantId}`} width={60} height={60} />
+          </div>
         )}
         <div className="exhead__body">
           <p className="exhead__variant">{variant ? `${variant.exerciseName} — ${variant.variantName}` : exercise.variantId}</p>
@@ -396,7 +403,7 @@ function ExerciseCard({
       <p className="section-title">Series</p>
       <ul className="lanes">
         {sets.map((set) => (
-          <SetRow key={set.setNumber} set={set} onChange={(patch) => updateSet(set.setNumber, patch)} onConfirm={() => confirmSet(set.setNumber)} onUnconfirm={() => unconfirmSet(set.setNumber)} />
+          <SetRow key={set.setNumber} set={set} showLoad={showLoadInput(trackingMode)} onChange={(patch) => updateSet(set.setNumber, patch)} onConfirm={() => confirmSet(set.setNumber)} onUnconfirm={() => unconfirmSet(set.setNumber)} />
         ))}
       </ul>
 
@@ -414,16 +421,18 @@ function ExerciseCard({
   );
 }
 
-function SetRow({ set, onChange, onConfirm, onUnconfirm }: { set: SetRowState; onChange: (patch: Partial<SetRowState>) => void; onConfirm: () => void; onUnconfirm: () => void }) {
+function SetRow({ set, showLoad, onChange, onConfirm, onUnconfirm }: { set: SetRowState; showLoad: boolean; onChange: (patch: Partial<SetRowState>) => void; onConfirm: () => void; onUnconfirm: () => void }) {
   return (
     <li className="lane__error-row">
       <div className={"lane lane--set" + (set.saved ? " is-done" : "")}>
         <span className="lane__num">{set.setNumber}</span>
-        <span className="lane__field">
-          <label htmlFor={`load-${set.setNumber}`} className="sr-only">Carga en kg</label>
-          <input id={`load-${set.setNumber}`} type="number" value={set.loadKg} disabled={set.saved} onChange={(event) => onChange({ loadKg: event.target.value })} />
-          <span className="lane__unit">kg</span>
-        </span>
+        {showLoad ? (
+          <span className="lane__field">
+            <label htmlFor={`load-${set.setNumber}`} className="sr-only">Carga en kg</label>
+            <input id={`load-${set.setNumber}`} type="number" value={set.loadKg} disabled={set.saved} onChange={(event) => onChange({ loadKg: event.target.value })} />
+            <span className="lane__unit">kg</span>
+          </span>
+        ) : null}
         <span className="lane__field">
           <label htmlFor={`reps-${set.setNumber}`} className="sr-only">Repeticiones</label>
           <input id={`reps-${set.setNumber}`} type="number" value={set.reps} disabled={set.saved} onChange={(event) => onChange({ reps: event.target.value })} />
@@ -532,6 +541,7 @@ function VariantSheet({
                 <p className="optgroup__title">{group.title}</p>
                 {group.items.map((item) => (
                   <button key={item.id} type="button" className="opt" onClick={() => onPick(item.id)}>
+                    <Image className="opt__media" src={exerciseMediaSrc(item)} alt="" width={44} height={44} />
                     <span className="opt__name">{item.exerciseName} — {item.variantName}</span>
                   </button>
                 ))}

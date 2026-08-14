@@ -1,12 +1,14 @@
 import { headers } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
 import { createHistoryRepository } from "@/features/history/domain/history-repository";
 import { AppShell } from "@/components/AppShell";
 import { DISCOMFORT_INTENSITY_OPTIONS, DISCOMFORT_ZONE_OPTIONS } from "@/features/onboarding/presentation/constants";
+import { exerciseMediaAlt, exerciseMediaSrc, findVariant } from "@/features/catalog/data/exercise-catalog";
 
 const STATUS_LABEL: Record<string, string> = { completed: "Completada", adapted: "Adaptada", partial: "Parcial", in_progress: "En curso" };
 const ZONE_LABEL: Record<string, string> = Object.fromEntries(DISCOMFORT_ZONE_OPTIONS.map((option) => [option.value, option.label]));
@@ -56,7 +58,12 @@ function StrengthDetail({ detail }: { detail: NonNullable<Awaited<ReturnType<Ret
           <h2 className="section-title">Ejercicio / variante — carga, repeticiones y series</h2>
           <ul className="cues">
             {detail.exercises.map((exercise) => (
-              <li key={exercise.variantId}>
+              <li key={exercise.variantId} className="history-exercise">
+                {findVariant(exercise.variantId) ? (
+                  <Image className="history-exercise__media" src={exerciseMediaSrc(findVariant(exercise.variantId)!)} alt={exerciseMediaAlt(findVariant(exercise.variantId)!)} width={52} height={52} />
+                ) : (
+                  <Image className="history-exercise__media" src="/library/groups/core-card-v1.webp" alt={`${exercise.exerciseName} — ${exercise.variantName}`} width={52} height={52} />
+                )}
                 {exercise.exerciseName}{exercise.variantName ? ` — ${exercise.variantName}` : ""}: {exercise.sets.length === 0 ? "sin series registradas" : exercise.sets.map((set) => `${set.loadKg != null ? `${set.loadKg} kg` : "peso corporal"} × ${set.repetitions ?? "—"} reps`).join(", ")}
               </li>
             ))}

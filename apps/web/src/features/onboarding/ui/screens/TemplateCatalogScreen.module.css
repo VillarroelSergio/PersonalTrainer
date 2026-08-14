@@ -12,5 +12,10 @@
 .preview { display: grid; gap: 8px; padding: 10px; border-top: 1px solid var(--rule-soft); background: var(--paper-2); border-radius: var(--r-sm); }
 .previewBlock { display: grid; gap: 4px; }
 .previewBlock strong { font-size: .88rem; }
-.previewBlock ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: .84rem; }
+.previewBlock ul { margin: 0; padding-left: 0; color: var(--ink-2); font-size: .84rem; }
+.exerciseRow { display: flex; align-items: center; gap: 9px; min-height: 52px; padding: 5px 0; list-style: none; }
+.exerciseImage { width: 52px; height: 52px; flex: 0 0 52px; border-radius: 9px; object-fit: cover; background: var(--paper); }
+.exerciseCopy { display: grid; gap: 2px; min-width: 0; }
+.exerciseCopy strong { color: var(--ink); font-size: .82rem; line-height: 1.2; }
+.exerciseCopy span { color: var(--ink-2); font-size: .78rem; line-height: 1.2; }
 .empty { margin: 0; padding: 14px; border: 1px dashed var(--rule-soft); border-radius: var(--r-md); color: var(--ink-2); }

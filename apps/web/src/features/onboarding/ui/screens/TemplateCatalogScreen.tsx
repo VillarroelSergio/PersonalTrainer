@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import type { EquipmentCapability } from "@/features/catalog/domain/editorial-content";
+import { exerciseMediaAlt, exerciseMediaSrc } from "@/features/catalog/data/exercise-catalog";
 import { capabilitiesForEnvironment } from "@/features/catalog/domain/inventory";
 import { PLAN_TEMPLATES } from "@/features/planning/data/plan-templates";
 import { templateCompatibility, templatePreviewExercises } from "@/features/planning/domain/plan-template";
@@ -23,7 +25,10 @@ const CAPABILITY_LABELS: Partial<Record<EquipmentCapability, string>> = {
   cables_torso: "poleas y torso",
   leg_machines: "máquinas de pierna",
   bodyweight_accessories: "accesorios y peso corporal",
-  indoor_cardio: "cardio interior"
+  indoor_cardio: "cardio interior",
+  racks_smith: "rack y multipower",
+  pullup_dip_station: "dominadas y fondos",
+  resistance_bands: "bandas elásticas"
 };
 
 export function TemplateCatalogScreen({ creationMode, environment, strengthDays, selectedTemplateId, onSelect }: Props) {
@@ -90,7 +95,15 @@ export function TemplateCatalogScreen({ creationMode, environment, strengthDays,
                     <div key={block.title} className={styles.previewBlock}>
                       <strong>{block.title}</strong>
                       <ul>
-                        {block.exercises.map((exercise) => <li key={exercise.id}>{exercise.variantName}</li>)}
+                        {block.exercises.map((exercise) => (
+                          <li key={exercise.id} className={styles.exerciseRow}>
+                            <Image className={styles.exerciseImage} src={exerciseMediaSrc(exercise)} alt={exerciseMediaAlt(exercise)} width={52} height={52} />
+                            <span className={styles.exerciseCopy}>
+                              <strong>{exercise.exerciseName}</strong>
+                              <span>{exercise.variantName}</span>
+                            </span>
+                          </li>
+                        ))}
                         {block.exercises.length === 0 && <li>No hay variantes compatibles con este equipamiento.</li>}
                       </ul>
                     </div>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
-import { findVariant, MUSCLE_GROUP_IMAGE, MUSCLE_GROUP_LABEL } from "@/features/catalog/data/exercise-catalog";
+import { exerciseMediaAlt, exerciseMediaSrc, findVariant, MUSCLE_GROUP_IMAGE, MUSCLE_GROUP_LABEL } from "@/features/catalog/data/exercise-catalog";
 import { listOwnedFavoriteVariantIds } from "@/features/catalog/domain/favorite-repository";
 import { FavoriteToggle } from "@/features/catalog/ui/FavoriteToggle";
 import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
@@ -32,8 +32,8 @@ export default async function ExerciseVariantPage({ params }: { params: Promise<
       <div className="exercise-media">
         <Image
           className="exercise-media__img"
-          src={variant.mediaUrl ?? `/library/groups/${MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]}`}
-          alt=""
+          src={exerciseMediaSrc(variant)}
+          alt={exerciseMediaAlt(variant)}
           width={320}
           height={400}
         />

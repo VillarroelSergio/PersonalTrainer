@@ -1,4 +1,5 @@
 import type { PlanTemplate } from "@/features/planning/domain/plan-template";
+import { GYM_PLAN_TEMPLATES_V3 } from "@/features/planning/data/plan-templates-v3";
 
 /**
  * Biblioteca inicial de plantillas (Task 4). Son un punto de partida
@@ -22,9 +23,9 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
         content: {
           essentialCapabilities: ["no_equipment"],
           blockBlueprints: [
-            { title: "Cuerpo completo A", patterns: ["squat", "push_horizontal", "pull_horizontal", "core"] },
-            { title: "Cuerpo completo B", patterns: ["hinge", "push_vertical", "pull_horizontal", "core"] },
-            { title: "Cuerpo completo C", patterns: ["lunge", "push_horizontal", "pull_vertical", "core"] }
+            { title: "Sentadilla, pecho y espalda", patterns: ["squat", "push_horizontal", "pull_horizontal", "core"] },
+            { title: "Bisagra, hombros y jalón", patterns: ["hinge", "push_vertical", "pull_horizontal", "core"] },
+            { title: "Unilateral, empuje y core", patterns: ["lunge", "push_horizontal", "pull_vertical", "core"] }
           ]
         }
       }
@@ -44,9 +45,9 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
         content: {
           essentialCapabilities: ["free_weights", "benches_supports"],
           blockBlueprints: [
-            { title: "Cuerpo completo A", patterns: ["squat", "push_horizontal", "pull_horizontal", "core"] },
-            { title: "Cuerpo completo B", patterns: ["hinge", "push_vertical", "pull_vertical", "core"] },
-            { title: "Cuerpo completo C", patterns: ["lunge", "push_horizontal", "pull_horizontal", "core"] }
+            { title: "Sentadilla, pecho y espalda", patterns: ["squat", "push_horizontal", "pull_horizontal", "core"] },
+            { title: "Bisagra, hombros y jalón", patterns: ["hinge", "push_vertical", "pull_vertical", "core"] },
+            { title: "Unilateral, pecho y espalda", patterns: ["lunge", "push_horizontal", "pull_horizontal", "core"] }
           ]
         }
       }
@@ -59,17 +60,17 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
         templateId: "upper-lower-gym",
         version: "1.0.0",
         catalogVersion: "catalog-v1",
-        name: "Tren superior / tren inferior en gimnasio",
+        name: "Torso y pierna · gimnasio completo",
         environmentKind: "full_gym",
         editorialNote: EDITORIAL_NOTE,
         catalog: { level: "intermediate", goals: ["strength", "muscle_gain"], durationMinutes: 60 },
         content: {
           essentialCapabilities: ["free_weights", "benches_supports", "cables_torso"],
           blockBlueprints: [
-            { title: "Tren superior A", patterns: ["push_horizontal", "pull_horizontal", "push_vertical", "pull_vertical"] },
-            { title: "Tren inferior A", patterns: ["squat", "hinge", "lunge", "core"] },
-            { title: "Tren superior B", patterns: ["push_horizontal", "pull_horizontal", "elbow_flexion", "elbow_extension"] },
-            { title: "Tren inferior B", patterns: ["hinge", "squat", "lunge", "plantarflexion"] }
+            { title: "Torso: pecho, espalda y hombros", patterns: ["push_horizontal", "pull_horizontal", "push_vertical", "pull_vertical"] },
+            { title: "Pierna: sentadilla y cadena posterior", patterns: ["squat", "hinge", "lunge", "core"] },
+            { title: "Torso: espalda y brazos", patterns: ["push_horizontal", "pull_horizontal", "elbow_flexion", "elbow_extension"] },
+            { title: "Pierna: unilateral y gemelos", patterns: ["hinge", "squat", "lunge", "plantarflexion"] }
           ]
         }
       }
@@ -106,9 +107,9 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
       content: {
         essentialCapabilities: ["cables_torso", "leg_machines"],
         blockBlueprints: [
-          { title: "Cuerpo completo A", patterns: ["squat", "push_horizontal", "pull_horizontal", "core"] },
-          { title: "Cuerpo completo B", patterns: ["hinge", "push_vertical", "pull_vertical", "core"] },
-          { title: "Cuerpo completo C", patterns: ["squat", "pull_horizontal", "elbow_extension", "plantarflexion"] }
+          { title: "Cuádriceps, pecho y espalda", patterns: ["squat", "push_horizontal", "pull_horizontal", "core"] },
+          { title: "Cadena posterior y hombros", patterns: ["hinge", "push_vertical", "pull_vertical", "core"] },
+          { title: "Pierna, espalda y tríceps", patterns: ["squat", "pull_horizontal", "elbow_extension", "plantarflexion"] }
         ]
       }
     }]
@@ -165,5 +166,6 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
         ]
       }
     }]
-  }
+    },
+  ...GYM_PLAN_TEMPLATES_V3
 ];

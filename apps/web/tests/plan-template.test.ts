@@ -9,15 +9,17 @@ function templateVersion(templateId: string) {
 }
 
 describe("templateCompatibility", () => {
-  it("publishes the seven full-gym catalog templates by weekly frequency", () => {
+  it("publishes twenty templates with a broad full-gym frequency distribution", () => {
     const gymTemplates = PLAN_TEMPLATES.flatMap((template) => template.versions)
       .filter((version) => version.environmentKind === "full_gym");
 
-    expect(gymTemplates).toHaveLength(7);
-    expect(gymTemplates.filter((version) => version.content.blockBlueprints.length === 3)).toHaveLength(3);
-    expect(gymTemplates.filter((version) => version.content.blockBlueprints.length === 4)).toHaveLength(2);
-    expect(gymTemplates.filter((version) => version.content.blockBlueprints.length === 5)).toHaveLength(2);
+    expect(PLAN_TEMPLATES).toHaveLength(20);
+    expect(gymTemplates).toHaveLength(19);
+    expect(gymTemplates.filter((version) => version.content.blockBlueprints.length === 3)).toHaveLength(7);
+    expect(gymTemplates.filter((version) => version.content.blockBlueprints.length === 4)).toHaveLength(5);
+    expect(gymTemplates.filter((version) => version.content.blockBlueprints.length === 5)).toHaveLength(7);
     expect(gymTemplates.every((version) => version.catalog != null)).toBe(true);
+    expect(PLAN_TEMPLATES.flatMap((template) => template.versions).reduce((total, version) => total + version.content.blockBlueprints.length, 0)).toBe(79);
   });
 
   it("marks a gym template incompatible when essential capabilities are missing", () => {
@@ -52,5 +54,16 @@ describe("templateCompatibility", () => {
     expect(preview).toHaveLength(4);
     expect(preview[0]?.exercises.length).toBeGreaterThan(0);
     expect(preview[0]?.exercises[0]).toEqual(expect.objectContaining({ variantName: expect.any(String) }));
+  });
+
+  it("uses descriptive session names instead of anonymous A/B blocks", () => {
+    const titles = templateVersion("upper-lower-gym").content.blockBlueprints.map((block) => block.title);
+    expect(titles).toEqual([
+      "Torso: pecho, espalda y hombros",
+      "Pierna: sentadilla y cadena posterior",
+      "Torso: espalda y brazos",
+      "Pierna: unilateral y gemelos"
+    ]);
+    expect(titles.join(" ")).not.toMatch(/superior [AB]|inferior [AB]/i);
   });
 });

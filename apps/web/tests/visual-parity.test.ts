@@ -20,9 +20,39 @@ describe("Workout preview", () => {
   it("uses a visual identifier in preview and active exercise cards", () => {
     const runner = readFileSync(join(__dirname, "..", "src", "features", "workouts", "ui", "WorkoutRunner.tsx"), "utf8");
     expect(runner).toContain('className="exrow__thumb"');
-    expect(runner).toContain("MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]");
-    expect(runner).toContain("/library/groups/${MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]}");
-    expect(runner).toContain('className="exercise-media exercise-media--group"');
+    expect(runner).toContain("exerciseMediaSrc(variant)");
+    expect(runner).toContain("exerciseMediaAlt(variant)");
+    expect(runner).toContain('className="opt__media"');
+  });
+});
+
+describe("Exercise visuals across planning and history", () => {
+  it("keeps the exercise name and image together in every exercise list surface", () => {
+    const templateCatalog = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "TemplateCatalogScreen.tsx"), "utf8");
+    const proposal = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "ProposalScreen.tsx"), "utf8");
+    const history = readFileSync(join(__dirname, "..", "app", "historial", "[id]", "page.tsx"), "utf8");
+    expect(templateCatalog).toContain("exerciseMediaSrc");
+    expect(templateCatalog).toContain("exerciseMediaAlt");
+    expect(proposal).toContain("exerciseMediaSrc");
+    expect(proposal).toContain("exerciseMediaAlt");
+    expect(proposal).toContain("proposalExercisePickerTitle");
+    expect(proposal).toContain("pickerOption");
+    expect(proposal).not.toContain("<select value={exercise.variantId}");
+    expect(history).toContain("history-exercise__media");
+  });
+});
+
+describe("Plan session editor", () => {
+  it("exposes a visual editor for changing, removing and adding planned exercises", () => {
+    const planPage = readFileSync(join(__dirname, "..", "app", "plan", "page.tsx"), "utf8");
+    const editor = readFileSync(join(__dirname, "..", "src", "features", "planning", "ui", "PlanSessionEditor.tsx"), "utf8");
+    expect(planPage).toContain("PlanSessionEditor");
+    expect(editor).toContain("Editar ejercicios");
+    expect(editor).toContain("Añadir ejercicio");
+    expect(editor).toContain("Cambiar");
+    expect(editor).toContain("Eliminar");
+    expect(editor).toContain("session-content");
+    expect(editor).toContain("exerciseMediaSrc");
   });
 });
 
@@ -56,6 +86,8 @@ describe("Heyy-inspired onboarding shell", () => {
 
 describe("Onboarding visual assets", () => {
   it("ships and consumes original equipment and wellbeing illustrations", () => {
+    const equipmentScreen = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "EquipmentScreen.tsx"), "utf8");
+    const equipmentConstants = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "presentation", "constants.ts"), "utf8");
     const equipment = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "EquipmentScreen.module.css"), "utf8");
     const discomfort = readFileSync(join(__dirname, "..", "src", "features", "onboarding", "ui", "screens", "FocusDiscomfortScreen.module.css"), "utf8");
     expect(existsSync(join(PUBLIC_DIR, "onboarding", "equipment-sprite-v1.png"))).toBe(true);
@@ -63,7 +95,9 @@ describe("Onboarding visual assets", () => {
     expect(existsSync(join(PUBLIC_DIR, "onboarding", "focus-icons-sprite-v2.png"))).toBe(true);
     expect(existsSync(join(PUBLIC_DIR, "onboarding", "focus-body-icons-v3.png"))).toBe(true);
     expect(existsSync(join(PUBLIC_DIR, "onboarding", "discomfort-zones-sprite-v2.png"))).toBe(true);
-    expect(equipment).toContain("/onboarding/equipment-sprite-v1.png");
+    expect(equipmentScreen).toContain("EQUIPMENT_IMAGE");
+    expect(equipmentConstants).toContain("racks_smith");
+    expect(equipmentConstants).toContain("resistance_bands");
     expect(discomfort).toContain("/onboarding/discomfort-zones-sprite-v2.png");
   });
 });

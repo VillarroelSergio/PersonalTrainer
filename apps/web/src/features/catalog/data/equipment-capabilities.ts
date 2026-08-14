@@ -12,5 +12,8 @@ export const EQUIPMENT_CAPABILITIES: Array<{ id: EquipmentCapability; label: str
   { id: "leg_machines", label: "Máquinas de pierna" },
   { id: "bodyweight_accessories", label: "Accesorios de peso corporal" },
   { id: "indoor_cardio", label: "Cardio indoor" },
+  { id: "racks_smith", label: "Rack y multipower" },
+  { id: "pullup_dip_station", label: "Dominadas y fondos" },
+  { id: "resistance_bands", label: "Bandas elásticas" },
   { id: "no_equipment", label: "Sin equipamiento" }
 ];

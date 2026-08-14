@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
@@ -9,6 +10,7 @@ import { pickAchievements } from "@/features/history/domain/history-engine";
 import { AppShell } from "@/components/AppShell";
 import { WEEKDAY_LABEL, isoDate, isoWeekStart, parseIsoDateLocal, type Weekday } from "@/lib/weekdays";
 import { logRouteTiming } from "@/lib/observability/route-timing";
+import { exerciseMediaAlt, exerciseMediaSrc, findVariant } from "@/features/catalog/data/exercise-catalog";
 
 const TABS = [
   { key: "registro", label: "Fuerza y cardio" },
@@ -140,6 +142,11 @@ async function ProgresoSection({ historyRepo, ownerId }: { historyRepo: ReturnTy
       <div aria-label="Progresión por ejercicio">
       {progress.slice(0, 2).map((entry) => (
         <div key={entry.variantId} className="progressrow">
+          {findVariant(entry.variantId) ? (
+            <Image className="progressrow__media" src={exerciseMediaSrc(findVariant(entry.variantId)!)} alt={exerciseMediaAlt(findVariant(entry.variantId)!)} width={44} height={44} />
+          ) : (
+            <Image className="progressrow__media" src="/library/groups/core-card-v1.webp" alt={`${entry.exerciseName} — ${entry.variantName}`} width={44} height={44} />
+          )}
           <span>
             {entry.exerciseName} — {entry.variantName}
             <br />

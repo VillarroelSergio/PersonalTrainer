@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   InvalidSessionIndexError,
+  InvalidSessionContentError,
   InvalidWeekStartError,
   PastWeekError,
   PlanNotFoundError,
@@ -16,7 +17,10 @@ import type { PlanProposal } from "@/contracts/onboarding";
 const proposal: PlanProposal = {
   proposalId: "p1", ruleVersion: "plan-proposal-v1", reasons: [], alternatives: [],
   initialBlock: { name: "Adaptación", purpose: "Base", weeks: 4 },
-  week: { sessions: [{ day: "monday", kind: "strength", title: "Piernas", estimatedMinutes: 60 }] }
+  week: { sessions: [{ day: "monday", kind: "strength", title: "Piernas", estimatedMinutes: 60, exercises: [
+    { variantId: "squat-barbell", targetSets: 3, targetRepsMin: 6, targetRepsMax: 10 },
+    { variantId: "push-h-bench", targetSets: 3, targetRepsMin: 8, targetRepsMax: 12 }
+  ] }] }
 };
 
 async function fixture() {
@@ -127,6 +131,40 @@ describe("plan edit repository", () => {
     const { db, ownerId, planId } = await fixture();
     const repo = createPlanEditRepository(db);
     await expect(repo.applyEdit("account-b-nonexistent", planId, { kind: "skip", isoWeekStart: nextWeekStart(), sessionIndex: 0 })).rejects.toThrow(PlanNotFoundError);
+
+    await cleanup(db, ownerId);
+  });
+
+  it("updates, adds and removes exercises in a future session without touching other session data", async () => {
+    const { db, ownerId, planId } = await fixture();
+    const repo = createPlanEditRepository(db);
+    const updated = await repo.updateSessionContent(ownerId, planId, {
+      isoWeekStart: nextWeekStart(),
+      sessionIndex: 0,
+      exercises: [
+        { variantId: "squat-dumbbell", targetSets: 4, targetRepsMin: 8, targetRepsMax: 12 },
+        { variantId: "pull-h-dumbbell-row", targetSets: 3, targetRepsMin: 8, targetRepsMax: 10 }
+      ]
+    });
+
+    expect(updated.exercises.map((exercise) => exercise.variantId)).toEqual(["squat-dumbbell", "pull-h-dumbbell-row"]);
+    const saved = await db.select().from(trainingPlan).where(eq(trainingPlan.id, planId));
+    const savedProposal = JSON.parse(saved[0].contentJson) as PlanProposal;
+    expect(savedProposal.week.sessions[0].title).toBe("Piernas");
+    expect(savedProposal.week.sessions[0].exercises).toEqual(updated.exercises);
+
+    await cleanup(db, ownerId);
+  });
+
+  it("rejects duplicate or unknown variants when editing session content", async () => {
+    const { db, ownerId, planId } = await fixture();
+    const repo = createPlanEditRepository(db);
+    const input = { isoWeekStart: nextWeekStart(), sessionIndex: 0, exercises: [
+      { variantId: "squat-dumbbell", targetSets: 3, targetRepsMin: 8, targetRepsMax: 12 },
+      { variantId: "squat-dumbbell", targetSets: 3, targetRepsMin: 8, targetRepsMax: 12 }
+    ] };
+    await expect(repo.updateSessionContent(ownerId, planId, input)).rejects.toThrow(InvalidSessionContentError);
+    await expect(repo.updateSessionContent(ownerId, planId, { ...input, exercises: [{ ...input.exercises[0], variantId: "not-in-catalog" }] })).rejects.toThrow(InvalidSessionContentError);
 
     await cleanup(db, ownerId);
   });
