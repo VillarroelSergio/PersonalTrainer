@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isEquipmentRequirementSatisfied, type EquipmentRequirement } from "@/features/catalog/domain/editorial-content";
+import { isEquipmentRequirementSatisfied, trackingModeForEquipment, type EquipmentRequirement } from "@/features/catalog/domain/editorial-content";
 import { capabilitiesForEnvironment } from "@/features/catalog/domain/inventory";
 import { EDITORIAL_VARIANTS } from "@/features/catalog/data/editorial-exercises";
 import { EXERCISE_CATALOG, findVariant } from "@/features/catalog/data/exercise-catalog";
@@ -35,12 +35,33 @@ describe("compatibility catalog (exercise-catalog.ts adapter)", () => {
 
   it("has the same total variant count as the editorial content it is derived from", () => {
     expect(EXERCISE_CATALOG).toHaveLength(EDITORIAL_VARIANTS.length);
-    expect(EXERCISE_CATALOG).toHaveLength(45);
+    expect(EXERCISE_CATALOG).toHaveLength(105);
+    expect(new Set(EXERCISE_CATALOG.map((variant) => variant.id)).size).toBe(105);
   });
 
   it("keeps legacy variants and adds the gym editorial collection", () => {
     expect(findVariant("squat-barbell")?.id).toBe("squat-barbell");
     expect(findVariant("leg-press")?.environments).toContain("full_gym");
+  });
+
+  it("marks bodyweight and accessory variants as repetitions-only", () => {
+    expect(findVariant("squat-bodyweight")?.trackingMode).toBe("reps_only");
+    expect(findVariant("hinge-band")?.trackingMode).toBe("reps_only");
+    expect(findVariant("pull-v-pullup-bar")?.trackingMode).toBe("reps_only");
+  });
+
+  it("treats the no-equipment capability as repetitions-only", () => {
+    expect(trackingModeForEquipment("no_equipment")).toBe("reps_only");
+  });
+
+  it("keeps externally loaded variants on load plus repetitions", () => {
+    expect(findVariant("squat-barbell")?.trackingMode).toBe("load_and_reps");
+    expect(findVariant("pull-v-lat-pulldown")?.trackingMode).toBe("load_and_reps");
+  });
+
+  it("publishes a substantial reps-only collection for bodyweight and bands", () => {
+    expect(EXERCISE_CATALOG.filter((variant) => variant.trackingMode === "reps_only")).toHaveLength(32);
+    expect(EXERCISE_CATALOG.filter((variant) => variant.trackingMode === "load_and_reps")).toHaveLength(73);
   });
 });
 

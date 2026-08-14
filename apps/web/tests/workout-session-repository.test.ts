@@ -18,7 +18,7 @@ const proposal: PlanProposal = {
   }
 };
 
-async function fixture() {
+async function fixture(variantId = "squat-barbell") {
   const db = getDb();
   const now = new Date();
   const ownerA = `account-a-${crypto.randomUUID()}`;
@@ -27,7 +27,10 @@ async function fixture() {
   for (const id of [ownerA, ownerB]) {
     await db.insert(user).values({ id, name: id, email: `${id}@example.test`, emailVerified: true, createdAt: now, updatedAt: now });
   }
-  await db.insert(trainingPlan).values({ id: planA, ownerId: ownerA, name: "Plan A", status: "active", version: 1, contentJson: JSON.stringify(proposal), createdAt: now });
+  const planContent = variantId === "squat-barbell"
+    ? proposal
+    : { ...proposal, week: { ...proposal.week, sessions: [{ ...proposal.week.sessions[0], exercises: [{ variantId, targetSets: 3, targetRepsMin: 8, targetRepsMax: 15 }] }] } };
+  await db.insert(trainingPlan).values({ id: planA, ownerId: ownerA, name: "Plan A", status: "active", version: 1, contentJson: JSON.stringify(planContent), createdAt: now });
   return { db, ownerA, ownerB, planA };
 }
 
@@ -43,6 +46,18 @@ async function completeThreeSets(repo: ReturnType<typeof createWorkoutSessionRep
 }
 
 describe("workout session repository", () => {
+  it("normalizes load to null for repetitions-only variants", async () => {
+    const { db, ownerA, ownerB, planA } = await fixture("squat-bodyweight");
+    const repo = createWorkoutSessionRepository(db);
+    const started = await repo.startOrResumeWorkout(ownerA, planA, 0);
+
+    await repo.recordSet(ownerA, started.workoutSession.id, started.sessionExercises[0].id, 1, 35, 12, "just_right");
+
+    const sets = await db.select({ loadKg: setPerformance.loadKg, repetitions: setPerformance.repetitions }).from(setPerformance).where(eq(setPerformance.sessionExerciseId, started.sessionExercises[0].id));
+    expect(sets).toEqual([{ loadKg: null, repetitions: 12 }]);
+    await cleanup(db, ownerA, ownerB);
+  });
+
   it("starts a session from the plan, resumes the same in-progress workout, and records sets", async () => {
     const { db, ownerA, ownerB, planA } = await fixture();
     const repo = createWorkoutSessionRepository(db);

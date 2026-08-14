@@ -16,13 +16,52 @@
 .remove, .editAnswers { border: 0; background: transparent; color: var(--warn); font: inherit; font-size: .78rem; cursor: pointer; }
 .editAnswers { align-self: flex-start; color: var(--ink-3); text-decoration: underline; }
 .exerciseList { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
-.exercise { display: grid; gap: 7px; padding: 9px 10px; border: 1px solid var(--rule-soft); border-radius: var(--r-sm); background: var(--paper-2); }
-.exercise div { display: grid; gap: 2px; min-width: 0; }
+.exercise { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--rule-soft); border-radius: var(--r-sm); background: var(--paper-2); }
+.exerciseImage { width: 56px; height: 56px; border-radius: 9px; object-fit: cover; background: var(--paper); }
+.exerciseBody { display: grid; gap: 2px; min-width: 0; }
 .exercise strong { font-size: .86rem; }
 .exercise span, .exerciseEmpty, .noAlternative { color: var(--ink-3); font-size: .78rem; }
-.exercise select { width: 100%; }
+.changeButton {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 9px 11px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.changeButton:hover, .changeButton:focus-visible { border-color: var(--accent); background: var(--accent-wash); }
+.changeButtonCopy { display: grid; gap: 2px; min-width: 0; }
+.changeButtonCopy strong { color: var(--accent); font-size: .8rem; }
+.changeButtonCopy span { color: var(--ink-3); font-size: .74rem; }
+.changeButtonArrow { color: var(--accent); font-size: 1.35rem; line-height: 1; }
 .exerciseEmpty { margin: 0; }
 .noAlternative { color: var(--warn); }
+.pickerSheet { padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+.pickerSubtitle { margin: 3px 0 0; color: var(--ink-3); font-size: .75rem; font-weight: 500; }
+.pickerSearchLabel { display: block; margin-bottom: 6px; color: var(--ink-2); font-size: .78rem; font-weight: 650; }
+.pickerSearch { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--paper-2); color: var(--ink); font: inherit; }
+.pickerSearch:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pickerCurrent { margin: 12px 0 10px; color: var(--ink-3); font-size: .78rem; }
+.pickerCurrent strong { color: var(--ink); }
+.pickerList { display: grid; gap: 8px; }
+.pickerOption { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 9px; border: 1px solid var(--rule-soft); border-radius: var(--r-sm); background: var(--paper-2); color: var(--ink); text-align: left; cursor: pointer; }
+.pickerOption:hover, .pickerOption:focus-visible { border-color: var(--accent); background: var(--accent-wash); }
+.pickerOptionCurrent { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.pickerImage { width: 72px; height: 72px; border-radius: 9px; object-fit: cover; background: var(--paper); }
+.pickerCopy { display: grid; gap: 2px; min-width: 0; }
+.pickerCopy strong { font-size: .88rem; }
+.pickerCopy span { overflow: hidden; color: var(--ink-2); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.pickerCopy small { color: var(--ink-3); font-size: .7rem; }
+.pickerState { align-self: start; color: var(--accent); font-size: .7rem; font-weight: 750; text-transform: uppercase; letter-spacing: .04em; }
+.pickerEmpty { margin: 12px 0; color: var(--ink-3); font-size: .82rem; }
 .reasons { border-top: 1px solid var(--rule-soft); padding-top: 12px; }
 .sectionLabel { margin: 0 0 6px; font-weight: 600; color: var(--ink-2); }
 .reasons ul { margin: 0; padding-left: 18px; color: var(--ink-2); }

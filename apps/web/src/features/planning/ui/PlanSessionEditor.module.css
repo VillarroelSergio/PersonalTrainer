@@ -1,0 +1,46 @@
+.editorSheet { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+.sheetSubtitle { margin: 3px 0 0; color: var(--ink-3); font-size: .75rem; font-weight: 500; }
+.helper { margin: 0 0 12px; color: var(--ink-2); font-size: .8rem; line-height: 1.4; }
+.exerciseList { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.exerciseCard { display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: start; gap: 9px; padding: 10px; border: 1px solid var(--rule-soft); border-radius: var(--r-sm); background: var(--paper-2); }
+.exerciseImage { width: 68px; height: 68px; border-radius: 9px; object-fit: cover; background: var(--paper); }
+.exerciseInfo { display: grid; gap: 2px; min-width: 0; }
+.exerciseInfo strong { font-size: .86rem; }
+.exerciseInfo span { overflow: hidden; color: var(--ink-2); font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
+.exerciseInfo small { color: var(--ink-3); font-size: .68rem; }
+.exerciseActions { grid-column: 1 / -1; display: flex; gap: 8px; }
+.changeButton, .removeButton { min-height: 36px; padding: 7px 11px; border-radius: var(--r-sm); font: inherit; font-size: .76rem; font-weight: 700; cursor: pointer; }
+.changeButton { border: 1px solid var(--accent); background: var(--accent-wash); color: var(--accent); }
+.removeButton { border: 1px solid var(--rule); background: transparent; color: var(--warn); }
+.removeButton:disabled { cursor: not-allowed; opacity: .4; }
+.metricGrid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.metricGrid label { display: grid; gap: 4px; color: var(--ink-3); font-size: .68rem; font-weight: 650; }
+.metricGrid input { width: 100%; min-height: 36px; padding: 7px 8px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--paper); color: var(--ink); font: inherit; font-size: .8rem; }
+.metricGrid input:focus, .searchInput:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.addButton { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: var(--r-sm); background: var(--accent-wash); color: var(--accent); text-align: left; cursor: pointer; }
+.addButton > span:first-child { font-size: 1.25rem; line-height: 1; }
+.addButton > span:last-child { display: grid; gap: 2px; }
+.addButton strong { font-size: .82rem; }
+.addButton small { color: var(--ink-3); font-size: .7rem; }
+.footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 10px; border-top: 1px solid var(--rule-soft); }
+.pickerOverlay { z-index: 60; }
+.pickerSheet { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+.searchLabel { display: block; margin-bottom: 6px; color: var(--ink-2); font-size: .76rem; font-weight: 650; }
+.searchInput { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--paper-2); color: var(--ink); font: inherit; }
+.pickerList { display: grid; gap: 8px; margin-top: 12px; }
+.pickerOption { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 9px; border: 1px solid var(--rule-soft); border-radius: var(--r-sm); background: var(--paper-2); color: var(--ink); text-align: left; cursor: pointer; }
+.pickerOption:hover, .pickerOption:focus-visible { border-color: var(--accent); background: var(--accent-wash); }
+.pickerImage { width: 70px; height: 70px; border-radius: 9px; object-fit: cover; background: var(--paper); }
+.pickerCopy { display: grid; gap: 2px; min-width: 0; }
+.pickerCopy strong { font-size: .84rem; }
+.pickerCopy span { overflow: hidden; color: var(--ink-2); font-size: .74rem; text-overflow: ellipsis; white-space: nowrap; }
+.pickerCopy small { color: var(--ink-3); font-size: .68rem; }
+.pickerArrow { color: var(--accent); font-size: 1.3rem; }
+.emptyPicker { margin: 12px 0; color: var(--ink-3); font-size: .8rem; }
+
+@media (max-width: 420px) {
+  .exerciseCard { grid-template-columns: 60px minmax(0, 1fr); }
+  .exerciseImage { width: 60px; height: 60px; }
+  .pickerOption { grid-template-columns: 60px minmax(0, 1fr) auto; }
+  .pickerImage { width: 60px; height: 60px; }
+}

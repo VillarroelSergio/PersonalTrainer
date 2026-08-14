@@ -1,7 +1,7 @@
 import { onboardingFormPatchSchema, type OnboardingFormPatch } from "@/contracts/onboarding";
 
 const GOALS = ["muscle_gain", "strength", "fat_loss", "endurance", "active_lifestyle"] as const;
-const EQUIPMENT = ["free_weights", "benches_supports", "cables_torso", "leg_machines", "bodyweight_accessories", "indoor_cardio"] as const;
+const EQUIPMENT = ["free_weights", "benches_supports", "cables_torso", "leg_machines", "bodyweight_accessories", "indoor_cardio", "racks_smith", "pullup_dip_station", "resistance_bands"] as const;
 const ENVIRONMENTS = ["full_gym", "basic_gym", "home", "outdoors"] as const;
 
 function numberField(form: FormData, name: string): number | undefined {

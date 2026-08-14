@@ -12,6 +12,9 @@ export type EquipmentCapability =
   | "leg_machines"
   | "bodyweight_accessories"
   | "indoor_cardio"
+  | "racks_smith"
+  | "pullup_dip_station"
+  | "resistance_bands"
   | "no_equipment";
 
 /** Todo `allOf` debe cumplirse; si hay `anyOf`, basta con una capacidad de esa lista. */
@@ -19,6 +22,18 @@ export type EquipmentRequirement = {
   allOf?: EquipmentCapability[];
   anyOf?: EquipmentCapability[];
 };
+
+export type ExerciseTrackingMode = "load_and_reps" | "reps_only";
+
+export function trackingModeForEquipment(equipment: EquipmentCapability | "bodyweight"): ExerciseTrackingMode {
+  return equipment === "bodyweight"
+    || equipment === "no_equipment"
+    || equipment === "bodyweight_accessories"
+    || equipment === "pullup_dip_station"
+    || equipment === "resistance_bands"
+    ? "reps_only"
+    : "load_and_reps";
+}
 
 export type TargetContribution = {
   muscleGroup: MuscleGroup;
@@ -34,6 +49,7 @@ export type EditorialVariant = {
   requirements: EquipmentRequirement;
   environments: EnvironmentKind[];
   loadType: "external" | "bodyweight";
+  trackingMode: ExerciseTrackingMode;
   guide: string;
   mediaUrl?: string;
   /** Una variante archivada se puede leer desde historial, pero no proponerse en contenido nuevo. */

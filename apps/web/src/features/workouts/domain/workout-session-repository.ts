@@ -104,10 +104,12 @@ export function createWorkoutSessionRepository(database: Db) {
       const exercise = (await tx.select().from(sessionExercise).where(and(eq(sessionExercise.id, sessionExerciseId), eq(sessionExercise.workoutSessionId, workoutSessionId))).limit(1)).at(0);
       if (!exercise) throw new SessionExerciseNotFoundError();
 
+      const normalizedLoadKg = findVariant(exercise.variantId)?.trackingMode === "reps_only" ? null : loadKg;
+
       await tx
         .insert(setPerformance)
-        .values({ id: crypto.randomUUID(), sessionExerciseId, setNumber, loadKg, repetitions, difficulty, completedAt: new Date() })
-        .onConflictDoUpdate({ target: [setPerformance.sessionExerciseId, setPerformance.setNumber], set: { loadKg, repetitions, difficulty, completedAt: new Date() } });
+        .values({ id: crypto.randomUUID(), sessionExerciseId, setNumber, loadKg: normalizedLoadKg, repetitions, difficulty, completedAt: new Date() })
+        .onConflictDoUpdate({ target: [setPerformance.sessionExerciseId, setPerformance.setNumber], set: { loadKg: normalizedLoadKg, repetitions, difficulty, completedAt: new Date() } });
     });
   };
 

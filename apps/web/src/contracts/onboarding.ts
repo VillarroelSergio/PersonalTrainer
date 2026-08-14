@@ -3,7 +3,17 @@ import type { TrainingBlock } from "@/features/catalog/domain/training-block";
 
 export const goalSchema = z.enum(["muscle_gain", "strength", "fat_loss", "endurance", "active_lifestyle"]);
 export const weekdaySchema = z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
-export const equipmentCategorySchema = z.enum(["free_weights", "benches_supports", "cables_torso", "leg_machines", "bodyweight_accessories", "indoor_cardio"]);
+export const equipmentCategorySchema = z.enum([
+  "free_weights",
+  "benches_supports",
+  "cables_torso",
+  "leg_machines",
+  "bodyweight_accessories",
+  "indoor_cardio",
+  "racks_smith",
+  "pullup_dip_station",
+  "resistance_bands"
+]);
 export const discomfortSchema = z.object({ zone: z.enum(["neck", "shoulder", "back", "elbow", "wrist", "hip", "knee", "ankle"]), side: z.enum(["left", "right", "center"]).optional(), intensity: z.enum(["mild", "moderate", "important"]), kind: z.enum(["pain", "stiffness", "fatigue"]).optional() });
 
 export const onboardingDraftSchema = z.object({

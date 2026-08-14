@@ -10,5 +10,16 @@ export type EquipmentProfile = OnboardingDraft["environments"][number];
  * que `no_equipment` siempre está disponible.
  */
 export function capabilitiesForEnvironment(profile: EquipmentProfile): EquipmentCapability[] {
-  return [...new Set([...profile.equipment, "no_equipment"] as EquipmentCapability[])];
+  const capabilities = new Set<EquipmentCapability>(["no_equipment"]);
+  for (const equipment of profile.equipment) {
+    capabilities.add(equipment as EquipmentCapability);
+    if (equipment === "racks_smith") {
+      capabilities.add("free_weights");
+      capabilities.add("benches_supports");
+    }
+    if (equipment === "pullup_dip_station" || equipment === "resistance_bands") {
+      capabilities.add("bodyweight_accessories");
+    }
+  }
+  return [...capabilities];
 }

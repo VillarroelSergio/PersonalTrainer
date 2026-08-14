@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
-import { EXERCISE_CATALOG, findVariant, MUSCLE_GROUPS, MUSCLE_GROUP_LABEL, MUSCLE_GROUP_IMAGE, type MuscleGroup, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
+import { EXERCISE_CATALOG, exerciseMediaAlt, exerciseMediaSrc, findVariant, MUSCLE_GROUPS, MUSCLE_GROUP_LABEL, MUSCLE_GROUP_IMAGE, type MuscleGroup, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
 import { listOwnedFavoriteVariantIds } from "@/features/catalog/domain/favorite-repository";
 import { FavoriteToggle } from "@/features/catalog/ui/FavoriteToggle";
 import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
@@ -17,8 +17,8 @@ function ExerciseListItem({ variant, isFavorite }: { variant: ExerciseVariant; i
         <Link href={`/ejercicios/${variant.id}`} aria-hidden="true" tabIndex={-1} className="catalog-card__thumb">
           <Image
             className="catalog-card__thumb-img"
-            src={variant.mediaUrl ?? `/library/groups/${MUSCLE_GROUP_IMAGE[variant.primaryMuscleGroup]}`}
-            alt=""
+            src={exerciseMediaSrc(variant)}
+            alt={exerciseMediaAlt(variant)}
             width={52}
             height={52}
           />
