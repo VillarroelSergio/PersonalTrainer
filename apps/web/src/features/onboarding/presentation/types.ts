@@ -30,6 +30,7 @@ export type StepId =
   | "duration"
   | "environment"
   | "equipment"
+  | "template"
   | "focus"
   | "discomfort";
 
@@ -45,9 +46,14 @@ export const STEP_ORDER: StepId[] = [
   "duration",
   "environment",
   "equipment",
+  "template",
   "focus",
   "discomfort"
 ];
+
+export function visibleStepOrder(mode: CreationMode | null): StepId[] {
+  return mode === "guided" ? STEP_ORDER.filter((step) => step !== "template") : STEP_ORDER;
+}
 
 export const STEP_LABELS: Record<StepId, string> = {
   mode: "Modo",
@@ -61,6 +67,7 @@ export const STEP_LABELS: Record<StepId, string> = {
   duration: "Duración",
   environment: "Entorno",
   equipment: "Equipamiento",
+  template: "Rutina",
   focus: "Foco muscular",
   discomfort: "Molestias"
 };
@@ -83,6 +90,7 @@ export type OnboardingFormState = {
   enduranceActivities: EnduranceActivity[];
   sessionDurationMinutes: OnboardingDraft["sessionDurationMinutes"];
   environments: Environment[];
+  selectedTemplateId: string | null;
   optionalMuscleFocus: MuscleFocus[];
   discomfort: Discomfort | null;
 };

@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { onboardingDraftSchema } from "@/contracts/onboarding";
 import { canAdvance, createInitialState, formToDraft, onboardingReducer } from "@/features/onboarding/presentation/state";
-import { STEP_ORDER } from "@/features/onboarding/presentation/types";
+import { STEP_ORDER, visibleStepOrder } from "@/features/onboarding/presentation/types";
 import { EQUIPMENT_IMAGE, EQUIPMENT_OPTIONS } from "@/features/onboarding/presentation/constants";
 import { percentForElapsed, phaseForPercent, TRANSITION_DURATION_MS, TRANSITION_MAX_PERCENT } from "@/features/onboarding/presentation/transition";
 
 describe("onboardingReducer", () => {
+  it("omits routine selection from guided onboarding", () => {
+    expect(visibleStepOrder("guided")).not.toContain("template");
+    expect(visibleStepOrder("guided")).toHaveLength(13);
+  });
+
+  it("keeps routine selection for self-directed onboarding", () => {
+    expect(visibleStepOrder("self_directed")).toContain("template");
+    expect(visibleStepOrder("self_directed")).toHaveLength(14);
+  });
+
   it("has an illustration for every selectable equipment category", () => {
     expect(EQUIPMENT_OPTIONS.map((option) => EQUIPMENT_IMAGE[option.value])).toEqual(expect.arrayContaining(EQUIPMENT_OPTIONS.map(() => expect.any(String))));
   });
@@ -23,6 +33,7 @@ describe("onboardingReducer", () => {
       "duration",
       "environment",
       "equipment",
+      "template",
       "focus",
       "discomfort"
     ]);
@@ -33,6 +44,16 @@ describe("onboardingReducer", () => {
     state = onboardingReducer(state, { type: "GO_TO_STEP", stepIndex: 1 });
     expect(canAdvance(state)).toBe(false);
     state = onboardingReducer(state, { type: "TOGGLE_GOAL", goal: "fat_loss" });
+    expect(canAdvance(state)).toBe(true);
+  });
+
+  it("requires a catalog choice on the template step for self-directed creation", () => {
+    let state = createInitialState();
+    state = onboardingReducer(state, { type: "SET_MODE", mode: "self_directed" });
+    state = onboardingReducer(state, { type: "GO_TO_STEP", stepIndex: STEP_ORDER.indexOf("template") });
+    expect(canAdvance(state)).toBe(false);
+    state = onboardingReducer(state, { type: "SELECT_TEMPLATE", templateId: "upper-lower-gym" });
+    expect(state.form.selectedTemplateId).toBe("upper-lower-gym");
     expect(canAdvance(state)).toBe(true);
   });
 

@@ -9,7 +9,7 @@ import shell from "@/components/OnboardingShell.module.css";
 import tokens from "@/styles/tokens.module.css";
 import { RealOnboardingDataSource, type OnboardingDataSource } from "../presentation/data-source";
 import { canAdvance, createInitialState, formToDraft, onboardingReducer } from "../presentation/state";
-import { STEP_LABELS, STEP_ORDER } from "../presentation/types";
+import { STEP_LABELS, visibleStepOrder } from "../presentation/types";
 import { EnduranceScreen, StrengthAvailabilityScreen } from "./screens/ActivityScreen";
 import { ModeScreen, GoalsScreen, ExperienceScreen } from "./screens/BasicSelectionScreens";
 import { DurationScreen, EnvironmentScreen } from "./screens/DurationEnvironmentScreen";
@@ -17,6 +17,7 @@ import { EquipmentScreen } from "./screens/EquipmentScreen";
 import { DiscomfortScreen, FocusScreen } from "./screens/FocusDiscomfortScreen";
 import { BirthDateScreen, HeightScreen, WeightScreen } from "./screens/PhysicalScreens";
 import { ProposalScreen } from "./screens/ProposalScreen";
+import { TemplateCatalogScreen } from "./screens/TemplateCatalogScreen";
 
 type OnboardingFlowProps = {
   dataSource?: OnboardingDataSource;
@@ -30,7 +31,8 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
   const [state, dispatch] = useReducer(onboardingReducer, undefined, createInitialState);
   const [submitting, setSubmitting] = useState(false);
   const { form } = state;
-  const step = STEP_ORDER[state.stepIndex];
+  const steps = visibleStepOrder(form.creationMode);
+  const step = steps[state.stepIndex] ?? steps[steps.length - 1];
 
   useEffect(() => {
     if (state.phase !== "transition" || submitting) return;
@@ -38,7 +40,7 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
     // El último paso (focus_discomfort) dispara START_TRANSITION directo, sin
     // pasar por goNext(): hay que persistirlo aquí para que el borrador
     // guardado incluya también foco/molestia antes de generar la propuesta.
-    Promise.resolve(dataSource.saveStep?.(form, STEP_ORDER[STEP_ORDER.length - 1]))
+    Promise.resolve(dataSource.saveStep?.(form, "discomfort"))
       .catch(() => undefined)
       .then(() => dataSource.submit(formToDraft(form)))
       .then((proposal) => dispatch({ type: "PROPOSAL_READY", proposal }))
@@ -98,7 +100,7 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
 
   return (
     <div className={`${tokens.root} ${shell.shell}`}>
-      <ProgressHeader currentIndex={state.stepIndex} totalSteps={STEP_ORDER.length} stepLabel={STEP_LABELS[step]} />
+      <ProgressHeader currentIndex={state.stepIndex} totalSteps={steps.length} stepLabel={STEP_LABELS[step]} />
 
       {state.submitError && (
         <p role="alert" style={{ margin: "0 20px", color: "var(--warn)" }}>
@@ -173,6 +175,15 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
           onToggleEquipment={(kind, equipment) => dispatch({ type: "TOGGLE_EQUIPMENT", kind, equipment })}
         />
       )}
+      {step === "template" && (
+        <TemplateCatalogScreen
+          creationMode={form.creationMode}
+          environment={form.environments[0]}
+          strengthDays={form.strengthAvailability.length}
+          selectedTemplateId={form.selectedTemplateId}
+          onSelect={(templateId) => dispatch({ type: "SELECT_TEMPLATE", templateId })}
+        />
+      )}
       {step === "focus" && (
         <FocusScreen
           optionalMuscleFocus={form.optionalMuscleFocus}
@@ -188,10 +199,10 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
 
       <CtaBar
         onBack={state.stepIndex > 0 ? () => dispatch({ type: "GO_BACK" }) : undefined}
-        continueLabel={state.stepIndex === STEP_ORDER.length - 1 ? "Confirmar" : "Continuar"}
+        continueLabel={state.stepIndex === steps.length - 1 ? "Confirmar" : "Continuar"}
         continueDisabled={!canAdvance(state)}
         onContinue={() => {
-          if (state.stepIndex === STEP_ORDER.length - 1) dispatch({ type: "START_TRANSITION" });
+          if (state.stepIndex === steps.length - 1) dispatch({ type: "START_TRANSITION" });
           else goNext();
         }}
       />
