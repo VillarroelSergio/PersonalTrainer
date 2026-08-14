@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "@/styles/app.css";
 import { OfflineSyncProvider } from "@/lib/offline/OfflineSyncContext";
 import { PwaRegister } from "@/lib/offline/PwaRegister";
@@ -11,6 +12,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <PwaRegister />
         <OfflineSyncProvider>{children}</OfflineSyncProvider>
+        <SpeedInsights />
       </body>
     </html>
   );

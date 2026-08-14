@@ -12,7 +12,10 @@ function connectionString(): string {
 }
 
 export function getSql(): Sql {
-  if (!sql) sql = postgres(connectionString());
+  // Vercel functions are short-lived. Keep the pool bounded while allowing
+  // independent reads in one render to overlap; prepared statements are
+  // incompatible with Supabase transaction pooling.
+  if (!sql) sql = postgres(connectionString(), { prepare: false, max: 2 });
   return sql;
 }
 
