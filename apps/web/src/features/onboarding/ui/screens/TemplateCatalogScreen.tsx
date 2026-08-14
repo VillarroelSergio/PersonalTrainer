@@ -31,8 +31,15 @@ export function TemplateCatalogScreen({ creationMode, environment, strengthDays,
 
   if (creationMode === "guided") return null;
 
+  const selectedEnvironmentKind = environment?.kind;
   const templates = PLAN_TEMPLATES.flatMap((template) => template.versions)
-    .filter((version) => version.environmentKind === "full_gym" && version.content.blockBlueprints.length === strengthDays);
+    .filter((version) => {
+      const environmentMatches = selectedEnvironmentKind
+        ? version.environmentKind === selectedEnvironmentKind
+          || (selectedEnvironmentKind === "basic_gym" && version.environmentKind === "full_gym")
+        : version.environmentKind === "full_gym";
+      return environmentMatches && version.content.blockBlueprints.length === strengthDays;
+    });
   const capabilities = environment ? capabilitiesForEnvironment(environment) : [];
 
   return (
@@ -94,6 +101,11 @@ export function TemplateCatalogScreen({ creationMode, environment, strengthDays,
             </article>
           );
         })}
+        {templates.length === 0 && (
+          <p className={styles.empty}>
+            Todavía no hay una rutina de catálogo para este entorno y número de días. Puedes volver atrás y elegir otro entorno, o usar la propuesta guiada.
+          </p>
+        )}
       </div>
     </ScreenLayout>
   );
