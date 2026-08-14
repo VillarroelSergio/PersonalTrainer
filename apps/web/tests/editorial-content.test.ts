@@ -35,7 +35,12 @@ describe("compatibility catalog (exercise-catalog.ts adapter)", () => {
 
   it("has the same total variant count as the editorial content it is derived from", () => {
     expect(EXERCISE_CATALOG).toHaveLength(EDITORIAL_VARIANTS.length);
-    expect(EXERCISE_CATALOG).toHaveLength(24);
+    expect(EXERCISE_CATALOG).toHaveLength(45);
+  });
+
+  it("keeps legacy variants and adds the gym editorial collection", () => {
+    expect(findVariant("squat-barbell")?.id).toBe("squat-barbell");
+    expect(findVariant("leg-press")?.environments).toContain("full_gym");
   });
 });
 

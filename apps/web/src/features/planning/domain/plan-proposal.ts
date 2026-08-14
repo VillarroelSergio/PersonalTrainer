@@ -3,6 +3,9 @@ import { assignSessionExercises } from "./session-exercise-assignment";
 import { FOUNDATION_BLOCKS } from "@/features/catalog/data/foundation-blocks";
 import { isEquipmentRequirementSatisfied } from "@/features/catalog/domain/editorial-content";
 import { capabilitiesForEnvironment, type EquipmentProfile } from "@/features/catalog/domain/inventory";
+import { PLAN_TEMPLATES } from "@/features/planning/data/plan-templates";
+import { personalizeTemplate } from "@/features/planning/domain/template-personalization";
+import { templateCompatibility } from "@/features/planning/domain/plan-template";
 
 const weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
@@ -14,6 +17,7 @@ function foundationBlocksForEnvironment(environment: EquipmentProfile) {
 }
 
 export function buildPlanProposal(draft: OnboardingDraft): PlanProposal {
+  if (draft.selectedTemplateId) return buildSelectedTemplateProposal(draft);
   const environment = draft.environments[0];
   const foundationBlocks = foundationBlocksForEnvironment(environment);
   const strengthSessions = draft.strengthAvailability.map((day, index) => {
@@ -55,6 +59,26 @@ export function buildPlanProposal(draft: OnboardingDraft): PlanProposal {
     ],
     alternatives: [{ code: "EDIT_BEFORE_ACTIVATION", message: "Puedes mover, editar o eliminar cualquier sesión antes de activar el plan." }],
     week: { sessions: [...strengthSessions, ...enduranceSessions].sort((a, b) => weekdays.indexOf(a.day) - weekdays.indexOf(b.day)) }
+  };
+}
+
+function buildSelectedTemplateProposal(draft: OnboardingDraft): PlanProposal {
+  const template = PLAN_TEMPLATES.find((candidate) => candidate.templateId === draft.selectedTemplateId);
+  const version = template?.versions.at(-1);
+  if (!version) throw new Error("La rutina seleccionada ya no está disponible.");
+  if (version.content.blockBlueprints.length !== draft.strengthAvailability.length) throw new Error("La rutina seleccionada no coincide con tus días de fuerza.");
+  const compatibility = templateCompatibility(version, capabilitiesForEnvironment(draft.environments[0]));
+  if (compatibility.status !== "compatible") throw new Error("La rutina seleccionada no es compatible con tu equipamiento actual.");
+  const copy = personalizeTemplate(version, draft);
+  return {
+    proposalId: draft.clientOperationId,
+    ruleVersion: "plan-proposal-v1",
+    confidence: 1,
+    missingData: [],
+    initialBlock: { name: version.name, purpose: version.editorialNote, weeks: 4 },
+    reasons: [{ code: "CATALOG_SELECTION", message: "Elegiste esta rutina del catálogo y podrás editarla antes de activarla." }],
+    alternatives: [{ code: "EDIT_BEFORE_ACTIVATION", message: "Puedes mover, editar o eliminar cualquier sesión antes de activar el plan." }],
+    week: copy.content
   };
 }
 
