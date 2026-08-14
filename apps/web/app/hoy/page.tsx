@@ -27,27 +27,29 @@ export default async function HoyPage() {
   const content = JSON.parse(activePlan.contentJson) as PlanProposal;
   const sessions = content.week?.sessions ?? [];
   const repository = createWorkoutSessionRepository(db);
-  const statuses = await repository.listLatestStatuses(session.user.id, activePlan.id);
-
   const today = todayWeekday();
   const weekStart = isoWeekStart();
   const editRepository = createPlanEditRepository(db);
-  const adjustments = await editRepository.listWeekAdjustments(session.user.id, activePlan.id, weekStart);
+  const [statuses, adjustments] = await Promise.all([
+    repository.listLatestStatuses(session.user.id, activePlan.id),
+    editRepository.listWeekAdjustments(session.user.id, activePlan.id, weekStart)
+  ]);
   const weekOccurrences = buildWeekView(content, true, adjustments, statuses as Record<number, ExecutedStatus>);
   const todayOccurrences = visibleOccurrencesForDay(weekOccurrences, today);
   const todayIndex = todayOccurrences[0]?.sessionIndex ?? -1;
   const todaySession = todayIndex >= 0 ? sessions[todayIndex] : null;
   const engineRepository = createWorkoutTrainingEngineRepository(db);
-  const adjustment = todayIndex >= 0 ? await engineRepository.getAdjustment(session.user.id, activePlan.id, weekStart, todayIndex) : undefined;
+  const extraOccurrences = todayOccurrences.slice(1);
+  const allAdjustments = await Promise.all(
+    todayOccurrences.map((occurrence) => engineRepository.getAdjustment(session.user.id, activePlan.id, weekStart, occurrence.sessionIndex))
+  );
+  const adjustment = allAdjustments[0];
   const recoveryRepository = createRecoverySessionRepository(db);
   const recoveryStatus = todayIndex >= 0 && adjustment?.kind === "recovery" ? (await recoveryRepository.findLatest(session.user.id, activePlan.id, todayIndex))?.status ?? null : null;
 
   const warn = weeklyLoadWarning(sessions);
   const weekSummary = summarizeWeekSessions(sessions, statuses);
-  const extraOccurrences = todayOccurrences.slice(1);
-  const extraOccurrenceAdjustments = await Promise.all(
-    extraOccurrences.map((occurrence) => engineRepository.getAdjustment(session.user.id, activePlan.id, weekStart, occurrence.sessionIndex))
-  );
+  const extraOccurrenceAdjustments = allAdjustments.slice(1);
 
   return (
     <AppShell title="Trainer">

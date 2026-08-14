@@ -28,12 +28,15 @@ export default async function EntrenarPage({ searchParams }: { searchParams: Pro
   // servidor, con los mismos repositorios que ya usa /ejercicios — la sesión real
   // (POST /api/v1/workouts) no se crea hasta que la persona pulsa "Empezar sesión".
   const workoutRepo = createWorkoutSessionRepository(db);
-  const favoriteVariantIds = await listOwnedFavoriteVariantIds(db, session.user.id);
-  const recentVariantIds = await workoutRepo.listRecentVariantIds(session.user.id, 6);
+  const [favoriteVariantIds, recentVariantIds, statuses] = await Promise.all([
+    listOwnedFavoriteVariantIds(db, session.user.id),
+    workoutRepo.listRecentVariantIds(session.user.id, 6),
+    workoutRepo.listLatestStatuses(session.user.id, activePlan.id)
+  ]);
   // "Continuar sesión" en /hoy enlaza aquí igual que "Empezar sesión": si ya existe una
   // sesión in_progress para este índice, se entra directo a ella sin pasar por la vista
   // previa ni exigir un segundo toque en "Empezar sesión".
-  const isResuming = (await workoutRepo.listLatestStatuses(session.user.id, activePlan.id))[sessionIndex] === "in_progress";
+  const isResuming = statuses[sessionIndex] === "in_progress";
 
   return (
     <AppShell title="Entrenar" backHref="/hoy">
