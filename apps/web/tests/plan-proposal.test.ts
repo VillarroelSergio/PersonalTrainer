@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildPlanProposal } from "@/features/planning/domain/plan-proposal";
+import { replaceProposalExerciseVariant } from "@/features/planning/domain/plan-proposal-editor";
+import { PLAN_TEMPLATES } from "@/features/planning/data/plan-templates";
 import { onboardingDraftSchema } from "@/contracts/onboarding";
 
 const validDraft = {
@@ -71,6 +73,33 @@ describe("onboarding proposal", () => {
       expect(block).not.toHaveProperty("targetSets");
       expect(block).not.toHaveProperty("targetRepsMin");
       expect(block).not.toHaveProperty("targetRepsMax");
+    }
+  });
+
+  it("replaces only the selected exercise variant and preserves targets", () => {
+    const proposal = buildPlanProposal(onboardingDraftSchema.parse(validDraft));
+    const sessionIndex = proposal.week.sessions.findIndex((session) => session.kind === "strength");
+    const original = proposal.week.sessions[sessionIndex]?.exercises?.[0];
+    const updated = replaceProposalExerciseVariant(proposal, sessionIndex, 0, "push-h-dumbbell");
+
+    expect(updated.week.sessions[sessionIndex]?.exercises?.[0]).toEqual({ ...original, variantId: "push-h-dumbbell" });
+    expect(proposal.week.sessions[sessionIndex]?.exercises?.[0]).toEqual(original);
+  });
+
+  it("resolves exercises for every compatible full-gym routine", () => {
+    const weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday"] as const;
+    const routines = PLAN_TEMPLATES.flatMap((template) => template.versions).filter((version) => version.environmentKind === "full_gym");
+
+    for (const routine of routines) {
+      const draft = onboardingDraftSchema.parse({
+        ...validDraft,
+        creationMode: "self_directed",
+        selectedTemplateId: routine.templateId,
+        strengthAvailability: weekdays.slice(0, routine.content.blockBlueprints.length),
+        environments: [{ kind: "full_gym", equipment: ["free_weights", "benches_supports", "cables_torso", "leg_machines", "bodyweight_accessories"] }]
+      });
+      const proposal = buildPlanProposal(draft);
+      expect(proposal.week.sessions.every((session) => (session.exercises?.length ?? 0) > 0), routine.templateId).toBe(true);
     }
   });
 });

@@ -1,6 +1,9 @@
 import type { EnvironmentKind, MovementPattern } from "@/features/catalog/data/exercise-catalog";
 import type { EquipmentCapability } from "@/features/catalog/domain/editorial-content";
-import type { PlanProposal } from "@/contracts/onboarding";
+import type { Goal, PlanProposal } from "@/contracts/onboarding";
+import { EDITORIAL_VARIANTS } from "@/features/catalog/data/editorial-exercises";
+import { isEquipmentRequirementSatisfied, type EditorialVariant } from "@/features/catalog/domain/editorial-content";
+import { capabilitiesForEnvironment, type EquipmentProfile } from "@/features/catalog/domain/inventory";
 
 /**
  * Describe qué patrones de movimiento quiere una sesión de la plantilla, sin
@@ -25,6 +28,12 @@ export type PlanTemplateVersion = {
   environmentKind: EnvironmentKind;
   /** Aviso editorial: punto de partida razonable, no prescripción validada profesionalmente. */
   editorialNote: string;
+  /** Datos breves para elegir una plantilla en el catálogo, no reglas de progresión. */
+  catalog: {
+    level: "beginner" | "intermediate" | "advanced";
+    goals: Goal[];
+    durationMinutes: 20 | 40 | 60 | 90;
+  };
   content: PlanTemplateContent;
 };
 
@@ -61,4 +70,22 @@ export function templateCompatibility(
     status: missingCapabilities.length === 0 ? "compatible" : "not_currently_compatible",
     missingCapabilities
   };
+}
+
+export function templatePreviewExercises(
+  templateVersion: PlanTemplateVersion,
+  environment: EquipmentProfile
+): Array<{ title: string; exercises: EditorialVariant[] }> {
+  const capabilities = capabilitiesForEnvironment(environment);
+  return templateVersion.content.blockBlueprints.map((blueprint) => ({
+    title: blueprint.title,
+    exercises: blueprint.patterns
+      .map((pattern) => EDITORIAL_VARIANTS.find((variant) => (
+        variant.active
+        && variant.movementPattern === pattern
+        && variant.environments.includes(environment.kind)
+        && isEquipmentRequirementSatisfied(variant.requirements, capabilities)
+      )))
+      .filter((variant): variant is EditorialVariant => Boolean(variant))
+  }));
 }

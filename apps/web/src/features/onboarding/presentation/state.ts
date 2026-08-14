@@ -1,7 +1,7 @@
 import type { OnboardingDraft } from "@/contracts/onboarding";
 import { ENVIRONMENT_COMPATIBLE_EQUIPMENT } from "./constants";
 import {
-  STEP_ORDER,
+  visibleStepOrder,
   type Discomfort,
   type EnduranceActivity,
   type Environment,
@@ -43,6 +43,7 @@ export function createInitialFormState(now: Date = new Date()): OnboardingFormSt
     enduranceActivities: [],
     sessionDurationMinutes: 60,
     environments: [],
+    selectedTemplateId: null,
     optionalMuscleFocus: [],
     discomfort: null
   };
@@ -79,6 +80,7 @@ export type Action =
   | { type: "SET_DURATION"; minutes: OnboardingFormState["sessionDurationMinutes"] }
   | { type: "TOGGLE_ENVIRONMENT"; kind: EnvironmentKind }
   | { type: "TOGGLE_EQUIPMENT"; kind: EnvironmentKind; equipment: EquipmentCategory }
+  | { type: "SELECT_TEMPLATE"; templateId: string }
   | { type: "TOGGLE_MUSCLE_FOCUS"; focus: MuscleFocus }
   | { type: "SET_DISCOMFORT"; discomfort: Discomfort | null }
   | { type: "GO_NEXT" }
@@ -141,6 +143,8 @@ export function onboardingReducer(state: OnboardingState, action: Action): Onboa
       return { ...state, form: { ...state.form, environments: selectEnvironment(action.kind) } };
     case "TOGGLE_EQUIPMENT":
       return { ...state, form: { ...state.form, environments: toggleEquipment(state.form.environments, action.kind, action.equipment) } };
+    case "SELECT_TEMPLATE":
+      return { ...state, form: { ...state.form, selectedTemplateId: action.templateId } };
     case "TOGGLE_MUSCLE_FOCUS": {
       const focus = state.form.optionalMuscleFocus;
       if (focus.includes(action.focus)) return { ...state, form: { ...state.form, optionalMuscleFocus: focus.filter((item) => item !== action.focus) } };
@@ -150,11 +154,11 @@ export function onboardingReducer(state: OnboardingState, action: Action): Onboa
     case "SET_DISCOMFORT":
       return { ...state, form: { ...state.form, discomfort: action.discomfort } };
     case "GO_NEXT":
-      return { ...state, stepIndex: Math.min(STEP_ORDER.length - 1, state.stepIndex + 1) };
+      return { ...state, stepIndex: Math.min(visibleStepOrder(state.form.creationMode).length - 1, state.stepIndex + 1) };
     case "GO_BACK":
       return { ...state, stepIndex: Math.max(0, state.stepIndex - 1) };
     case "GO_TO_STEP":
-      return { ...state, stepIndex: Math.max(0, Math.min(STEP_ORDER.length - 1, action.stepIndex)) };
+      return { ...state, stepIndex: Math.max(0, Math.min(visibleStepOrder(state.form.creationMode).length - 1, action.stepIndex)) };
     case "START_TRANSITION":
       return { ...state, phase: "transition", submitError: null, proposal: null, ringFinished: false };
     case "PROPOSAL_READY": {
@@ -191,7 +195,7 @@ export function onboardingReducer(state: OnboardingState, action: Action): Onboa
 
 export function canAdvance(state: OnboardingState): boolean {
   const { form } = state;
-  const step = STEP_ORDER[state.stepIndex];
+  const step = visibleStepOrder(form.creationMode)[state.stepIndex];
   switch (step) {
     case "mode":
       return form.creationMode !== null;
@@ -211,6 +215,9 @@ export function canAdvance(state: OnboardingState): boolean {
     case "environment":
       return form.environments.length > 0;
     case "equipment":
+      return true;
+    case "template":
+      return form.creationMode === "guided" || form.selectedTemplateId !== null;
     case "focus":
     case "discomfort":
       return true;
@@ -241,6 +248,7 @@ export function formToDraft(form: OnboardingFormState): OnboardingDraft {
     enduranceActivities: form.enduranceActivities,
     sessionDurationMinutes: form.sessionDurationMinutes,
     environments: form.environments,
+    selectedTemplateId: form.selectedTemplateId ?? undefined,
     optionalMuscleFocus: form.optionalMuscleFocus.length > 0 ? form.optionalMuscleFocus : undefined,
     discomfort: form.discomfort ?? undefined
   };

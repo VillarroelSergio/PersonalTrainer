@@ -25,6 +25,14 @@ describe("POST /api/v1/plan-proposals", () => {
     expect(invalidKey.status).toBe(400);
   });
 
+  it("creates a proposal from a selected compatible catalog template", async () => {
+    const selected = { ...body, creationMode: "self_directed", selectedTemplateId: "upper-lower-gym", strengthAvailability: ["monday", "tuesday", "thursday", "friday"], environments: [{ kind: "full_gym", equipment: ["free_weights", "benches_supports", "cables_torso"] }] };
+    const response = await createPlanProposalResponse(new Request("http://localhost/api/v1/plan-proposals", { method: "POST", body: JSON.stringify(selected), headers: { "content-type": "application/json", "idempotency-key": body.clientOperationId } }), { id: "account-a" });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).data.initialBlock.name).toBe("Tren superior / tren inferior en gimnasio");
+  });
+
   it("rejects malformed JSON and invalid drafts at the HTTP boundary", async () => {
     const malformed = await createPlanProposalResponse(new Request("http://localhost", { method: "POST", body: "not-json", headers: { "idempotency-key": body.clientOperationId } }), { id: "account-a" });
     expect(malformed.status).toBe(400);

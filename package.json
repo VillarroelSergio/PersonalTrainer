@@ -3,7 +3,8 @@
   "private": true,
   "packageManager": "npm@10.9.2",
   "scripts": {
-    "dev": "next dev apps/web --turbo",
+    "dev": "tsx scripts/dev.ts",
+    "dev:next": "next dev apps/web --turbo",
     "build": "next build apps/web",
     "start": "next start apps/web",
     "lint": "eslint --config apps/web/eslint.config.mjs apps/web",

@@ -81,6 +81,7 @@ export function formStepPatch(form: OnboardingFormState, step: StepId) {
     case "duration": return { sessionDurationMinutes: form.sessionDurationMinutes };
     case "environment":
     case "equipment": return { environments: form.environments };
+    case "template": return { selectedTemplateId: form.selectedTemplateId };
     case "focus": return { optionalMuscleFocus: form.optionalMuscleFocus };
     case "discomfort": return { discomfort: form.discomfort };
   }

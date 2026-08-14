@@ -21,7 +21,12 @@ export async function createPlanProposalResponse(request: Request, user: Session
     return error(400, "VALIDATION_ERROR", "Idempotency-Key debe coincidir con clientOperationId.");
   }
 
-  const proposal = buildPlanProposal(parsed.data);
+  let proposal;
+  try {
+    proposal = buildPlanProposal(parsed.data);
+  } catch (cause) {
+    return error(400, "VALIDATION_ERROR", cause instanceof Error ? cause.message : "No pudimos preparar esta rutina.");
+  }
   if (database) await saveOwnedProposal(database, user.id, proposal);
   return Response.json({ data: proposal, meta: { pendingSync: false } });
 }

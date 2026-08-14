@@ -10,6 +10,7 @@ export const onboardingDraftSchema = z.object({
   clientOperationId: z.string().uuid(),
   baseVersion: z.number().int().nonnegative(),
   creationMode: z.enum(["guided", "self_directed"]),
+  selectedTemplateId: z.string().min(1).optional(),
   goals: z.array(goalSchema).min(1).max(5),
   primaryGoal: goalSchema,
   experience: z.enum(["beginner", "intermediate", "advanced"]),
@@ -70,6 +71,7 @@ export const onboardingFormPatchSchema = z.object({
   enduranceActivities: z.array(z.object({ kind: z.enum(["running", "cycling", "walking"]), sessionsPerWeek: z.number().int().min(1).max(7) })).max(3).optional(),
   sessionDurationMinutes: z.union([z.literal(20), z.literal(40), z.literal(60), z.literal(90)]).optional(),
   environments: z.array(z.object({ kind: z.enum(["full_gym", "basic_gym", "home", "outdoors"]), equipment: z.array(equipmentCategorySchema) })).length(1).optional(),
+  selectedTemplateId: z.string().min(1).nullable().optional(),
   optionalMuscleFocus: z.array(z.enum(["upper_body", "lower_body", "push", "pull", "full_body"])).max(3).optional(),
   discomfort: discomfortSchema.nullable().optional()
 });
