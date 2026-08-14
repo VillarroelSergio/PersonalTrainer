@@ -8,6 +8,7 @@ import { createHistoryRepository, type EnduranceActivityEntry, type SessionHisto
 import { pickAchievements } from "@/features/history/domain/history-engine";
 import { AppShell } from "@/components/AppShell";
 import { WEEKDAY_LABEL, isoDate, isoWeekStart, parseIsoDateLocal, type Weekday } from "@/lib/weekdays";
+import { logRouteTiming } from "@/lib/observability/route-timing";
 
 const TABS = [
   { key: "registro", label: "Fuerza y cardio" },
@@ -20,7 +21,10 @@ const STATUS_BAR: Record<string, string> = { completed: "completada", adapted: "
 const SPORT_LABEL: Record<string, string> = { running: "Correr", cycling: "Bici", walking: "Caminar", other: "Otra actividad" };
 
 export default async function HistorialPage({ searchParams }: { searchParams: Promise<{ tab?: string; semana?: string }> }) {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const startedAt = Date.now();
+  const requestHeaders = await headers();
+  const requestId = requestHeaders.get("x-vercel-id");
+  const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session?.user) redirect("/login");
   const ownerId = session.user.id;
 
@@ -31,6 +35,7 @@ export default async function HistorialPage({ searchParams }: { searchParams: Pr
   const tab: TabKey = TABS.some((item) => item.key === rawTab) ? (rawTab as TabKey) : "registro";
 
   const historyRepo = createHistoryRepository(getDb());
+  logRouteTiming("/historial", requestId, startedAt, { data: Date.now() - startedAt });
 
   return (
     <AppShell title="Trainer">

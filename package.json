@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit --incremental false -p apps/web/tsconfig.json",
     "test": "vitest run --config apps/web/vitest.config.ts",
     "test:coverage": "vitest run --coverage --config apps/web/vitest.config.ts",
+    "test:e2e:production": "playwright test --config playwright.production.config.ts",
     "db:generate": "drizzle-kit generate --config apps/web/drizzle.config.ts",
     "db:migrate": "tsx --tsconfig apps/web/tsconfig.json apps/web/drizzle/migrate.ts",
     "db:seed": "tsx --tsconfig apps/web/tsconfig.json apps/web/drizzle/seed.ts",
@@ -32,6 +33,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.13.0",
     "@types/react": "^19.0.8",

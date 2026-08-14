@@ -8,6 +8,13 @@
 !/.gitignore
 !/package.json
 !/package-lock.json
+!/.github/
+!/.github/workflows/
+!/.github/workflows/production-e2e.yml
+!/playwright.production.config.ts
+!/tests/
+!/tests/e2e/
+!/tests/e2e/production-smoke.spec.ts
 
 # Artefactos de build y datos locales dentro de apps/.
 apps/**/node_modules/

@@ -5,19 +5,23 @@ import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
 import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
 import { createPlanEditRepository } from "@/features/planning/domain/plan-edit-repository";
-import { buildWeekView, summarizeWeekSessions, visibleOccurrencesForDay, weeklyLoadWarning, type ExecutedStatus } from "@/features/planning/domain/plan-week";
+import { buildWeekView, latestWeekStatuses, summarizeWeekSessions, visibleOccurrencesForDay, weeklyLoadWarning, type ExecutedStatus } from "@/features/planning/domain/plan-week";
 import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
 import { createWorkoutTrainingEngineRepository } from "@/features/training-engine/domain/repository";
 import { createRecoverySessionRepository } from "@/features/recovery/domain/recovery-session-repository";
 import { AppShell } from "@/components/AppShell";
-import { WEEKDAY_ABBREV, WEEKDAY_LABEL, WEEKDAYS, isoWeekStart, todayWeekday, type Weekday } from "@/lib/weekdays";
+import { WEEKDAY_ABBREV, WEEKDAY_LABEL, WEEKDAYS, isoWeekStart, parseIsoDateLocal, todayWeekday, type Weekday } from "@/lib/weekdays";
 import type { PlanProposal } from "@/contracts/onboarding";
+import { logRouteTiming } from "@/lib/observability/route-timing";
 
 const DONE_STATUSES = new Set(["completed", "adapted", "partial"]);
 const STATUS_LABEL: Record<string, string> = { completed: "completada", adapted: "adaptada", partial: "parcial", in_progress: "en curso" };
 
 export default async function HoyPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const startedAt = Date.now();
+  const requestHeaders = await headers();
+  const requestId = requestHeaders.get("x-vercel-id");
+  const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session?.user) redirect("/login");
 
   const db = getDb();
@@ -30,10 +34,14 @@ export default async function HoyPage() {
   const today = todayWeekday();
   const weekStart = isoWeekStart();
   const editRepository = createPlanEditRepository(db);
-  const [statuses, adjustments] = await Promise.all([
-    repository.listLatestStatuses(session.user.id, activePlan.id),
+  const [fullHistory, adjustments] = await Promise.all([
+    repository.listSessionHistory(session.user.id, activePlan.id),
     editRepository.listWeekAdjustments(session.user.id, activePlan.id, weekStart)
   ]);
+  const weekStartDate = parseIsoDateLocal(weekStart);
+  const weekEndDate = new Date(weekStartDate);
+  weekEndDate.setDate(weekEndDate.getDate() + 7);
+  const statuses = latestWeekStatuses(fullHistory, weekStartDate, weekEndDate);
   const weekOccurrences = buildWeekView(content, true, adjustments, statuses as Record<number, ExecutedStatus>);
   const todayOccurrences = visibleOccurrencesForDay(weekOccurrences, today);
   const todayIndex = todayOccurrences[0]?.sessionIndex ?? -1;
@@ -50,6 +58,8 @@ export default async function HoyPage() {
   const warn = weeklyLoadWarning(sessions);
   const weekSummary = summarizeWeekSessions(sessions, statuses);
   const extraOccurrenceAdjustments = allAdjustments.slice(1);
+
+  logRouteTiming("/hoy", requestId, startedAt, { data: Date.now() - startedAt });
 
   return (
     <AppShell title="Trainer">
@@ -90,11 +100,12 @@ export default async function HoyPage() {
           const dayOccurrences = visibleOccurrencesForDay(weekOccurrences, day);
           const index = dayOccurrences[0]?.sessionIndex ?? -1;
           const daySession = index >= 0 ? sessions[index] : null;
-          const status = index >= 0 ? statuses[index] : undefined;
+          const status = dayOccurrences[0]?.status;
           const isToday = day === today;
           const classNames = ["weekrail__day"];
           if (!daySession) classNames.push("is-rest");
           else if (status && DONE_STATUSES.has(status)) classNames.push("is-done");
+          else if (status === "in_progress") classNames.push("is-today");
           else if (isToday) classNames.push("is-today");
           else classNames.push("is-planned");
           if (daySession?.kind === "endurance") classNames.push("is-cardio");
@@ -108,7 +119,7 @@ export default async function HoyPage() {
                 : `/entrenar?session=${index}`;
           const described = !daySession
             ? "descanso"
-            : `${daySession.title}, ${status && DONE_STATUSES.has(status) ? STATUS_LABEL[status] ?? status : isToday ? "hoy" : "planificada"}`;
+            : `${daySession.title}, ${status && status !== "planned" ? STATUS_LABEL[status] ?? status : isToday ? "hoy" : "planificada"}`;
 
           return (
             <li key={day}>

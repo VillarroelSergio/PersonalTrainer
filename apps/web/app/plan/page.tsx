@@ -18,6 +18,7 @@ import PlanSessionActions from "@/features/planning/ui/PlanSessionActions";
 import PlanManagementActions from "@/features/planning/ui/PlanManagementActions";
 import { WEEKDAY_LABEL, WEEKDAYS, isoDate, isoWeekStart, parseIsoDateLocal, type Weekday } from "@/lib/weekdays";
 import type { PlanProposal } from "@/contracts/onboarding";
+import { logRouteTiming } from "@/lib/observability/route-timing";
 
 const FINISHED_OR_ACTIVE = new Set(["in_progress", "completed", "adapted", "partial"]);
 
@@ -59,7 +60,10 @@ function loadColor(seriesCount: number): string {
 }
 
 export default async function PlanPage({ searchParams }: { searchParams: Promise<{ week?: string; vista?: TabKey }> }) {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const startedAt = Date.now();
+  const requestHeaders = await headers();
+  const requestId = requestHeaders.get("x-vercel-id");
+  const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session?.user) redirect("/login");
   const ownerId = session.user.id;
   const db = getDb();
@@ -99,6 +103,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
   const blockProgress = computeBlockProgress(activePlan.createdAt, proposal.initialBlock?.weeks ?? 1);
   const plans = await listPlansForOwner(db, ownerId);
+  logRouteTiming("/plan", requestId, startedAt, { data: Date.now() - startedAt });
 
   return (
     <AppShell title="Trainer">

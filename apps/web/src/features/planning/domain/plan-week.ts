@@ -5,6 +5,29 @@ import { findFreeWeekday, isLegsHeavy, LONG_OR_INTENSE_ENDURANCE_MINUTES } from 
 export type PlanAdjustmentRow = { sessionIndex: number; kind: string; targetDay: string | null; opsJson: string };
 export type ExecutedStatus = "in_progress" | "completed" | "adapted" | "partial";
 
+export type ExecutedSessionStatusRow = {
+  sessionIndex: number;
+  startedAt: Date;
+  status: string;
+};
+
+/** Resolves only executions created inside the displayed week. Reusing an old
+ * in-progress row for a repeating weekly template would falsely mark the new
+ * occurrence as active. */
+export function latestWeekStatuses(
+  history: ExecutedSessionStatusRow[],
+  weekStart: Date,
+  weekEnd: Date
+): Record<number, ExecutedStatus> {
+  const statuses: Record<number, ExecutedStatus> = {};
+  for (const row of history) {
+    if (row.startedAt < weekStart || row.startedAt >= weekEnd) continue;
+    if (!["in_progress", "completed", "adapted", "partial"].includes(row.status)) continue;
+    statuses[row.sessionIndex] = row.status as ExecutedStatus;
+  }
+  return statuses;
+}
+
 export type WeekOccurrence = {
   sessionIndex: number;
   day: Weekday;
