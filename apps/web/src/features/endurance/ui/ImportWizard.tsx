@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { EnduranceSport, ParsedActivity } from "@/contracts/endurance";
 import { useOfflineData } from "@/lib/offline/OfflineDataContext";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
 import { createIndexedDbImportFileStore } from "@/lib/offline/indexeddb-store";
-import { readyImportToWizardState, stageActivityImportOffline, type OfflineImportFile } from "@/features/endurance/domain/activity-import-offline";
+import { listenOfflineImportFilesChanged, readyImportToWizardState, stageActivityImportOffline, type OfflineImportFile } from "@/features/endurance/domain/activity-import-offline";
 
 type ImportStatus = "received" | "analyzed" | "duplicate" | "saved" | "failed";
 type ImportData = { id: string; status: ImportStatus; format: string; errorCode: string | null; analysis: ParsedActivity | { message: string } | null; duplicateOfActivityId: string | null };
@@ -55,19 +55,31 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
   const fileStoreRef = useRef(createIndexedDbImportFileStore());
   const userId = offlineData.snapshot?.userId ?? null;
 
-  useEffect(() => {
+  const refreshStagedFiles = useCallback(async () => {
     if (!userId) {
       setStagedFiles([]);
       return;
     }
-    let cancelled = false;
-    fileStoreRef.current.list(userId).then((files) => {
-      if (!cancelled) setStagedFiles(files.map(({ id, originalName, sizeBytes, createdAt, status, importData }) => ({ id, originalName, sizeBytes, createdAt, status, importData })));
-    }).catch(() => {
-      if (!cancelled) setStagedFiles([]);
-    });
-    return () => { cancelled = true; };
+    try {
+      const files = await fileStoreRef.current.list(userId);
+      setStagedFiles(files.map(({ id, originalName, sizeBytes, createdAt, status, importData }) => ({ id, originalName, sizeBytes, createdAt, status, importData })));
+    } catch {
+      setStagedFiles([]);
+    }
   }, [userId]);
+
+  useEffect(() => {
+    let active = true;
+    void refreshStagedFiles();
+    if (!userId) return () => { active = false; };
+    const stopListening = listenOfflineImportFilesChanged(userId, () => {
+      if (active) void refreshStagedFiles();
+    });
+    return () => {
+      active = false;
+      stopListening();
+    };
+  }, [refreshStagedFiles, userId]);
 
   async function deleteOriginalFile() {
     if (!importData) return;

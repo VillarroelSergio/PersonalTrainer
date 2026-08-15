@@ -33,6 +33,24 @@ export interface OfflineImportFileStore {
   list(userId: string): Promise<OfflineImportFile[]>;
 }
 
+const OFFLINE_IMPORT_FILES_CHANGED_EVENT = "trainer:offline-import-files-changed";
+type OfflineImportFilesChangedEvent = CustomEvent<{ userId: string }>;
+
+export function notifyOfflineImportFilesChanged(userId: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(OFFLINE_IMPORT_FILES_CHANGED_EVENT, { detail: { userId } }));
+}
+
+export function listenOfflineImportFilesChanged(userId: string, onChanged: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const handler = (event: Event) => {
+    const detail = (event as OfflineImportFilesChangedEvent).detail;
+    if (detail?.userId === userId) onChanged();
+  };
+  window.addEventListener(OFFLINE_IMPORT_FILES_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(OFFLINE_IMPORT_FILES_CHANGED_EVENT, handler);
+}
+
 export type StageActivityImportInput = {
   file: File;
   userId: string;
@@ -140,6 +158,7 @@ export async function submitStagedActivityImport(
   if (!confirmResponse.ok) return responseToSubmitResult(confirmResponse, confirmBody);
 
   await dependencies.fileStore.put({ ...stagedFile, status: "ready_to_save", blob: null, importData: confirmBody?.data as OfflineImportData });
+  notifyOfflineImportFilesChanged(userId);
   return { status: "ok" };
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  listenOfflineImportFilesChanged,
   readyImportToWizardState,
   stageActivityImportOffline,
   submitStagedActivityImport,
@@ -183,5 +184,40 @@ describe("offline activity import staging", () => {
       name: "carrera",
       sport: "running"
     });
+  });
+
+  it("notifies mounted importer listeners when a replayed file becomes ready to save", async () => {
+    class TestCustomEvent<T> extends Event {
+      detail: T;
+      constructor(type: string, init: { detail: T }) {
+        super(type);
+        this.detail = init.detail;
+      }
+    }
+    vi.stubGlobal("window", new EventTarget());
+    vi.stubGlobal("CustomEvent", TestCustomEvent);
+
+    const fileStore = memoryFileStore();
+    const staged = await stageActivityImportOffline({
+      file: new File(["<gpx>sample</gpx>"], "carrera.gpx", { type: "application/gpx+xml" }),
+      userId: "user-a",
+      fileStore,
+      createId: vi.fn().mockReturnValueOnce("file-1").mockReturnValueOnce("op-1")
+    });
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { storageKey: "activity-imports/user-a/upload.gpx", signedUrl: "https://storage.example/upload" } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { id: "import-1", status: "analyzed" } }), { status: 200 }));
+    const seen: string[] = [];
+    const removeUserA = listenOfflineImportFilesChanged("user-a", () => seen.push("user-a"));
+    const removeUserB = listenOfflineImportFilesChanged("user-b", () => seen.push("user-b"));
+
+    await submitStagedActivityImport(staged.operation, { fileStore, fetchFn, currentUserId: "user-a" });
+
+    expect(seen).toEqual(["user-a"]);
+    removeUserA();
+    removeUserB();
+    vi.unstubAllGlobals();
   });
 });
