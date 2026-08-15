@@ -1,9 +1,15 @@
 /**
- * Client-side outbox for the strength-session recording flow (Fase 5).
+ * Client-side outbox for offline mutations (Fase 5 strength recording, generalized
+ * in Task 4 of the local-first plan to every queueable Trainer action).
  * Storage-agnostic: `OutboxStore` is implemented by IndexedDB in the browser
  * (indexeddb-store.ts) and by an in-memory Map in tests, so the flush logic
  * itself never touches a browser API and can be exercised without a DOM.
  */
+
+import type { PlanEditInput } from "@/contracts/plan";
+import type { CheckinInput, DecideRecommendationInput } from "@/contracts/training-engine";
+import type { OnboardingFormPatch } from "@/contracts/onboarding";
+import type { CommitImportInput, EnduranceDesignInput } from "@/contracts/endurance";
 
 export type Difficulty = "too_easy" | "just_right" | "too_hard";
 export type CloseStatus = "completed" | "adapted" | "partial";
@@ -25,10 +31,33 @@ export type FinishWorkoutPayload = {
   discomfort: { zone: string; side?: string; intensity: string; kind?: string } | null;
 };
 
+export type StartWorkoutPayload = { planId: string; sessionIndex: number };
+export type StartRecoverySessionPayload = { planId: string; sessionIndex: number };
+export type FinishRecoverySessionPayload = { comment: string | null };
+export type SubmitCheckinPayload = CheckinInput & { checkinDate?: string };
+export type DecideRecommendationPayload = DecideRecommendationInput;
+export type ConfirmActivityImportPayload = { storageKey: string; originalName: string; sha256: string; sizeBytes: number };
+
+type BaseFields = { id: string; createdAt: number; status: "pending" | "conflict" | "error" };
+
 export type OutboxOperation =
-  | { id: string; kind: "record_set"; workoutSessionId: string; payload: RecordSetPayload; createdAt: number; status: "pending" | "conflict" | "error" }
-  | { id: string; kind: "remove_set"; workoutSessionId: string; payload: RemoveSetPayload; createdAt: number; status: "pending" | "conflict" | "error" }
-  | { id: string; kind: "finish_workout"; workoutSessionId: string; baseVersion: number; payload: FinishWorkoutPayload; createdAt: number; status: "pending" | "conflict" | "error"; conflictVersion?: number };
+  | (BaseFields & { kind: "record_set"; workoutSessionId: string; payload: RecordSetPayload })
+  | (BaseFields & { kind: "remove_set"; workoutSessionId: string; payload: RemoveSetPayload })
+  | (BaseFields & { kind: "finish_workout"; workoutSessionId: string; baseVersion: number; payload: FinishWorkoutPayload; conflictVersion?: number })
+  | (BaseFields & { kind: "start_workout"; workoutSessionId: string; payload: StartWorkoutPayload })
+  | (BaseFields & { kind: "start_recovery_session"; recoverySessionId: string; payload: StartRecoverySessionPayload })
+  | (BaseFields & { kind: "finish_recovery_session"; recoverySessionId: string; payload: FinishRecoverySessionPayload })
+  | (BaseFields & { kind: "submit_checkin"; payload: SubmitCheckinPayload })
+  | (BaseFields & { kind: "decide_recommendation"; payload: DecideRecommendationPayload })
+  | (BaseFields & { kind: "set_favorite"; variantId: string })
+  | (BaseFields & { kind: "unset_favorite"; variantId: string })
+  | (BaseFields & { kind: "plan_session_edit"; planId: string; payload: PlanEditInput })
+  | (BaseFields & { kind: "update_onboarding_draft"; payload: OnboardingFormPatch })
+  | (BaseFields & { kind: "save_endurance_design"; payload: EnduranceDesignInput })
+  | (BaseFields & { kind: "confirm_activity_import"; payload: ConfirmActivityImportPayload })
+  | (BaseFields & { kind: "commit_activity_import"; importId: string; payload: CommitImportInput })
+  | (BaseFields & { kind: "create_share_link"; planId: string })
+  | (BaseFields & { kind: "revoke_share_link"; linkId: string });
 
 export interface OutboxStore {
   all(): Promise<OutboxOperation[]>;

@@ -2,19 +2,65 @@
 
 import type { OutboxOperation, SubmitResult } from "./outbox";
 
+/**
+ * Maps every outbox operation kind to its real endpoint. Only `finish_workout`'s
+ * endpoint validates `idempotency-key` against a `clientOperationId` in the body and
+ * returns a versioned 409 (see workouts/[id]/finish/handler.ts); every other endpoint
+ * below has no server-side idempotency or version-conflict support today, so a retry
+ * after a `network_error` may resubmit and a 409 (where the endpoint can return one,
+ * e.g. recommendations/decision) is treated as a generic conflict with no known
+ * `currentVersion` — best-effort mapping, not invented server capability.
+ */
+function requestFor(operation: OutboxOperation): { url: string; method: string; body?: unknown } {
+  switch (operation.kind) {
+    case "record_set":
+      return { url: `/api/v1/workouts/${operation.workoutSessionId}/sets`, method: "PUT", body: operation.payload };
+    case "remove_set":
+      return { url: `/api/v1/workouts/${operation.workoutSessionId}/sets`, method: "DELETE", body: operation.payload };
+    case "finish_workout":
+      return { url: `/api/v1/workouts/${operation.workoutSessionId}/finish`, method: "POST", body: { clientOperationId: operation.id, baseVersion: operation.baseVersion, ...operation.payload } };
+    case "start_workout":
+      return { url: "/api/v1/workouts", method: "POST", body: operation.payload };
+    case "start_recovery_session":
+      return { url: "/api/v1/recovery-sessions", method: "POST", body: operation.payload };
+    case "finish_recovery_session":
+      return { url: `/api/v1/recovery-sessions/${operation.recoverySessionId}/finish`, method: "POST", body: operation.payload };
+    case "submit_checkin":
+      return { url: "/api/v1/checkins", method: "POST", body: operation.payload };
+    case "decide_recommendation":
+      return { url: "/api/v1/recommendations/decision", method: "POST", body: operation.payload };
+    case "set_favorite":
+      return { url: `/api/v1/me/favorites/exercise-variants/${operation.variantId}`, method: "PUT" };
+    case "unset_favorite":
+      return { url: `/api/v1/me/favorites/exercise-variants/${operation.variantId}`, method: "DELETE" };
+    case "plan_session_edit":
+      return { url: `/api/v1/plans/${operation.planId}/session-edits`, method: "POST", body: operation.payload };
+    case "update_onboarding_draft":
+      return { url: "/api/v1/onboarding/draft", method: "PUT", body: operation.payload };
+    case "save_endurance_design":
+      return { url: "/api/v1/endurance-designs", method: "POST", body: operation.payload };
+    case "confirm_activity_import":
+      return { url: "/api/v1/activity-imports", method: "POST", body: operation.payload };
+    case "commit_activity_import":
+      return { url: `/api/v1/activity-imports/${operation.importId}/commit`, method: "POST", body: operation.payload };
+    case "create_share_link":
+      return { url: `/api/v1/plans/${operation.planId}/share-links`, method: "POST" };
+    case "revoke_share_link":
+      return { url: `/api/v1/share-links/${operation.linkId}`, method: "DELETE" };
+  }
+}
+
 /** Submits one queued operation over the real network to the same idempotent endpoints the online UI uses. Browser-only (fetch), not unit-tested directly — the retry/conflict/dedupe behaviour it feeds into (flushOutbox) is tested with a fake submit function instead. */
 export async function submitOperation(operation: OutboxOperation): Promise<SubmitResult> {
-  const isSetOperation = operation.kind === "record_set" || operation.kind === "remove_set";
-  const url = isSetOperation ? `/api/v1/workouts/${operation.workoutSessionId}/sets` : `/api/v1/workouts/${operation.workoutSessionId}/finish`;
-  const body = isSetOperation ? operation.payload : { clientOperationId: operation.id, baseVersion: operation.baseVersion, ...operation.payload };
+  const { url, method, body } = requestFor(operation);
 
   let response: Response;
   try {
     response = await fetch(url, {
-      method: operation.kind === "record_set" ? "PUT" : operation.kind === "remove_set" ? "DELETE" : "POST",
+      method,
       credentials: "same-origin",
-      headers: { "content-type": "application/json", "idempotency-key": operation.id },
-      body: JSON.stringify(body)
+      headers: body === undefined ? { "idempotency-key": operation.id } : { "content-type": "application/json", "idempotency-key": operation.id },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
   } catch {
     return { status: "network_error" };

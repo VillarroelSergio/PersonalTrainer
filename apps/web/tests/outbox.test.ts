@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMemoryOutboxStore, flushOutbox, type OutboxOperation, type SubmitResult } from "@/lib/offline/outbox";
 
 function setOp(id: string, createdAt: number, status: OutboxOperation["status"] = "pending"): OutboxOperation {
@@ -53,5 +53,34 @@ describe("flushOutbox (pure)", () => {
     const store = createMemoryOutboxStore([]);
     const summary = await flushOutbox(store, async () => ({ status: "ok" }));
     expect(summary).toMatchObject({ synced: 0, pending: 0, conflicts: [], errors: [], stoppedForNetwork: false });
+  });
+
+  it("does not submit a dependent plan edit after a workout conflict", async () => {
+    const finishOp: OutboxOperation = {
+      id: "finish-1", kind: "finish_workout", workoutSessionId: "ws-1", baseVersion: 1, createdAt: 1, status: "pending",
+      payload: { status: "completed", globalEffort: 7, comment: null, discomfort: null }
+    };
+    const planEditOp: OutboxOperation = {
+      id: "edit-1", kind: "plan_session_edit", planId: "plan-1", createdAt: 2, status: "pending",
+      payload: { kind: "skip", isoWeekStart: "2026-08-10", sessionIndex: 0 }
+    };
+    const storeWithConflict = createMemoryOutboxStore([finishOp, planEditOp]);
+    const submit = vi.fn(async (): Promise<SubmitResult> => ({ status: "conflict", currentVersion: 2 }));
+    const summary = await flushOutbox(storeWithConflict, submit);
+    expect(summary.conflicts).toHaveLength(1);
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays an offline workout start before its sets", async () => {
+    const startOp: OutboxOperation = {
+      id: "start-1", kind: "start_workout", workoutSessionId: "local-1", createdAt: 1, status: "pending",
+      payload: { planId: "plan-1", sessionIndex: 0 }
+    };
+    const storeWithStartAndSet = createMemoryOutboxStore([startOp, setOp("set-1", 2)]);
+    const order: string[] = [];
+    const submit = async (op: OutboxOperation): Promise<SubmitResult> => { order.push(op.kind); return { status: "ok" }; };
+    const summary = await flushOutbox(storeWithStartAndSet, submit);
+    expect(summary).toMatchObject({ synced: 2 });
+    expect(order).toEqual(["start_workout", "record_set"]);
   });
 });
