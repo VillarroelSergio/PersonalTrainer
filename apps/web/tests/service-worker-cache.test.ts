@@ -136,7 +136,7 @@ describe("service worker shell cache", () => {
     await sw.dispatchMessage({
       type: "TRAINER_PRECACHE_ACCOUNT_SHELL",
       userId: "account-a",
-      routes: ["/hoy", "/plan", "/ejercicios", "/historial", "/checkin", "/entrenar?session=0", "/recuperar?session=0", "/resistencia?session=1"]
+      routes: ["/hoy", "/plan", "/ejercicios", "/historial", "/checkin", "/entrenar?session=0", "/entrenar?session=0&addons=1", "/recuperar?session=0", "/resistencia?session=1"]
     });
 
     const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
@@ -147,6 +147,7 @@ describe("service worker shell cache", () => {
       "/historial",
       "/checkin",
       "/entrenar?session=0",
+      "/entrenar?session=0&addons=1",
       "/recuperar?session=0",
       "/resistencia?session=1"
     ]));
@@ -253,5 +254,22 @@ describe("service worker shell cache", () => {
     const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
     expect(cachedUrls).toContain("/recuperar?session=2");
     expect(cachedUrls).not.toContain("/recuperar");
+  });
+
+  it("serves the exact optional add-ons training route offline after account shell preparation", async () => {
+    const sw = loadServiceWorker({
+      "/entrenar?session=0": "<!doctype html><main>Entrenar base</main>",
+      "/entrenar?session=0&addons=1": "<!doctype html><main>Entrenar con extras</main>"
+    });
+
+    await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: ["/entrenar?session=0&addons=1"] });
+    sw.goOffline();
+
+    const request = new Request("https://trainer.test/entrenar?session=0&addons=1", { method: "GET" });
+    Object.defineProperty(request, "mode", { value: "navigate" });
+    const [navigationResponse] = sw.dispatchFetch(request);
+
+    await expect(navigationResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main>Entrenar con extras</main>");
   });
 });

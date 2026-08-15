@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { runAccountScopedRefresh } from "../src/lib/offline/account-scoped-refresh";
 import { createMemorySnapshotStore } from "../src/lib/offline/snapshot";
 import { applyLocalMutation, refreshSnapshot, resolveSessionUserId } from "../src/lib/offline/snapshot-client";
-import type { OfflineSnapshotStore } from "../src/lib/offline/snapshot";
+import type { OfflineSnapshot, OfflineSnapshotStore } from "../src/lib/offline/snapshot";
 
 const okResponse = (data: unknown) => async () => new Response(JSON.stringify({ data }), { status: 200 });
 const rejectedFetch = async () => {
@@ -10,6 +11,12 @@ const rejectedFetch = async () => {
 
 function storeWithPlan() {
   return createMemorySnapshotStore([{ userId: "account-a", syncedAt: 1, data: { activePlan: { id: "plan-a" } } }]);
+}
+
+function deferredResponse() {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((resolver) => { resolve = resolver; });
+  return { promise, resolve };
 }
 
 describe("refreshSnapshot", () => {
@@ -60,6 +67,58 @@ describe("refreshSnapshot", () => {
     const result = await refreshSnapshot(store, fetchFn, "account-a");
     expect(result.status).toBe("offline");
     expect(result.snapshot?.data.activePlan).toMatchObject({ id: "plan-a" });
+  });
+});
+
+describe("runAccountScopedRefresh", () => {
+  it("suppresses stale persistence, state commits, and precache when account A resolves after switching to B", async () => {
+    let currentUserId: string | null = "account-a";
+    const store = createMemorySnapshotStore();
+    const committed: Array<{ snapshot: OfflineSnapshot | null; status: string }> = [];
+    const precached: OfflineSnapshot[] = [];
+    const deferred = deferredResponse();
+    const fetchFn = () => deferred.promise;
+    const refreshPromise = runAccountScopedRefresh({
+      store,
+      fetchFn,
+      userId: "account-a",
+      getCurrentUserId: () => currentUserId,
+      commit: (result) => committed.push(result),
+      precache: (snapshot) => precached.push(snapshot)
+    });
+
+    currentUserId = "account-b";
+    deferred.resolve(new Response(JSON.stringify({ data: { snapshot: { userId: "account-a", syncedAt: 2, data: { activePlan: { id: "plan-a" } } }, serverTime: 2 } }), { status: 200 }));
+
+    await expect(refreshPromise).resolves.toBe(false);
+    await expect(store.get("account-a")).resolves.toBeUndefined();
+    expect(committed).toEqual([]);
+    expect(precached).toEqual([]);
+  });
+
+  it("suppresses stale persistence, state commits, and precache when account A resolves after logout", async () => {
+    let currentUserId: string | null = "account-a";
+    const store = createMemorySnapshotStore();
+    const committed: Array<{ snapshot: OfflineSnapshot | null; status: string }> = [];
+    const precached: OfflineSnapshot[] = [];
+    const deferred = deferredResponse();
+    const fetchFn = () => deferred.promise;
+    const refreshPromise = runAccountScopedRefresh({
+      store,
+      fetchFn,
+      userId: "account-a",
+      getCurrentUserId: () => currentUserId,
+      commit: (result) => committed.push(result),
+      precache: (snapshot) => precached.push(snapshot)
+    });
+
+    currentUserId = null;
+    deferred.resolve(new Response(JSON.stringify({ data: { snapshot: { userId: "account-a", syncedAt: 2, data: { activePlan: { id: "plan-a" } } }, serverTime: 2 } }), { status: 200 }));
+
+    await expect(refreshPromise).resolves.toBe(false);
+    await expect(store.get("account-a")).resolves.toBeUndefined();
+    expect(committed).toEqual([]);
+    expect(precached).toEqual([]);
   });
 });
 

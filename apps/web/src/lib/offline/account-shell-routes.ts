@@ -4,7 +4,7 @@ const BASE_ACCOUNT_SHELL_ROUTES = ["/hoy", "/plan", "/ejercicios", "/historial",
 
 type PlanLike = {
   week?: {
-    sessions?: Array<{ kind?: string } | null | undefined>;
+    sessions?: Array<{ kind?: string; blocks?: unknown[] } | null | undefined>;
   };
 };
 
@@ -26,7 +26,14 @@ export function accountShellRoutesForSnapshot(snapshot: OfflineSnapshot): string
   sessions.forEach((session, sessionIndex) => {
     if (!session) return;
     routes.add(`/recuperar?session=${sessionIndex}`);
-    routes.add(session.kind === "endurance" ? `/resistencia?session=${sessionIndex}` : `/entrenar?session=${sessionIndex}`);
+    if (session.kind === "endurance") {
+      routes.add(`/resistencia?session=${sessionIndex}`);
+    } else {
+      routes.add(`/entrenar?session=${sessionIndex}`);
+      if (Array.isArray(session.blocks) && session.blocks.length > 0) {
+        routes.add(`/entrenar?session=${sessionIndex}&addons=1`);
+      }
+    }
   });
 
   return [...routes];

@@ -13,7 +13,8 @@ import type { OfflineSnapshot, OfflineSnapshotStore } from "./snapshot";
  * but only the latter should ever show the "Conexión inicial necesaria" message. */
 export type SnapshotStatus = "offline" | "synced" | "needs-initial-sync" | "loading";
 export type FetchSnapshot = () => Promise<Response>;
-export type RefreshResult = { snapshot: OfflineSnapshot | null; status: SnapshotStatus };
+export type RefreshResult = { snapshot: OfflineSnapshot | null; status: SnapshotStatus; stale?: boolean };
+export type RefreshSnapshotOptions = { shouldAccept?: (userId: string) => boolean };
 
 function isValidSnapshotBody(body: unknown): body is { data: { snapshot: OfflineSnapshot; serverTime: number } } {
   if (typeof body !== "object" || body === null) return false;
@@ -31,23 +32,32 @@ function isValidSnapshotBody(body: unknown): body is { data: { snapshot: Offline
  * failure — rejected fetch, non-ok status, or a malformed body — keeps
  * whatever was already cached instead of overwriting it with nothing.
  */
-export async function refreshSnapshot(store: OfflineSnapshotStore, fetchFn: FetchSnapshot, userId: string): Promise<RefreshResult> {
+export async function refreshSnapshot(store: OfflineSnapshotStore, fetchFn: FetchSnapshot, userId: string, options: RefreshSnapshotOptions = {}): Promise<RefreshResult> {
+  const isCurrent = () => options.shouldAccept?.(userId) ?? true;
+  const stale = (): RefreshResult => ({ snapshot: null, status: "loading", stale: true });
   const cached = (await store.get(userId)) ?? null;
+  if (!isCurrent()) return stale();
 
   let response: Response;
   try {
     response = await fetchFn();
   } catch {
+    if (!isCurrent()) return stale();
     return cached ? { snapshot: cached, status: "offline" } : { snapshot: null, status: "needs-initial-sync" };
   }
 
+  if (!isCurrent()) return stale();
   if (!response.ok) return cached ? { snapshot: cached, status: "offline" } : { snapshot: null, status: "needs-initial-sync" };
 
   const body = await response.json().catch(() => null);
+  if (!isCurrent()) return stale();
   if (!isValidSnapshotBody(body)) return cached ? { snapshot: cached, status: "offline" } : { snapshot: null, status: "needs-initial-sync" };
 
   const snapshot = body.data.snapshot;
+  if (snapshot.userId !== userId) return cached ? { snapshot: cached, status: "offline" } : { snapshot: null, status: "needs-initial-sync" };
+  if (!isCurrent()) return stale();
   await store.put(snapshot);
+  if (!isCurrent()) return stale();
   return { snapshot, status: "synced" };
 }
 

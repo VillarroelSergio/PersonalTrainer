@@ -3,8 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { createIndexedDbSnapshotStore } from "./indexeddb-store";
+import { runAccountScopedRefresh } from "./account-scoped-refresh";
 import { accountShellRoutesForSnapshot } from "./account-shell-routes";
-import { applyLocalMutation, refreshSnapshot, resolveSessionUserId, type SnapshotStatus } from "./snapshot-client";
+import { applyLocalMutation, resolveSessionUserId, type SnapshotStatus } from "./snapshot-client";
 import type { OfflineSnapshot, OfflineSnapshotStore } from "./snapshot";
 
 function fetchSnapshot(): Promise<Response> {
@@ -35,10 +36,13 @@ function clearAccountShell() {
 
 function useOfflineDataState() {
   const storeRef = useRef<OfflineSnapshotStore | null>(null);
+  const activeUserIdRef = useRef<string | null>(null);
+  const refreshEpochRef = useRef(0);
   const [snapshot, setSnapshot] = useState<OfflineSnapshot | null>(null);
   const [status, setStatus] = useState<SnapshotStatus>("needs-initial-sync");
   const session = authClient.useSession();
   const userId = resolveSessionUserId(session.data?.user?.id, session.isPending);
+  activeUserIdRef.current = userId;
 
   const getStore = useCallback(() => {
     if (!storeRef.current) storeRef.current = createIndexedDbSnapshotStore();
@@ -51,14 +55,24 @@ function useOfflineDataState() {
       setStatus("needs-initial-sync");
       return;
     }
-    const result = await refreshSnapshot(getStore(), fetchSnapshot, userId);
-    setSnapshot(result.snapshot);
-    setStatus(result.status);
-    if (result.snapshot) precacheAccountShell(result.snapshot);
+    const refreshEpoch = refreshEpochRef.current;
+    await runAccountScopedRefresh({
+      store: getStore(),
+      fetchFn: fetchSnapshot,
+      userId,
+      getCurrentUserId: () => activeUserIdRef.current,
+      isCurrent: () => refreshEpochRef.current === refreshEpoch,
+      commit: (result) => {
+        setSnapshot(result.snapshot);
+        setStatus(result.status);
+      },
+      precache: precacheAccountShell
+    });
   }, [getStore, userId]);
 
   /** Clears the local snapshot for the currently signed-in user: called on sign-out and account deletion so a second account on a shared device never hydrates leftover data. */
   const clear = useCallback(async () => {
+    refreshEpochRef.current += 1;
     if (userId) await getStore().remove(userId);
     setSnapshot(null);
     setStatus("needs-initial-sync");
@@ -73,6 +87,7 @@ function useOfflineDataState() {
     // "loading" (not the terminal "needs-initial-sync") whenever a user is
     // signed in, so OfflineRouteBoundary shows a neutral placeholder instead
     // of "Conexión inicial necesaria" during the brief hydration window.
+    refreshEpochRef.current += 1;
     setSnapshot(null);
     setStatus(userId ? "loading" : "needs-initial-sync");
     if (!userId) {
