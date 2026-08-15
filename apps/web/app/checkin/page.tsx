@@ -1,21 +1,51 @@
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db/client";
-import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
-import { CheckinRunner } from "@/features/training-engine/ui/CheckinRunner";
+"use client";
+
+import { Suspense, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 import { AppShell } from "@/components/AppShell";
+import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
+import { CheckinRunner } from "@/features/training-engine/ui/CheckinRunner";
+import { computeCheckinView } from "@/features/training-engine/domain/checkin-view";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import type { OfflineSnapshot } from "@/lib/offline/snapshot";
+import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 
-export default async function CheckinPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect("/login");
+export default function CheckinPage() {
+  return (
+    <Suspense fallback={null}>
+      <CheckinPageInner />
+    </Suspense>
+  );
+}
 
-  const activePlan = await findActivePlanForOwner(getDb(), session.user.id);
-  if (!activePlan) redirect("/onboarding");
+function CheckinPageInner() {
+  const router = useRouter();
+  const session = authClient.useSession();
+  const offlineData = useOfflineData();
+  const routeAccess = describeProtectedSnapshotRouteAccess({ isOnline: typeof navigator === "undefined" ? true : navigator.onLine, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
+
+  useEffect(() => {
+    if (routeAccess.redirectToLogin) router.replace("/login");
+  }, [routeAccess.redirectToLogin, router]);
 
   return (
     <AppShell title="Check-in" backHref="/hoy">
-      <CheckinRunner />
+      <OfflineRouteBoundary>
+        {routeAccess.canRender && offlineData.snapshot ? <CheckinContent snapshot={offlineData.snapshot} /> : null}
+      </OfflineRouteBoundary>
     </AppShell>
   );
+}
+
+function CheckinContent({ snapshot }: { snapshot: OfflineSnapshot }) {
+  const router = useRouter();
+  const view = computeCheckinView(snapshot);
+
+  useEffect(() => {
+    if (view.redirect) router.replace(view.redirect);
+  }, [view.redirect, router]);
+
+  if (view.redirect) return null;
+  return <CheckinRunner />;
 }

@@ -1,73 +1,83 @@
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db/client";
-import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
-import { createEnduranceDesignRepository } from "@/features/endurance/domain/design-repository";
+"use client";
+
+import { Suspense, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
+import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { computeResistenciaView } from "@/features/endurance/domain/resistencia-view";
 import { EnduranceDesigner } from "@/features/endurance/ui/EnduranceDesigner";
 import { EnduranceEmptyState } from "@/features/endurance/ui/EnduranceEmptyState";
-import { weeklyLoadWarning } from "@/features/planning/domain/plan-week";
 import { AppShell } from "@/components/AppShell";
-import { WEEKDAY_LABEL, isoWeekStart, todayWeekday, type Weekday } from "@/lib/weekdays";
-import type { PlanProposal } from "@/contracts/onboarding";
+import { WEEKDAY_LABEL, type Weekday } from "@/lib/weekdays";
+import type { OfflineSnapshot } from "@/lib/offline/snapshot";
+import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 
-export default async function ResistenciaPage({ searchParams }: { searchParams: Promise<{ session?: string }> }) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect("/login");
+export default function ResistenciaPage() {
+  return (
+    <Suspense fallback={null}>
+      <ResistenciaPageInner />
+    </Suspense>
+  );
+}
 
-  const db = getDb();
-  const activePlan = await findActivePlanForOwner(db, session.user.id);
-  if (!activePlan) redirect("/onboarding");
+function ResistenciaPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const sessionParam = searchParams.get("session") ?? undefined;
+  const session = authClient.useSession();
+  const offlineData = useOfflineData();
+  const routeAccess = describeProtectedSnapshotRouteAccess({ isOnline: typeof navigator === "undefined" ? true : navigator.onLine, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
 
-  const { session: sessionParam } = await searchParams;
-  const content = JSON.parse(activePlan.contentJson) as PlanProposal;
-  const sessions = content.week?.sessions ?? [];
+  useEffect(() => {
+    if (routeAccess.redirectToLogin) router.replace("/login");
+  }, [routeAccess.redirectToLogin, router]);
 
-  // No explicit ?session= given: resolve like the prototype's resolveSession — today's
-  // session if it's endurance, otherwise no session (never default to index 0).
-  const sessionIndex = sessionParam !== undefined ? Number(sessionParam) : sessions.findIndex((entry) => entry.day === todayWeekday());
-  const plannedSession = sessionIndex >= 0 ? sessions[sessionIndex] : undefined;
-
-  if (!plannedSession || plannedSession.kind !== "endurance") {
-    // An explicit link pointed at a non-endurance/invalid session (e.g. a strength session id):
-    // no dedicated screen for that case here, send to /hoy. Only the "nothing planned today"
-    // case (no ?session= param) gets the six-objectives empty state.
-    if (sessionParam !== undefined) redirect("/hoy");
-    return (
-      <AppShell title="Resistencia" backHref="/hoy">
-        <h1 className="view-title">Resistencia</h1>
-        <EnduranceEmptyState />
-      </AppShell>
-    );
-  }
-
-  const weekStart = isoWeekStart();
-  const designRepo = createEnduranceDesignRepository(db);
-  const design = await designRepo.getDesign(session.user.id, activePlan.id, weekStart, sessionIndex);
-
-  // Load-clash notice (prototype endurance.js L133-146): reuses the same weeklyLoadWarning
-  // the /hoy page already uses, so "choque de carga" means one thing across the app.
-  const warning = weeklyLoadWarning(sessions);
-  const conflictText =
-    warning && warning.session === plannedSession
-      ? `${plannedSession.title} es una sesión intensa y está junto a ${warning.conflict.title.toLowerCase()} (piernas), lo que puede sumar fatiga. Puedes ajustarla o seguir tal como está: tú decides.`
-      : null;
+  useEffect(() => {
+    if (offlineData.snapshot && offlineData.snapshot.data.activePlan == null) router.replace("/onboarding");
+  }, [offlineData.snapshot, router]);
 
   return (
     <AppShell title="Resistencia" backHref="/hoy">
-      <p className="kicker">{WEEKDAY_LABEL[plannedSession.day as Weekday]} · {plannedSession.estimatedMinutes} min aproximados</p>
-      <h1 className="view-title">{plannedSession.title}</h1>
-      <EnduranceDesigner
-        planId={activePlan.id}
-        sessionIndex={sessionIndex}
-        isoWeekStart={weekStart}
-        conflictText={conflictText}
-        initialDesign={
-          design
-            ? { id: design.id, objective: design.objective as never, environment: design.environment as never, optionalLayers: design.optionalLayersJson ? JSON.parse(design.optionalLayersJson) : {}, watchPreparedAt: design.watchPreparedAt ? design.watchPreparedAt.toISOString() : null }
-            : null
-        }
-      />
+      <OfflineRouteBoundary>
+        {routeAccess.canRender && offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
+          <ResistenciaContent snapshot={offlineData.snapshot} sessionParam={sessionParam} />
+        ) : null}
+      </OfflineRouteBoundary>
     </AppShell>
+  );
+}
+
+function ResistenciaContent({ snapshot, sessionParam }: { snapshot: OfflineSnapshot; sessionParam: string | undefined }) {
+  const router = useRouter();
+  const view = computeResistenciaView(snapshot, sessionParam);
+
+  useEffect(() => {
+    if (view.redirect) router.replace(view.redirect);
+  }, [view.redirect, router]);
+
+  if (view.redirect) return null;
+
+  if (view.empty) {
+    return (
+      <>
+        <h1 className="view-title">Resistencia</h1>
+        <EnduranceEmptyState />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <p className="kicker">{WEEKDAY_LABEL[view.plannedSession.day as Weekday]} · {view.plannedSession.estimatedMinutes} min aproximados</p>
+      <h1 className="view-title">{view.plannedSession.title}</h1>
+      <EnduranceDesigner
+        planId={view.activePlan.id}
+        sessionIndex={view.sessionIndex}
+        isoWeekStart={view.weekStart}
+        conflictText={view.conflictText}
+        initialDesign={view.initialDesign}
+      />
+    </>
   );
 }

@@ -246,10 +246,10 @@ function ExerciseList({ session, sessionIndex, editing = false, environment, onO
     {session.blocks?.length ? (
       <ul className={styles.blockList} aria-label={`Preparación y cierre de ${session.title}`}>
         {session.blocks.map((block) => {
-          const preview = block.variantIds?.map(findMobilityExercise).find((item): item is NonNullable<typeof item> => Boolean(item));
+          const exercises = (block.variantIds ?? []).map(findMobilityExercise).filter((item): item is NonNullable<typeof item> => Boolean(item));
           return <li key={block.id} className={styles.blockItem}>
-            {preview ? <Image className={styles.blockImage} src={preview.mediaUrl} alt="" width={44} height={44} /> : <span className={styles.blockDot} aria-hidden="true" />}
-            <span><strong>{sessionBlockLabel(block)}</strong><small>{block.estimatedMinutes} min · {block.kind === "warmup" ? "antes de entrenar" : "al terminar"}</small></span>
+            <div className={styles.blockHeading}><strong>{sessionBlockLabel(block)}</strong><small>{block.estimatedMinutes} min · {block.kind === "warmup" ? "antes de entrenar" : "al terminar"}</small></div>
+            {exercises.length ? <div className={styles.blockExercises}>{exercises.map((exercise) => <span key={exercise.id} className={styles.blockExercise}><Image className={styles.blockImage} src={exercise.mediaUrl} alt={`${exercise.exerciseName} — ${exercise.variantName}`} width={40} height={40} /><span><strong>{exercise.variantName}</strong><small>{exercise.metric === "seconds" ? `Tiempo · ${exercise.defaultDose}` : `Repeticiones · ${exercise.defaultDose}`}</small></span></span>)}</div> : <p className={styles.blockInstruction}>{block.instructions}</p>}
           </li>;
         })}
       </ul>

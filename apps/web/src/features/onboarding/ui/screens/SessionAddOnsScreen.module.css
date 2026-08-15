@@ -1,8 +1,33 @@
-.options { display: grid; gap: 10px; }
-.option { display: grid; gap: 4px; width: 100%; padding: 14px; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--paper-2); color: var(--ink); text-align: left; cursor: pointer; }
-.option:hover, .option:focus-visible, .selected { border-color: var(--accent); background: var(--accent-wash); outline: none; }
-.optionTitle { font-size: .95rem; font-weight: 750; }
-.optionDescription { color: var(--ink-2); font-size: .78rem; line-height: 1.4; }
-.selectGroup { display: grid; gap: 7px; margin-top: 14px; color: var(--ink-2); font-size: .78rem; font-weight: 650; }
-.selectGroup select { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--paper-2); color: var(--ink); font: inherit; }
-.selectGroup select:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.options { display: grid; gap: 8px; }
+.option { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 10px; width: 100%; padding: 12px; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--paper-2); color: var(--ink); text-align: left; cursor: pointer; }
+.option:hover, .option:focus-visible, .optionSelected { border-color: var(--accent); background: var(--accent-wash); outline: none; }
+.optionRadio { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--rule); border-radius: 50%; color: var(--accent); font-size: .8rem; font-weight: 800; }
+.optionSelected .optionRadio { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.option strong { display: block; font-size: .88rem; }
+.option small { display: block; margin-top: 3px; color: var(--ink-2); font-size: .73rem; line-height: 1.3; }
+.routineSection { display: grid; gap: 9px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--rule-soft); }
+.sectionHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.sectionHeading h2 { margin: 0; font-size: .98rem; }
+.sectionHeading p { margin: 4px 0 0; color: var(--ink-2); font-size: .74rem; }
+.optionalBadge { padding: 4px 7px; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink-3); font-size: .65rem; white-space: nowrap; }
+.routineGrid { display: grid; gap: 7px; }
+.routineCard { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 9px; width: 100%; padding: 8px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--paper-2); color: var(--ink); text-align: left; cursor: pointer; }
+.routineCard:hover, .routineCard:focus-visible, .routineSelected { border-color: var(--accent); background: var(--accent-wash); outline: none; }
+.routineImage, .routineImagePlaceholder { width: 58px; height: 58px; border-radius: 9px; object-fit: cover; background: var(--paper); }
+.routineCopy { display: grid; gap: 2px; min-width: 0; }
+.routineCopy strong { overflow: hidden; font-size: .78rem; line-height: 1.2; text-overflow: ellipsis; }
+.routineCopy span { color: var(--ink-2); font-size: .68rem; }
+.routineCopy small { overflow: hidden; color: var(--ink-3); font-size: .66rem; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.routineMark { color: var(--accent); font-size: 1.05rem; font-weight: 800; }
+.preview { display: grid; gap: 8px; padding: 10px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--rule-soft)); border-radius: var(--r-sm); background: var(--paper); }
+.previewHeading { display: grid; gap: 2px; }
+.previewHeading strong { font-size: .78rem; }
+.previewHeading span, .customizeHint { color: var(--ink-3); font-size: .68rem; }
+.previewList { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.previewItem { display: grid; grid-template-columns: 18px 38px minmax(0, 1fr); align-items: center; gap: 7px; }
+.previewIndex { color: var(--ink-3); font-size: .65rem; text-align: center; }
+.previewImage { width: 38px; height: 38px; border-radius: 6px; object-fit: cover; background: var(--paper-2); }
+.previewItem > span:last-child { display: grid; gap: 1px; min-width: 0; }
+.previewItem strong { overflow: hidden; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.previewItem small { color: var(--ink-3); font-size: .63rem; }
+.customizeHint { margin: 0; }

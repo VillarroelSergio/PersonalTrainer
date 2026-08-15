@@ -6,6 +6,15 @@
 .eyebrow { margin: 0 0 5px; color: var(--accent); font-size: 0.72rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .count, .durationBadge { color: var(--muted); font-size: .78rem; white-space: nowrap; }
 .durationBadge { padding: 7px 10px; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink); background: var(--paper-2); }
+.selectionNotice { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; padding: 10px; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--rule-soft)); border-radius: var(--r-sm); background: var(--accent-wash); }
+.selectionNotice > div { display: grid; gap: 2px; min-width: 0; }
+.selectionNotice strong { font-size: .76rem; }
+.selectionNotice span { color: var(--ink-2); font-size: .68rem; line-height: 1.3; }
+.planLink { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 7px 9px; border-radius: var(--r-sm); background: var(--accent); color: var(--on-accent); font-size: .7rem; font-weight: 750; text-decoration: none; white-space: nowrap; }
+.applyActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-bottom: 10px; }
+.applyButton { min-height: 40px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: var(--r-sm); background: var(--accent); color: var(--on-accent); font: inherit; font-size: .72rem; font-weight: 750; cursor: pointer; }
+.applyButton:disabled { cursor: wait; opacity: .7; }
+.applyError { margin: 0 0 10px; color: var(--warn); font-size: .72rem; }
 .routineGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .routineCard { display: grid; gap: 7px; min-height: 148px; padding: 14px; border: 1px solid var(--rule); border-radius: 15px; background: var(--paper-2); color: var(--ink); text-align: left; cursor: pointer; transition: border-color .18s ease, transform .18s ease, background .18s ease; }
 .routineCard:hover { transform: translateY(-1px); border-color: var(--accent); }

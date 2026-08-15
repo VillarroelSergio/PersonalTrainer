@@ -4,15 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
-import type { SyncState } from "@/lib/offline/use-offline-sync";
-
-const SYNC_LABEL: Record<SyncState, { text: string; icon: string }> = {
-  local: { text: "Sin conexión", icon: "○" },
-  sincronizando: { text: "Sincronizando", icon: "↻" },
-  sincronizado: { text: "Sincronizado", icon: "✓" },
-  conflicto: { text: "Conflicto de versiones", icon: "!" },
-  error: { text: "Error recuperable", icon: "×" }
-};
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { describeSync } from "@/lib/offline/sync-description";
 
 const NAV_DESTINATIONS = [
   { href: "/hoy", label: "Inicio", icon: <path d="M4 11l8-7 8 7v9a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1v-9z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /> },
@@ -65,6 +58,8 @@ export function AppShell({ backHref, children }: { title: string; backHref?: str
         </div>
       </header>
 
+      <InitialSyncNotice />
+
       <main id="mainContent">{children}</main>
 
       {!backHref ? (
@@ -81,11 +76,23 @@ export function AppShell({ backHref, children }: { title: string; backHref?: str
   );
 }
 
+function InitialSyncNotice() {
+  const { status } = useOfflineData();
+  if (status !== "needs-initial-sync") return null;
+  const description = describeSync({ state: "sincronizado", pending: 0, conflicts: [], snapshotStatus: status });
+  return (
+    <p className="notice notice--warn" role="status">
+      {description.title}: {description.body}
+    </p>
+  );
+}
+
 function SyncIndicator() {
   const sync = useOfflineSyncContext();
+  const offlineData = useOfflineData();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const label = SYNC_LABEL[sync.state];
+  const description = describeSync({ state: sync.state, pending: sync.pending, conflicts: sync.conflicts, snapshotStatus: offlineData.status });
 
   useEffect(() => {
     if (!open) return;
@@ -98,34 +105,39 @@ function SyncIndicator() {
 
   return (
     <>
-      <button ref={triggerRef} type="button" className="sync-pill" onClick={() => setOpen(true)} aria-label={`Estado de sincronización: ${label.text}${sync.pending ? `, ${sync.pending} pendiente${sync.pending === 1 ? "" : "s"}` : ""}`}>
-        <span className="sync-dot" data-state={sync.state} aria-hidden="true" />
-        <span className="sync-pill__icon" aria-hidden="true">{label.icon}</span>
+      <button ref={triggerRef} type="button" className="sync-pill" onClick={() => setOpen(true)} aria-label={description.ariaLabel}>
+        <span className="sync-dot" data-state={description.dotState} aria-hidden="true" />
+        <span className="sync-pill__icon" aria-hidden="true">{description.icon}</span>
       </button>
 
       {open ? (
         <div className="sheet-overlay" role="presentation" onClick={() => { setOpen(false); triggerRef.current?.focus(); }}>
           <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="syncSheetTitle" onClick={(event) => event.stopPropagation()}>
             <div className="sheet__header">
-              <h2 id="syncSheetTitle">{label.text}</h2>
+              <h2 id="syncSheetTitle">{description.title}</h2>
             </div>
             <div className="sheet__body">
-              {sync.pending > 0 ? <p className="lede small">{sync.pending} cambio{sync.pending === 1 ? "" : "s"} local{sync.pending === 1 ? "" : "es"} sin confirmar en el servidor todavía.</p> : null}
-              {sync.state === "local" ? <p className="lede small">Sin conexión ahora mismo. Puedes seguir registrando series; se sincronizarán solas al recuperar cobertura.</p> : null}
+              <p className="lede small">{description.body}</p>
 
-              {sync.conflicts.length > 0 ? (
+              {description.conflicts.length > 0 ? (
                 <>
-                  <p className="notice notice--warn" role="alert">Esta sesión se cerró en otro dispositivo antes de que este pudiera enviar su cierre. Elige qué conservar.</p>
-                  {sync.conflicts.map((conflict) => (
-                    <div key={conflict.id} className="opt">
-                      <button type="button" className="btn btn--primary btn--block" onClick={() => sync.resolveKeepLocal(conflict.id)}>Conservar mi cierre (reintentar sobre la versión actual)</button>
-                      <button type="button" className="btn btn--ghost btn--block" onClick={() => sync.resolveKeepServer(conflict.id)}>Descartar mi cierre y conservar el del servidor</button>
+                  <p className="notice notice--warn" role="alert">Elige con calma: nada se descarta hasta que pulses una opción.</p>
+                  {description.conflicts.map((conflict) => (
+                    <div key={conflict.id} className="sync-conflict">
+                      <p className="sync-conflict__copy">
+                        <strong>{conflict.entity}</strong>
+                        <span>{conflict.detail}</span>
+                      </p>
+                      {conflict.keepLocalLabel ? (
+                        <button type="button" className="btn btn--primary btn--block" onClick={() => sync.resolveKeepLocal(conflict.id)}>{conflict.keepLocalLabel}</button>
+                      ) : null}
+                      <button type="button" className="btn btn--ghost btn--block" onClick={() => sync.resolveKeepServer(conflict.id)}>{conflict.keepServerLabel}</button>
                     </div>
                   ))}
                 </>
               ) : null}
 
-              {sync.pending > 0 && sync.conflicts.length === 0 ? (
+              {description.canRetry ? (
                 <button type="button" className="btn btn--ghost btn--block" onClick={() => sync.flush()}>Reintentar ahora</button>
               ) : null}
 

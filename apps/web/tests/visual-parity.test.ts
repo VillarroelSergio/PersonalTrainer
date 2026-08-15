@@ -8,11 +8,16 @@ const PUBLIC_DIR = join(__dirname, "..", "public");
 
 describe("Plan navigation views", () => {
   it("renders Semana, Fases and Tus planes from a validated query value", () => {
+    // /plan is a snapshot-driven client component now (Fase 5, Task 6): the "vista" query param is
+    // read via useSearchParams() and validated in the pure computePlanView (plan-view.ts), not
+    // parsed inline in the page itself — see offline-plan-view.test.ts for the validation coverage.
     const page = readFileSync(join(__dirname, "..", "app", "plan", "page.tsx"), "utf8");
-    expect(page).toContain("vista?: TabKey");
+    const view = readFileSync(join(__dirname, "..", "src", "features", "planning", "domain", "plan-view.ts"), "utf8");
+    expect(page).toContain('vistaParam={searchParams.get("vista")}');
     expect(page).toContain('vista === "fases"');
     expect(page).toContain('vista === "planes"');
-    expect(page).not.toContain('const vista: TabKey = "semana"');
+    expect(view).toContain('TABS.some((tab) => tab.key === vistaParam)');
+    expect(view).not.toContain('const vista: TabKey = "semana"');
   });
 });
 

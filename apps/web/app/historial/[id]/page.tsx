@@ -1,15 +1,19 @@
-import { headers } from "next/headers";
-import { redirect, notFound } from "next/navigation";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter, useParams, notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db/client";
-import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
-import { createHistoryRepository } from "@/features/history/domain/history-repository";
+import { authClient } from "@/lib/auth-client";
+import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { getEnduranceActivityDetailView, getSessionDetailView } from "@/features/history/domain/historial-view";
+import type { EnduranceActivityEntry, SessionDetail } from "@/features/history/domain/history-repository";
 import { AppShell } from "@/components/AppShell";
 import { DISCOMFORT_INTENSITY_OPTIONS, DISCOMFORT_ZONE_OPTIONS } from "@/features/onboarding/presentation/constants";
 import { exerciseMediaAlt, exerciseMediaSrc, findVariant } from "@/features/catalog/data/exercise-catalog";
 import { WEEKDAY_LABEL, type Weekday } from "@/lib/weekdays";
+import type { OfflineSnapshot } from "@/lib/offline/snapshot";
 
 const STATUS_LABEL: Record<string, string> = { completed: "Completada", adapted: "Adaptada", partial: "Parcial", in_progress: "En curso" };
 const ZONE_LABEL: Record<string, string> = Object.fromEntries(DISCOMFORT_ZONE_OPTIONS.map((option) => [option.value, option.label]));
@@ -25,29 +29,46 @@ const METRIC_LABEL: Record<string, string> = {
 const SAFETY_TEXT = "Molestia importante: esto no es un diagnóstico. Si la molestia persiste o es intensa, " +
   "considera detener o adaptar la sesión y consultar a un profesional de salud.";
 
-export default async function HistoryEntryDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect("/login");
-  const ownerId = session.user.id;
+export default function HistoryEntryDetailPage() {
+  const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const session = authClient.useSession();
+  const offlineData = useOfflineData();
 
-  const activePlan = await findActivePlanForOwner(getDb(), ownerId);
-  if (!activePlan) redirect("/onboarding");
+  useEffect(() => {
+    if (!session.isPending && !session.data?.user && navigator.onLine) router.replace("/login");
+  }, [session.isPending, session.data?.user, router]);
 
-  const { id } = await params;
-  const historyRepo = createHistoryRepository(getDb());
+  useEffect(() => {
+    if (offlineData.snapshot && offlineData.snapshot.data.activePlan == null) router.replace("/onboarding");
+  }, [offlineData.snapshot, router]);
 
-  const sessionDetail = await historyRepo.getSessionDetail(ownerId, activePlan.id, id);
+  return (
+    <AppShell title="Trainer" backHref="/historial">
+      <OfflineRouteBoundary>
+        {offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
+          <HistoryEntryDetailContent snapshot={offlineData.snapshot} id={params.id} />
+        ) : null}
+      </OfflineRouteBoundary>
+    </AppShell>
+  );
+}
+
+function HistoryEntryDetailContent({ snapshot, id }: { snapshot: OfflineSnapshot; id: string }) {
+  const activePlan = snapshot.data.activePlan as { id: string };
+
+  const sessionDetail = getSessionDetailView(snapshot, activePlan.id, id);
   if (sessionDetail) return <StrengthDetail detail={sessionDetail} />;
 
-  const activityDetail = await historyRepo.getEnduranceActivityDetail(ownerId, id);
+  const activityDetail = getEnduranceActivityDetailView(snapshot, id);
   if (activityDetail) return <EnduranceDetail activity={activityDetail} />;
 
   notFound();
 }
 
-function StrengthDetail({ detail }: { detail: NonNullable<Awaited<ReturnType<ReturnType<typeof createHistoryRepository>["getSessionDetail"]>>> }) {
+function StrengthDetail({ detail }: { detail: SessionDetail }) {
   return (
-    <AppShell title="Trainer" backHref="/historial">
+    <>
       <p className="kicker">Fuerza · {detail.startedAt.toLocaleDateString("es-ES")}</p>
       <h1 className="view-title">{detail.title}</h1>
       <p className="lede small">{STATUS_LABEL[detail.status] ?? detail.status}{detail.day ? ` · ${WEEKDAY_LABEL[detail.day as Weekday] ?? detail.day}` : ""}</p>
@@ -93,16 +114,16 @@ function StrengthDetail({ detail }: { detail: NonNullable<Awaited<ReturnType<Ret
       <p className="lede small">Corrección versionada: pendiente. El modelo de datos actual no guarda versiones anteriores de una sesión, así que corregir un registro requeriría un cambio de contrato de datos fuera del alcance de este cambio.</p>
 
       <p className="lede small"><Link href="/historial">← Volver al historial</Link></p>
-    </AppShell>
+    </>
   );
 }
 
-function EnduranceDetail({ activity }: { activity: NonNullable<Awaited<ReturnType<ReturnType<typeof createHistoryRepository>["getEnduranceActivityDetail"]>>> }) {
+function EnduranceDetail({ activity }: { activity: EnduranceActivityEntry }) {
   const durationMin = activity.durationS != null ? Math.round(activity.durationS / 60) : null;
   const distanceKm = activity.distanceM != null ? (activity.distanceM / 1000).toFixed(1) : null;
 
   return (
-    <AppShell title="Trainer" backHref="/historial">
+    <>
       <p className="kicker">Cardio · {activity.startedAt.toLocaleDateString("es-ES")}</p>
       <h1 className="view-title">{activity.name}</h1>
       <p className="lede small">{SPORT_LABEL[activity.sport] ?? activity.sport} · {activity.source === "imported" ? "Importada del reloj" : "Registrada en la app"}</p>
@@ -123,6 +144,6 @@ function EnduranceDetail({ activity }: { activity: NonNullable<Awaited<ReturnTyp
       <p className="lede small">Corrección versionada: pendiente. El modelo de datos actual no guarda versiones anteriores de una actividad, así que corregir un registro requeriría un cambio de contrato de datos fuera del alcance de este cambio.</p>
 
       <p className="lede small"><Link href="/historial">← Volver al historial</Link></p>
-    </AppShell>
+    </>
   );
 }

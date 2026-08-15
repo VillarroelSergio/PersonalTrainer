@@ -1,56 +1,78 @@
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db/client";
-import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
-import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
-import { listOwnedFavoriteVariantIds } from "@/features/catalog/domain/favorite-repository";
+"use client";
+
+import { Suspense, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
+import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { computeEntrenarView } from "@/features/workouts/domain/entrenar-view";
 import { WorkoutRunner } from "@/features/workouts/ui/WorkoutRunner";
 import { AppShell } from "@/components/AppShell";
 import { WEEKDAY_LABEL, type Weekday } from "@/lib/weekdays";
-import type { PlanProposal } from "@/contracts/onboarding";
+import type { OfflineSnapshot } from "@/lib/offline/snapshot";
+import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 
-export default async function EntrenarPage({ searchParams }: { searchParams: Promise<{ session?: string }> }) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect("/login");
+export default function EntrenarPage() {
+  return (
+    <Suspense fallback={null}>
+      <EntrenarPageInner />
+    </Suspense>
+  );
+}
 
-  const db = getDb();
-  const activePlan = await findActivePlanForOwner(db, session.user.id);
-  if (!activePlan) redirect("/onboarding");
+function EntrenarPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const sessionIndex = Number(searchParams.get("session") ?? "0");
+  const addons = searchParams.get("addons");
+  const session = authClient.useSession();
+  const offlineData = useOfflineData();
+  const routeAccess = describeProtectedSnapshotRouteAccess({ isOnline: typeof navigator === "undefined" ? true : navigator.onLine, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
 
-  const { session: sessionParam } = await searchParams;
-  const sessionIndex = Number(sessionParam ?? "0");
-  const content = JSON.parse(activePlan.contentJson) as PlanProposal;
-  const plannedSession = content.week?.sessions?.[sessionIndex];
-  if (!plannedSession || plannedSession.kind !== "strength" || !plannedSession.exercises?.length) redirect("/hoy");
+  useEffect(() => {
+    if (routeAccess.redirectToLogin) router.replace("/login");
+  }, [routeAccess.redirectToLogin, router]);
 
-  // Vista previa (P0-1): la lista y los favoritos/recientes se resuelven aquí, en el
-  // servidor, con los mismos repositorios que ya usa /ejercicios — la sesión real
-  // (POST /api/v1/workouts) no se crea hasta que la persona pulsa "Empezar sesión".
-  const workoutRepo = createWorkoutSessionRepository(db);
-  const [favoriteVariantIds, recentVariantIds, statuses] = await Promise.all([
-    listOwnedFavoriteVariantIds(db, session.user.id),
-    workoutRepo.listRecentVariantIds(session.user.id, 6),
-    workoutRepo.listLatestStatuses(session.user.id, activePlan.id)
-  ]);
-  // "Continuar sesión" en /hoy enlaza aquí igual que "Empezar sesión": si ya existe una
-  // sesión in_progress para este índice, se entra directo a ella sin pasar por la vista
-  // previa ni exigir un segundo toque en "Empezar sesión".
-  const isResuming = statuses[sessionIndex] === "in_progress";
+  useEffect(() => {
+    if (offlineData.snapshot && offlineData.snapshot.data.activePlan == null) router.replace("/onboarding");
+  }, [offlineData.snapshot, router]);
 
   return (
     <AppShell title="Entrenar" backHref="/hoy">
+      <OfflineRouteBoundary>
+        {routeAccess.canRender && offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
+          <EntrenarContent snapshot={offlineData.snapshot} sessionIndex={sessionIndex} addons={addons} />
+        ) : null}
+      </OfflineRouteBoundary>
+    </AppShell>
+  );
+}
+
+function EntrenarContent({ snapshot, sessionIndex, addons }: { snapshot: OfflineSnapshot; sessionIndex: number; addons: string | null }) {
+  const router = useRouter();
+  const view = computeEntrenarView(snapshot, sessionIndex);
+
+  useEffect(() => {
+    if (view.redirect) router.replace(view.redirect);
+  }, [view.redirect, router]);
+
+  if (view.redirect) return null;
+
+  const { plannedSession, favoriteVariantIds, recentVariantIds, isResuming } = view;
+
+  return (
+    <>
       <p className="kicker">{WEEKDAY_LABEL[plannedSession.day as Weekday]}</p>
       <h1 className="view-title">{plannedSession.title}</h1>
       <WorkoutRunner
-        planId={activePlan.id}
+        planId={view.activePlan.id}
         sessionIndex={sessionIndex}
-        previewExercises={plannedSession.exercises}
-        previewBlocks={plannedSession.blocks ?? []}
+        previewExercises={plannedSession.exercises ?? []}
+        previewBlocks={addons === "1" ? plannedSession.blocks ?? [] : []}
         favoriteVariantIds={favoriteVariantIds}
         recentVariantIds={recentVariantIds}
         autoStart={isResuming}
       />
-    </AppShell>
+    </>
   );
 }

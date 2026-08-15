@@ -57,10 +57,14 @@ function makeSubmit(db: ReturnType<typeof getDb>, user: { id: string }, offline:
               new Request("http://localhost", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify(operation.payload) }),
               user, db, operation.workoutSessionId
             )
-        : await finishWorkoutResponse(
-            new Request("http://localhost", { method: "POST", headers: { "content-type": "application/json", "idempotency-key": operation.id }, body: JSON.stringify({ clientOperationId: operation.id, baseVersion: operation.baseVersion, ...operation.payload }) }),
-            user, db, operation.workoutSessionId
-          );
+        : operation.kind === "finish_workout"
+          ? await finishWorkoutResponse(
+              new Request("http://localhost", { method: "POST", headers: { "content-type": "application/json", "idempotency-key": operation.id }, body: JSON.stringify({ clientOperationId: operation.id, baseVersion: operation.baseVersion, ...operation.payload }) }),
+              user, db, operation.workoutSessionId
+            )
+          // ponytail: this fixture only ever drives record_set/remove_set/finish_workout; Task 4
+          // widened OutboxOperation, so TS can no longer treat the trailing branch as finish_workout.
+          : (() => { throw new Error(`unsupported operation kind in this fixture: ${operation.kind}`); })();
 
     if (response.ok) return { status: "ok" };
     if (response.status === 409) {

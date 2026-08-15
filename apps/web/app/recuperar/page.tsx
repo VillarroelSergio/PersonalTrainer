@@ -1,38 +1,68 @@
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db/client";
-import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
-import { createRecoverySessionRepository } from "@/features/recovery/domain/recovery-session-repository";
+"use client";
+
+import { Suspense, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
+import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
 import { AppShell } from "@/components/AppShell";
 import { RecoveryRunner } from "@/features/recovery/ui/RecoveryRunner";
-import type { PlanProposal } from "@/contracts/onboarding";
+import { computeRecoveryView } from "@/features/recovery/domain/recovery-view";
+import type { OfflineSnapshot } from "@/lib/offline/snapshot";
+import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 
-export default async function RecuperarPage({ searchParams }: { searchParams: Promise<{ session?: string }> }) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect("/login");
+export default function RecuperarPage() {
+  return (
+    <Suspense fallback={null}>
+      <RecuperarPageInner />
+    </Suspense>
+  );
+}
 
-  const activePlan = await findActivePlanForOwner(getDb(), session.user.id);
-  if (!activePlan) redirect("/onboarding");
+function RecuperarPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const sessionParam = searchParams.get("session") ?? undefined;
+  const session = authClient.useSession();
+  const offlineData = useOfflineData();
+  const routeAccess = describeProtectedSnapshotRouteAccess({ isOnline: typeof navigator === "undefined" ? true : navigator.onLine, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
 
-  const { session: sessionParam } = await searchParams;
-  const sessionIndex = Number.parseInt(sessionParam ?? "", 10);
-  const proposal = JSON.parse(activePlan.contentJson) as PlanProposal;
-  const plannedSession = Number.isInteger(sessionIndex) ? proposal.week?.sessions?.[sessionIndex] : null;
-  if (!plannedSession) redirect("/hoy");
+  useEffect(() => {
+    if (routeAccess.redirectToLogin) router.replace("/login");
+  }, [routeAccess.redirectToLogin, router]);
 
-  const repository = createRecoverySessionRepository(getDb());
-  const existing = await repository.findLatest(session.user.id, activePlan.id, sessionIndex);
+  useEffect(() => {
+    if (offlineData.snapshot && offlineData.snapshot.data.activePlan == null) router.replace("/onboarding");
+  }, [offlineData.snapshot, router]);
 
   return (
     <AppShell title="Trainer" backHref="/hoy">
-      <RecoveryRunner
-        planId={activePlan.id}
-        sessionIndex={sessionIndex}
-        sessionTitle={plannedSession.title}
-        initialSessionId={existing?.id ?? null}
-        initialStatus={existing?.status ?? null}
-      />
+      <OfflineRouteBoundary>
+        {routeAccess.canRender && offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
+          <RecoveryContent snapshot={offlineData.snapshot} sessionParam={sessionParam} />
+        ) : null}
+      </OfflineRouteBoundary>
     </AppShell>
+  );
+}
+
+function RecoveryContent({ snapshot, sessionParam }: { snapshot: OfflineSnapshot; sessionParam: string | undefined }) {
+  const router = useRouter();
+  const view = computeRecoveryView(snapshot, sessionParam);
+
+  useEffect(() => {
+    if (view.redirect) router.replace(view.redirect);
+  }, [view.redirect, router]);
+
+  if (view.redirect) return null;
+
+  return (
+    <RecoveryRunner
+      planId={view.activePlan.id}
+      sessionIndex={view.sessionIndex}
+      sessionTitle={view.sessionTitle}
+      initialSessionId={view.initialSessionId}
+      initialStatus={view.initialStatus}
+    />
   );
 }
