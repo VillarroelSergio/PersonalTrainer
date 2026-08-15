@@ -1,6 +1,7 @@
 /*
- * Minimal PWA shell cache. No precache manifest (Next.js fingerprints change
- * every build, so a static list would go stale) — instead:
+ * Minimal PWA shell cache. Next.js fingerprints change every build, so the
+ * precache is limited to stable app shell routes and public manifest/icon files:
+ *  - install fills enough shell entries for the first post-install offline load;
  *  - navigations (page loads) use network-first, falling back to the last
  *    successful render of that same route when there's no coverage;
  *  - hashed static assets (_next/static, icons, library media) use
@@ -10,9 +11,11 @@
  */
 const SHELL_CACHE = "trainer-shell-v2";
 const NAVIGATION_TIMEOUT_MS = 1800;
+const PRECACHE_URLS = ["/hoy", "/plan", "/ejercicios", "/historial", "/manifest.webmanifest", "/icons/icon.svg"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
+  event.waitUntil(precacheShell());
 });
 
 self.addEventListener("activate", (event) => {
@@ -85,4 +88,9 @@ async function cacheFirst(request) {
 async function cacheResponse(request, response) {
   const cache = await caches.open(SHELL_CACHE);
   await cache.put(request, response);
+}
+
+async function precacheShell() {
+  const cache = await caches.open(SHELL_CACHE);
+  await cache.addAll(PRECACHE_URLS);
 }
