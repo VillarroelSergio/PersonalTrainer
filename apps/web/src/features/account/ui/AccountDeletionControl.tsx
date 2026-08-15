@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
 
 /** Self-service GDPR-style deletion: irreversible, so it needs an explicit second confirmation step — never a single click. */
 export function AccountDeletionControl() {
   const router = useRouter();
+  const { clear } = useOfflineData();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +23,9 @@ export function AccountDeletionControl() {
       setBusy(false);
       return;
     }
+    // Clear the local snapshot before signing out so a different account on
+    // this device never hydrates this now-deleted account's cached data.
+    await clear();
     await authClient.signOut();
     router.push("/login");
     router.refresh();

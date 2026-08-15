@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
 import type { SyncState } from "@/lib/offline/use-offline-sync";
 
 const SYNC_LABEL: Record<SyncState, { text: string; icon: string }> = {
@@ -65,6 +66,8 @@ export function AppShell({ backHref, children }: { title: string; backHref?: str
         </div>
       </header>
 
+      <InitialSyncNotice />
+
       <main id="mainContent">{children}</main>
 
       {!backHref ? (
@@ -78,6 +81,16 @@ export function AppShell({ backHref, children }: { title: string; backHref?: str
         </nav>
       ) : null}
     </>
+  );
+}
+
+function InitialSyncNotice() {
+  const { status } = useOfflineData();
+  if (status !== "needs-initial-sync") return null;
+  return (
+    <p className="notice notice--warn" role="status">
+      Conexión inicial necesaria: conéctate una vez para cargar tu plan antes de poder usarlo sin conexión.
+    </p>
   );
 }
 
