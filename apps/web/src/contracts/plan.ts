@@ -38,3 +38,9 @@ export const planSessionContentInputSchema = z.object({
   blocks: z.array(plannedSessionBlockSchema).max(4).optional()
 });
 export type PlanSessionContentInput = z.infer<typeof planSessionContentInputSchema>;
+
+export const planSessionAddOnInputSchema = z.object({
+  routineId: z.string().trim().min(1).max(120),
+  kind: z.enum(["warmup", "cooldown"])
+});
+export type PlanSessionAddOnInput = z.infer<typeof planSessionAddOnInputSchema>;

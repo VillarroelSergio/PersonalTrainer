@@ -4,9 +4,12 @@ import { sessionAdjustment, trainingPlan, workoutSession } from "@/lib/db/schema
 import { isoWeekStart, parseIsoDateLocal } from "@/lib/weekdays";
 import type { PlanEditInput } from "@/contracts/plan";
 import type { PlanSessionContentInput } from "@/contracts/plan";
+import type { PlanSessionAddOnInput } from "@/contracts/plan";
 import type { PlanProposal } from "@/contracts/onboarding";
 import { EXERCISE_CATALOG } from "@/features/catalog/data/exercise-catalog";
 import { findSessionBlock } from "@/features/catalog/data/session-blocks";
+import { MOBILITY_ROUTINES, findMobilityExercise } from "@/features/catalog/data/mobility-catalog";
+import { routineBlock } from "@/features/catalog/data/session-blocks";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -146,6 +149,9 @@ export function createPlanEditRepository(database: Db) {
         if (seenBlocks.has(block.id)) throw new InvalidSessionContentError("No puedes añadir dos veces el mismo bloque.");
         const canonical = findSessionBlock(block.id);
         if (!canonical || canonical.kind !== block.kind) throw new InvalidSessionContentError("El bloque seleccionado no está disponible en el catálogo.");
+        for (const variantId of block.variantIds ?? []) {
+          if (!findMobilityExercise(variantId)) throw new InvalidSessionContentError("La rutina contiene un ejercicio de movilidad no disponible.");
+        }
         seenBlocks.add(block.id);
       }
 
@@ -165,9 +171,28 @@ export function createPlanEditRepository(database: Db) {
     });
   }
 
+  async function addRoutineToPlan(ownerId: string, planId: string, input: PlanSessionAddOnInput) {
+    return database.transaction(async (tx) => {
+      const { plan, proposal } = await loadOwnedPlan(tx, ownerId, planId);
+      const routine = MOBILITY_ROUTINES.find((candidate) => candidate.id === input.routineId);
+      if (!routine) throw new InvalidSessionContentError("La rutina de movilidad seleccionada no está disponible.");
+      const block = routineBlock(routine, input.kind);
+      const sessions = proposal.week.sessions.map((session) => session.kind !== "strength" ? session : {
+        ...session,
+        blocks: [...(session.blocks ?? []).filter((existing) => existing.kind !== input.kind), block]
+      });
+      const updatedProposal: PlanProposal = { ...proposal, week: { ...proposal.week, sessions } };
+      await tx.update(trainingPlan)
+        .set({ contentJson: JSON.stringify(updatedProposal), version: plan.version + 1 })
+        .where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId)));
+      return { routineId: routine.id, kind: input.kind, sessionCount: sessions.filter((session) => session.kind === "strength").length };
+    });
+  }
+
   return {
     applyEdit: (ownerId: string, planId: string, input: PlanEditInput) => runEdit(ownerId, planId, input),
     updateSessionContent: (ownerId: string, planId: string, input: PlanSessionContentInput) => updateSessionContent(ownerId, planId, input),
+    addRoutineToPlan: (ownerId: string, planId: string, input: PlanSessionAddOnInput) => addRoutineToPlan(ownerId, planId, input),
     listWeekAdjustments: (ownerId: string, planId: string, weekStartIso: string) =>
       database.select({ sessionIndex: sessionAdjustment.sessionIndex, kind: sessionAdjustment.kind, targetDay: sessionAdjustment.targetDay, opsJson: sessionAdjustment.opsJson })
         .from(sessionAdjustment)

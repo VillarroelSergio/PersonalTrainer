@@ -14,8 +14,10 @@ function routineSupportsEnvironment(routine: MobilityRoutine, environment: Envir
 }
 
 export function availableMobilityRoutines(environment: EnvironmentKind, kind: "warmup" | "cooldown"): MobilityRoutine[] {
-  const routines = MOBILITY_ROUTINES.filter((routine) => routineSupportsEnvironment(routine, environment));
-  return routines.filter((routine) => kind === "warmup" ? routine.id.startsWith("mobility-") : routine.id.startsWith("stretch-"));
+  // Cualquier secuencia puede preparar o cerrar una sesión. El contexto cambia
+  // la etiqueta del bloque, no debe ocultar rutinas útiles por su prefijo.
+  void kind;
+  return MOBILITY_ROUTINES.filter((routine) => routineSupportsEnvironment(routine, environment));
 }
 
 function routineFor(environment: EnvironmentKind, kind: "warmup" | "cooldown", requestedId?: string): MobilityRoutine | undefined {
@@ -69,4 +71,3 @@ export function sessionBlockLabel(block: TrainingBlock): string {
   if (block.id === "mobility-foam-roll") return "Rodillo de espuma";
   return block.kind === "warmup" ? "Calentamiento" : block.kind === "cooldown" ? "Movilidad y estiramientos" : "Movilidad";
 }
-

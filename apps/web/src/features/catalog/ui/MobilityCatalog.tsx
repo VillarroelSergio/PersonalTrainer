@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { exercisesForMobilityRoutine, MOBILITY_EXERCISES, MOBILITY_ROUTINES, type MobilityExercise, type MobilityRoutine } from "@/features/catalog/data/mobility-catalog";
 import styles from "./MobilityCatalog.module.css";
@@ -13,11 +14,34 @@ function routineExerciseIds(routine: MobilityRoutine): Set<string> {
   return new Set(routine.exerciseIds);
 }
 
-export function MobilityCatalog() {
+export function MobilityCatalog({ planId }: { planId?: string }) {
   const [selectedRoutineId, setSelectedRoutineId] = useState(MOBILITY_ROUTINES[0]?.id ?? "");
   const selectedRoutine = MOBILITY_ROUTINES.find((routine) => routine.id === selectedRoutineId) ?? MOBILITY_ROUTINES[0];
   const routineExercises = useMemo(() => selectedRoutine ? exercisesForMobilityRoutine(selectedRoutine) : [], [selectedRoutine]);
   const selectedExerciseIds = selectedRoutine ? routineExerciseIds(selectedRoutine) : new Set<string>();
+  const [applying, setApplying] = useState<"warmup" | "cooldown" | null>(null);
+  const [applied, setApplied] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+
+  async function applyToPlan(kind: "warmup" | "cooldown") {
+    if (!selectedRoutine || applying) return;
+    if (!planId) {
+      setApplyError("Activa un plan para poder añadir esta rutina a tus sesiones.");
+      return;
+    }
+    setApplying(kind);
+    setApplyError(null);
+    const response = await fetch(`/api/v1/plans/${planId}/session-add-ons`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ routineId: selectedRoutine.id, kind })
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) setApplyError(body?.error?.message ?? "No pudimos añadir la rutina al plan.");
+    else setApplied(kind);
+    setApplying(null);
+  }
 
   return (
     <div className={styles.wrap}>
@@ -33,7 +57,7 @@ export function MobilityCatalog() {
           {MOBILITY_ROUTINES.map((routine) => {
             const selected = routine.id === selectedRoutine?.id;
             return (
-              <button key={routine.id} type="button" className={`${styles.routineCard}${selected ? ` ${styles.routineCardSelected}` : ""}`} aria-pressed={selected} onClick={() => setSelectedRoutineId(routine.id)}>
+                <button key={routine.id} type="button" className={`${styles.routineCard}${selected ? ` ${styles.routineCardSelected}` : ""}`} aria-pressed={selected} onClick={() => { setSelectedRoutineId(routine.id); setApplied(null); setApplyError(null); }}>
                 <span className={styles.routineTopline}><span>{routine.durationMinutes} min</span><span>{routine.level === "beginner" ? "Base" : "Intermedia"}</span></span>
                 <strong>{routine.name}</strong>
                 <span>{routine.purpose}</span>
@@ -54,6 +78,15 @@ export function MobilityCatalog() {
             </div>
             <span className={styles.durationBadge}>{selectedRoutine.durationMinutes} min</span>
           </div>
+          <div className={styles.selectionNotice}>
+            <div><strong>{applied ? "Añadida al plan" : "¿Dónde se aplica?"}</strong><span>{applied ? `Se mostrará como opción ${applied === "warmup" ? "antes" : "después"} de tus sesiones.` : "Elige cómo quieres usar esta rutina. Luego aparecerá debajo de cada sesión como opcional."}</span></div>
+            {applied ? <Link href="/hoy" className={styles.planLink}>Ver Hoy <span aria-hidden="true">→</span></Link> : null}
+          </div>
+          {!applied ? <div className={styles.applyActions}>
+            <button type="button" className={styles.applyButton} onClick={() => applyToPlan("warmup")} disabled={Boolean(applying)}>{applying === "warmup" ? "Añadiendo…" : "Usar antes"}</button>
+            <button type="button" className={styles.applyButton} onClick={() => applyToPlan("cooldown")} disabled={Boolean(applying)}>{applying === "cooldown" ? "Añadiendo…" : "Usar después"}</button>
+          </div> : null}
+          {applyError ? <p className={styles.applyError} role="alert">{applyError}</p> : null}
           <ol className={styles.exerciseList} aria-label={`Ejercicios de ${selectedRoutine.name}`}>
             {routineExercises.map((exercise, index) => (
               <li key={exercise.id} className={styles.exerciseCard}>
