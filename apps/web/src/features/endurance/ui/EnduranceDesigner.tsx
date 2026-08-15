@@ -4,6 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ENDURANCE_OBJECTIVES, findEnduranceObjective } from "@/features/endurance/data/objectives";
 import { ImportActivityEntry } from "@/features/endurance/ui/ImportActivityEntry";
+import { saveEnduranceDesignOffline } from "@/features/endurance/domain/endurance-design-offline";
+import { createClientId } from "@/lib/client-id";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
 import type { EnduranceEnvironment, EnduranceObjective } from "@/contracts/endurance";
 import { WEEKDAY_LABEL, WEEKDAYS, type Weekday } from "@/lib/weekdays";
 
@@ -43,28 +47,51 @@ export function EnduranceDesigner({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adjustSheet, setAdjustSheet] = useState<"closed" | "root" | "environment" | "move">("closed");
+  const offlineData = useOfflineData();
+  const sync = useOfflineSyncContext();
 
   async function persistDesign(next: { objective: EnduranceObjective; environment?: EnduranceEnvironment | null; optionalLayers?: Record<string, string> }) {
     setSaving(true);
     setError(null);
+    const input = { isoWeekStart, sessionIndex, objective: next.objective, environment: next.environment ?? undefined, optionalLayers: next.optionalLayers ?? {} };
+    let response: Response;
     try {
-      const response = await fetch("/api/v1/endurance-designs", {
+      response = await fetch("/api/v1/endurance-designs", {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ isoWeekStart, sessionIndex, objective: next.objective, environment: next.environment ?? undefined, optionalLayers: next.optionalLayers ?? {} })
+        body: JSON.stringify(input)
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body?.error?.message ?? "No pudimos guardar tu propuesta.");
-      const saved: DesignState = { id: body.data.id, objective: body.data.objective, environment: body.data.environment, optionalLayers: next.optionalLayers ?? {}, watchPreparedAt: null };
-      setDesign(saved);
-      return saved;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No pudimos guardar tu propuesta.");
-      return null;
-    } finally {
+    } catch {
+      // Network failure (not a server rejection): apply the design locally and queue it — the
+      // change IS saved, just not synced yet, same treatment as CheckinRunner/PlanSessionActions.
       setSaving(false);
+      if (offlineData.snapshot) {
+        const result = saveEnduranceDesignOffline(offlineData.snapshot, input, createClientId);
+        offlineData.applyLocalMutation(result.snapshot.data);
+        await sync.enqueue(result.operation);
+        const saved: DesignState = {
+          id: result.row.id,
+          objective: result.row.objective as EnduranceObjective,
+          environment: result.row.environment as EnduranceEnvironment | null,
+          optionalLayers: next.optionalLayers ?? {},
+          watchPreparedAt: null
+        };
+        setDesign(saved);
+        return saved;
+      }
+      setError("No pudimos guardar tu propuesta.");
+      return null;
     }
+    setSaving(false);
+    const body = await response.json();
+    if (!response.ok) {
+      setError(body?.error?.message ?? "No pudimos guardar tu propuesta.");
+      return null;
+    }
+    const saved: DesignState = { id: body.data.id, objective: body.data.objective, environment: body.data.environment, optionalLayers: next.optionalLayers ?? {}, watchPreparedAt: null };
+    setDesign(saved);
+    return saved;
   }
 
   async function chooseObjective(objective: EnduranceObjective) {

@@ -8,6 +8,7 @@ import {
   activityMetric,
   checkin,
   enduranceActivity,
+  enduranceSessionDesign,
   favoriteVariant,
   importFile,
   onboardingDraft,
@@ -17,6 +18,7 @@ import {
   sessionAdjustment,
   sessionExercise,
   setPerformance,
+  shareLink,
   trainingPlan,
   user,
   workoutSession
@@ -74,6 +76,11 @@ export async function createOfflineSnapshotResponse(request: Request, user_: Ses
   const activityMetrics = enduranceActivityIds.length === 0 ? [] : await database.select().from(activityMetric).where(inArray(activityMetric.activityId, enduranceActivityIds));
   const performanceBaselines = await database.select().from(performanceBaseline).where(eq(performanceBaseline.ownerId, ownerId));
 
+  // enduranceSessionDesign/shareLink: same raw owner-scoped dump pattern as enduranceActivities
+  // above, added for /resistencia and /compartir's offline conversion (Fase 5, Task 6 follow-up).
+  const enduranceDesigns = await database.select().from(enduranceSessionDesign).where(eq(enduranceSessionDesign.ownerId, ownerId));
+  const shareLinks = await database.select().from(shareLink).where(eq(shareLink.ownerId, ownerId));
+
   const snapshot: OfflineSnapshot = {
     userId: ownerId,
     syncedAt: Date.now(),
@@ -92,6 +99,8 @@ export async function createOfflineSnapshotResponse(request: Request, user_: Ses
       enduranceActivities,
       activityMetrics,
       performanceBaselines,
+      enduranceDesigns,
+      shareLinks,
       catalog: EXERCISE_CATALOG
     }
   };
