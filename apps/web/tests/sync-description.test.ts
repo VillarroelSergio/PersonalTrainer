@@ -23,6 +23,7 @@ describe("describeSync", () => {
     expect(description.title).toBe("Conexión inicial necesaria");
     expect(description.body).toContain("conéctate una vez");
     expect(description.ariaLabel).toContain("Conexión inicial necesaria");
+    expect(description.dotState).toBe("warning");
   });
 
   it("combines offline and pending state without implying data was lost", () => {
@@ -54,5 +55,21 @@ describe("describeSync", () => {
         keepServerLabel: "Conservar el cierre del servidor"
       })
     ]);
+  });
+
+  it("does not keep showing conflict after the conflict list has been resolved server-side", () => {
+    const description = describeSync({ state: "conflicto", pending: 0, conflicts: [], snapshotStatus: "synced" });
+
+    expect(description.title).toBe("Sincronizado");
+    expect(description.conflicts).toEqual([]);
+    expect(description.dotState).toBe("ok");
+  });
+
+  it("uses a non-green dot for initial sync even if the raw sync state still says synchronized", () => {
+    const description = describeSync({ state: "sincronizado", pending: 0, conflicts: [], snapshotStatus: "needs-initial-sync" });
+
+    expect(description.icon).toBe("○");
+    expect(description.tone).toBe("warning");
+    expect(description.dotState).not.toBe("ok");
   });
 });

@@ -36,14 +36,20 @@ class MemoryCache {
   }
 }
 
-function loadServiceWorker() {
+function loadServiceWorker(responses: Record<string, string> = {}) {
   const listeners = new Map<keyof SwEventMap, Array<(event: never) => void>>();
   const cachesByName = new Map<string, MemoryCache>();
   const fetched: string[] = [];
+  let offline = false;
   const fetcher = vi.fn(async (request: Request | string) => {
     const url = typeof request === "string" ? request : request.url;
-    fetched.push(new URL(url, "https://trainer.test").pathname);
-    return new Response(`ok:${url}`, { status: 200 });
+    const pathname = new URL(url, "https://trainer.test").pathname;
+    fetched.push(pathname);
+    if (offline) throw new Error(`offline:${pathname}`);
+    return new Response(responses[pathname] ?? `ok:${url}`, {
+      status: 200,
+      headers: { "content-type": pathname.endsWith(".js") ? "application/javascript" : "text/html" }
+    });
   });
   const caches = {
     keys: vi.fn(async () => [...cachesByName.keys()]),
@@ -92,7 +98,11 @@ function loadServiceWorker() {
     return responses;
   }
 
-  return { cachesByName, dispatchFetch, dispatchInstall, fetched };
+  function goOffline() {
+    offline = true;
+  }
+
+  return { cachesByName, dispatchFetch, dispatchInstall, fetched, goOffline };
 }
 
 describe("service worker shell cache", () => {
@@ -113,5 +123,37 @@ describe("service worker shell cache", () => {
 
     expect(responses).toHaveLength(0);
     expect(sw.fetched).toEqual([]);
+  });
+
+  it("installs a usable offline route shell by caching the Next static resources referenced by route HTML", async () => {
+    const sw = loadServiceWorker({
+      "/hoy": `
+        <!doctype html>
+        <html>
+          <head>
+            <link rel="stylesheet" href="/_next/static/css/app.css" />
+            <link rel="preload" href="/_next/static/chunks/runtime.js" as="script" />
+          </head>
+          <body>
+            <script src="/_next/static/chunks/app/hoy/page.js"></script>
+            <script src="/api/v1/offline-snapshot"></script>
+            <script src="https://analytics.example/remote.js"></script>
+          </body>
+        </html>
+      `,
+      "/_next/static/css/app.css": "body{background:#100f0d}",
+      "/_next/static/chunks/runtime.js": "runtime",
+      "/_next/static/chunks/app/hoy/page.js": "hoy-page"
+    });
+
+    await sw.dispatchInstall();
+    sw.goOffline();
+
+    const [chunkResponse] = sw.dispatchFetch(new Request("https://trainer.test/_next/static/chunks/app/hoy/page.js"));
+
+    await expect(chunkResponse.then((response) => response.text())).resolves.toBe("hoy-page");
+    const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
+    expect(cachedUrls).toEqual(expect.arrayContaining(["/_next/static/css/app.css", "/_next/static/chunks/runtime.js", "/_next/static/chunks/app/hoy/page.js"]));
+    expect(cachedUrls.some((url) => url.startsWith("/api/") || url.startsWith("https://analytics.example"))).toBe(false);
   });
 });
