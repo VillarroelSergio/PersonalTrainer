@@ -6,6 +6,7 @@ type SwEventMap = {
   install: Array<{ waitUntil(promise: Promise<unknown>): void }>;
   activate: Array<{ waitUntil(promise: Promise<unknown>): void }>;
   fetch: Array<{ request: Request; respondWith(promise: Promise<Response>): void }>;
+  message: Array<{ data: unknown; waitUntil(promise: Promise<unknown>): void }>;
 };
 
 class MemoryCache {
@@ -23,12 +24,14 @@ class MemoryCache {
   }
 
   async put(request: Request, response: Response) {
-    this.urls.add(new URL(request.url).pathname);
+    const url = new URL(request.url);
+    this.urls.add(`${url.pathname}${url.search}`);
     this.responses.set(request.url, response);
   }
 
   async match(request: Request) {
-    return this.responses.get(request.url) ?? this.responses.get(new URL(request.url).pathname);
+    const url = new URL(request.url);
+    return this.responses.get(request.url) ?? this.responses.get(`${url.pathname}${url.search}`);
   }
 
   async keys() {
@@ -36,17 +39,19 @@ class MemoryCache {
   }
 }
 
-function loadServiceWorker(responses: Record<string, string> = {}) {
+function loadServiceWorker(responses: Record<string, string> = {}, existingCachesByName?: Map<string, MemoryCache>) {
   const listeners = new Map<keyof SwEventMap, Array<(event: never) => void>>();
-  const cachesByName = new Map<string, MemoryCache>();
+  const cachesByName = existingCachesByName ?? new Map<string, MemoryCache>();
   const fetched: string[] = [];
   let offline = false;
   const fetcher = vi.fn(async (request: Request | string) => {
     const url = typeof request === "string" ? request : request.url;
-    const pathname = new URL(url, "https://trainer.test").pathname;
-    fetched.push(pathname);
-    if (offline) throw new Error(`offline:${pathname}`);
-    return new Response(responses[pathname] ?? `ok:${url}`, {
+    const parsedUrl = new URL(url, "https://trainer.test");
+    const pathname = parsedUrl.pathname;
+    const pathAndSearch = `${pathname}${parsedUrl.search}`;
+    fetched.push(pathAndSearch);
+    if (offline) throw new Error(`offline:${pathAndSearch}`);
+    return new Response(responses[pathAndSearch] ?? responses[pathname] ?? `ok:${url}`, {
       status: 200,
       headers: { "content-type": pathname.endsWith(".js") ? "application/javascript" : "text/html" }
     });
@@ -91,6 +96,13 @@ function loadServiceWorker(responses: Record<string, string> = {}) {
     await Promise.all(waits);
   }
 
+  async function dispatchMessage(data: unknown) {
+    const waits: Array<Promise<unknown>> = [];
+    const event = { data, waitUntil: (promise: Promise<unknown>) => waits.push(promise) };
+    for (const listener of listeners.get("message") ?? []) listener(event as never);
+    await Promise.all(waits);
+  }
+
   function dispatchFetch(request: Request) {
     const responses: Array<Promise<Response>> = [];
     const event = { request, respondWith: (promise: Promise<Response>) => responses.push(promise) };
@@ -102,24 +114,30 @@ function loadServiceWorker(responses: Record<string, string> = {}) {
     offline = true;
   }
 
-  return { cachesByName, dispatchFetch, dispatchInstall, fetched, goOffline };
+  return { cachesByName, dispatchFetch, dispatchInstall, dispatchMessage, fetched, goOffline };
 }
 
 describe("service worker shell cache", () => {
-  it("precaches the installed app shell for first offline navigation without caching API payloads", async () => {
+  it("installs only public app resources until trusted account state supplies private routes", async () => {
     const sw = loadServiceWorker();
 
     await sw.dispatchInstall();
 
     const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
-    expect(cachedUrls).toEqual(expect.arrayContaining(["/hoy", "/plan", "/ejercicios", "/historial", "/manifest.webmanifest", "/icons/icon.svg"]));
+    expect(cachedUrls).toEqual(expect.arrayContaining(["/manifest.webmanifest", "/icons/icon.svg"]));
+    expect(cachedUrls).not.toEqual(expect.arrayContaining(["/hoy", "/plan", "/ejercicios", "/historial", "/entrenar", "/checkin", "/recuperar", "/resistencia"]));
     expect(cachedUrls.some((url) => url.startsWith("/api/"))).toBe(false);
   });
 
-  it("precaches every snapshot-backed operational route required from /hoy", async () => {
+  it("precaches every snapshot-backed operational route required from /hoy for the active account only", async () => {
     const sw = loadServiceWorker();
 
     await sw.dispatchInstall();
+    await sw.dispatchMessage({
+      type: "TRAINER_PRECACHE_ACCOUNT_SHELL",
+      userId: "account-a",
+      routes: ["/hoy", "/plan", "/ejercicios", "/historial", "/checkin", "/entrenar?session=0", "/recuperar?session=0", "/resistencia?session=1"]
+    });
 
     const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
     expect(cachedUrls).toEqual(expect.arrayContaining([
@@ -127,11 +145,12 @@ describe("service worker shell cache", () => {
       "/plan",
       "/ejercicios",
       "/historial",
-      "/entrenar",
       "/checkin",
-      "/recuperar",
-      "/resistencia"
+      "/entrenar?session=0",
+      "/recuperar?session=0",
+      "/resistencia?session=1"
     ]));
+    expect(cachedUrls).not.toContain("/recuperar");
   });
 
   it("leaves API requests entirely to the browser instead of intercepting or caching them", () => {
@@ -143,7 +162,7 @@ describe("service worker shell cache", () => {
     expect(sw.fetched).toEqual([]);
   });
 
-  it("installs a usable offline route shell by caching the Next static resources referenced by route HTML", async () => {
+  it("prepares a usable offline route shell by caching the Next static resources referenced by account route HTML", async () => {
     const sw = loadServiceWorker({
       "/hoy": `
         <!doctype html>
@@ -165,6 +184,7 @@ describe("service worker shell cache", () => {
     });
 
     await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: ["/hoy"] });
     sw.goOffline();
 
     const [chunkResponse] = sw.dispatchFetch(new Request("https://trainer.test/_next/static/chunks/app/hoy/page.js"));
@@ -175,16 +195,63 @@ describe("service worker shell cache", () => {
     expect(cachedUrls.some((url) => url.startsWith("/api/") || url.startsWith("https://analytics.example"))).toBe(false);
   });
 
-  it("serves a snapshot-backed action route offline even when that exact query URL was never visited", async () => {
-    const sw = loadServiceWorker({ "/entrenar": "<!doctype html><main>Entrenar shell</main>" });
+  it("does not serve account A cached navigation responses under account B or after account clear", async () => {
+    const sw = loadServiceWorker({ "/hoy": "<!doctype html><main>Cuenta A</main>" });
 
     await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: ["/hoy"] });
     sw.goOffline();
 
-    const request = new Request("https://trainer.test/entrenar?session=0", { method: "GET" });
+    const requestA = new Request("https://trainer.test/hoy", { method: "GET" });
+    Object.defineProperty(requestA, "mode", { value: "navigate" });
+    const [accountAResponse] = sw.dispatchFetch(requestA);
+    await expect(accountAResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main>Cuenta A</main>");
+
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-b", routes: [] });
+    const requestB = new Request("https://trainer.test/hoy", { method: "GET" });
+    Object.defineProperty(requestB, "mode", { value: "navigate" });
+    const [accountBResponse] = sw.dispatchFetch(requestB);
+    await expect(accountBResponse).rejects.toThrow("offline:/hoy");
+
+    await sw.dispatchMessage({ type: "TRAINER_CLEAR_ACCOUNT_SHELL" });
+    const requestCleared = new Request("https://trainer.test/hoy", { method: "GET" });
+    Object.defineProperty(requestCleared, "mode", { value: "navigate" });
+    const [clearedResponse] = sw.dispatchFetch(requestCleared);
+    await expect(clearedResponse).rejects.toThrow("offline:/hoy");
+  });
+
+  it("serves the account shell after a service worker restart by restoring the trusted active account", async () => {
+    const firstWorker = loadServiceWorker({ "/hoy": "<!doctype html><main>Cuenta A persistida</main>" });
+
+    await firstWorker.dispatchInstall();
+    await firstWorker.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: ["/hoy"] });
+
+    const restartedWorker = loadServiceWorker({}, firstWorker.cachesByName);
+    restartedWorker.goOffline();
+    const request = new Request("https://trainer.test/hoy", { method: "GET" });
+    Object.defineProperty(request, "mode", { value: "navigate" });
+    const [navigationResponse] = restartedWorker.dispatchFetch(request);
+
+    await expect(navigationResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main>Cuenta A persistida</main>");
+  });
+
+  it("serves the prepared recovery session route offline without caching the bare /recuperar redirect", async () => {
+    const sw = loadServiceWorker({
+      "/recuperar": "<!doctype html><main>redirect:/hoy</main>",
+      "/recuperar?session=2": "<!doctype html><main>Recuperación sesión 2</main>"
+    });
+
+    await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: ["/recuperar?session=2"] });
+    sw.goOffline();
+
+    const request = new Request("https://trainer.test/recuperar?session=2", { method: "GET" });
     Object.defineProperty(request, "mode", { value: "navigate" });
     const [navigationResponse] = sw.dispatchFetch(request);
 
-    await expect(navigationResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main>Entrenar shell</main>");
+    await expect(navigationResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main>Recuperación sesión 2</main>");
+    const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
+    expect(cachedUrls).toContain("/recuperar?session=2");
+    expect(cachedUrls).not.toContain("/recuperar");
   });
 });

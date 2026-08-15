@@ -3,11 +3,34 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { createIndexedDbSnapshotStore } from "./indexeddb-store";
+import { accountShellRoutesForSnapshot } from "./account-shell-routes";
 import { applyLocalMutation, refreshSnapshot, resolveSessionUserId, type SnapshotStatus } from "./snapshot-client";
 import type { OfflineSnapshot, OfflineSnapshotStore } from "./snapshot";
 
 function fetchSnapshot(): Promise<Response> {
   return fetch("/api/v1/offline-snapshot", { credentials: "same-origin" });
+}
+
+function postServiceWorkerMessage(message: Record<string, unknown>) {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.ready
+    .then((registration) => {
+      registration.active?.postMessage(message);
+      navigator.serviceWorker.controller?.postMessage(message);
+    })
+    .catch(() => {});
+}
+
+function activateAccountShell(userId: string, routes: string[] = []) {
+  postServiceWorkerMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId, routes });
+}
+
+function precacheAccountShell(snapshot: OfflineSnapshot) {
+  activateAccountShell(snapshot.userId, accountShellRoutesForSnapshot(snapshot));
+}
+
+function clearAccountShell() {
+  postServiceWorkerMessage({ type: "TRAINER_CLEAR_ACCOUNT_SHELL" });
 }
 
 function useOfflineDataState() {
@@ -31,6 +54,7 @@ function useOfflineDataState() {
     const result = await refreshSnapshot(getStore(), fetchSnapshot, userId);
     setSnapshot(result.snapshot);
     setStatus(result.status);
+    if (result.snapshot) precacheAccountShell(result.snapshot);
   }, [getStore, userId]);
 
   /** Clears the local snapshot for the currently signed-in user: called on sign-out and account deletion so a second account on a shared device never hydrates leftover data. */
@@ -38,6 +62,7 @@ function useOfflineDataState() {
     if (userId) await getStore().remove(userId);
     setSnapshot(null);
     setStatus("needs-initial-sync");
+    clearAccountShell();
   }, [getStore, userId]);
 
   useEffect(() => {
@@ -50,7 +75,11 @@ function useOfflineDataState() {
     // of "Conexión inicial necesaria" during the brief hydration window.
     setSnapshot(null);
     setStatus(userId ? "loading" : "needs-initial-sync");
-    if (!userId) return;
+    if (!userId) {
+      clearAccountShell();
+      return;
+    }
+    activateAccountShell(userId);
     void refresh();
     function handleOnline() { void refresh(); }
     window.addEventListener("online", handleOnline);

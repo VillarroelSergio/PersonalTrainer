@@ -1,29 +1,44 @@
 /*
- * Minimal PWA shell cache. Next.js fingerprints change every build, so install
- * fetches stable shell routes and follows their same-origin static references:
- *  - install fills enough HTML + _next/static entries for first offline load;
- *  - navigations (page loads) use network-first, falling back to the last
- *    successful render of that same route when there's no coverage;
- *  - hashed static assets (_next/static, icons, library media) use
- *    cache-first, since their URL already changes when their content does;
- *  - everything under /api/ always goes to the network untouched — mutations
- *    go through the outbox (src/lib/offline), not the service worker.
+ * Local-first PWA cache.
+ * - install stores only public app resources, never authenticated navigation HTML;
+ * - trusted client state sends the active account + snapshot-backed routes after
+ *   auth/snapshot hydration, and navigation responses live in an account-scoped cache;
+ * - hashed static assets (_next/static, icons, library media) remain cache-first;
+ * - /api and remote requests are never intercepted or cached by the service worker.
  */
-const SHELL_CACHE = "trainer-shell-v2";
+const STATIC_CACHE = "trainer-static-v3";
+const ACCOUNT_META_CACHE = "trainer-account-meta-v3";
+const NAVIGATION_CACHE_PREFIX = "trainer-nav-v3-";
+const LEGACY_CACHE_NAMES = ["trainer-shell-v2"];
 const NAVIGATION_TIMEOUT_MS = 1800;
-const SHELL_ROUTE_URLS = ["/hoy", "/plan", "/ejercicios", "/historial", "/entrenar", "/checkin", "/recuperar", "/resistencia"];
 const PUBLIC_SHELL_URLS = ["/manifest.webmanifest", "/icons/icon.svg"];
 const STATIC_CACHE_PREFIXES = ["/_next/static/", "/icons/", "/library/"];
+const ACTIVE_ACCOUNT_CACHE_URL = "/__trainer_sw/active-account";
+
+let activeNavigationCacheName = null;
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
-  event.waitUntil(precacheShell());
+  event.waitUntil(precachePublicShell());
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== SHELL_CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((key) => LEGACY_CACHE_NAMES.includes(key)).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", (event) => {
+  const data = event.data || {};
+  if (data.type === "TRAINER_PRECACHE_ACCOUNT_SHELL") {
+    event.waitUntil(activateAccountShell(data.userId, Array.isArray(data.routes) ? data.routes : []));
+    return;
+  }
+  if (data.type === "TRAINER_CLEAR_ACCOUNT_SHELL") {
+    event.waitUntil(clearAccountShell());
+  }
 });
 
 self.addEventListener("fetch", (event) => {
@@ -37,10 +52,64 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(networkFirst(request, event));
     return;
   }
-  if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/") || url.pathname.startsWith("/library/")) {
+  if (isStaticUrl(url)) {
     event.respondWith(cacheFirst(request));
   }
 });
+
+async function activateAccountShell(userId, routes) {
+  if (typeof userId !== "string" || userId.trim() === "") return;
+  const cacheName = accountNavigationCacheName(userId);
+  activeNavigationCacheName = cacheName;
+  await persistActiveAccountShell(cacheName);
+  await deleteOtherAccountShells(cacheName);
+
+  const navigationCache = await caches.open(cacheName);
+  const staticCache = await caches.open(STATIC_CACHE);
+  const seen = new Set();
+  for (const route of routes) {
+    await precacheNavigationUrl(navigationCache, staticCache, seen, route);
+  }
+}
+
+async function clearAccountShell() {
+  activeNavigationCacheName = null;
+  const keys = await caches.keys();
+  await Promise.all(
+    keys
+      .filter((key) => key === ACCOUNT_META_CACHE || key.startsWith(NAVIGATION_CACHE_PREFIX))
+      .map((key) => caches.delete(key))
+  );
+}
+
+async function deleteOtherAccountShells(cacheNameToKeep) {
+  const keys = await caches.keys();
+  await Promise.all(
+    keys
+      .filter((key) => key.startsWith(NAVIGATION_CACHE_PREFIX) && key !== cacheNameToKeep)
+      .map((key) => caches.delete(key))
+  );
+}
+
+function accountNavigationCacheName(userId) {
+  return `${NAVIGATION_CACHE_PREFIX}${userId.trim().replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 96)}`;
+}
+
+async function persistActiveAccountShell(cacheName) {
+  const cache = await caches.open(ACCOUNT_META_CACHE);
+  await cache.put(new Request(new URL(ACTIVE_ACCOUNT_CACHE_URL, self.location.origin).href), new Response(cacheName, { headers: { "content-type": "text/plain" } }));
+}
+
+async function getActiveNavigationCacheName() {
+  if (activeNavigationCacheName) return activeNavigationCacheName;
+  const cache = await caches.open(ACCOUNT_META_CACHE);
+  const response = await cache.match(new Request(new URL(ACTIVE_ACCOUNT_CACHE_URL, self.location.origin).href));
+  if (!response) return null;
+  const cacheName = await response.text();
+  if (!cacheName.startsWith(NAVIGATION_CACHE_PREFIX)) return null;
+  activeNavigationCacheName = cacheName;
+  return cacheName;
+}
 
 async function networkFirst(request, event) {
   const controller = new AbortController();
@@ -50,29 +119,18 @@ async function networkFirst(request, event) {
       fetch(new Request(request, { signal: controller.signal })),
       new Promise((_, reject) => setTimeout(() => reject(new Error("navigation_timeout")), NAVIGATION_TIMEOUT_MS))
     ]);
-    if (response.ok) {
-      event.waitUntil(cacheResponse(request, response.clone()));
+    const cacheName = await getActiveNavigationCacheName();
+    if (response.ok && cacheName) {
+      event.waitUntil(cacheNavigationResponse(cacheName, request, response.clone()));
     }
     return response;
   } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    // No exact URL match (e.g. /entrenar?session=3 was never itself visited online). Routes
-    // like /hoy and /entrenar now build their screen client-side from the local snapshot, so
-    // their page content no longer depends on which query string was server-rendered — serve
-    // any cached navigation response for the same pathname instead of failing outright.
-    // findSamePathnameCacheUrl mirrors src/lib/offline/cache-fallback.ts (unit-tested there);
-    // service workers here run unbundled, so the algorithm is duplicated, not imported.
-    const cache = await caches.open(SHELL_CACHE);
-    const keys = await cache.keys();
-    const targetPathname = new URL(request.url).pathname;
-    const fallbackKey = keys.find((key) => new URL(key.url).pathname === targetPathname);
-    if (fallbackKey) {
-      const fallback = await cache.match(fallbackKey);
-      if (fallback) return fallback;
+    const cacheName = await getActiveNavigationCacheName();
+    if (cacheName) {
+      const cache = await caches.open(cacheName);
+      const cached = await cache.match(request);
+      if (cached) return cached;
     }
-    // A first visit has no cached HTML. Retry without the abort signal so the
-    // browser can still complete the initial render instead of failing blank.
     return fetch(request);
   } finally {
     clearTimeout(timeoutId);
@@ -80,30 +138,49 @@ async function networkFirst(request, event) {
 }
 
 async function cacheFirst(request) {
-  const cached = await caches.match(request);
+  const cache = await caches.open(STATIC_CACHE);
+  const cached = await cache.match(request);
   if (cached) return cached;
   const response = await fetch(request);
-  cacheResponse(request, response.clone());
+  if (response.ok) await cache.put(request, response.clone());
   return response;
 }
 
-async function cacheResponse(request, response) {
-  const cache = await caches.open(SHELL_CACHE);
+async function cacheNavigationResponse(cacheName, request, response) {
+  const cache = await caches.open(cacheName);
   await cache.put(request, response);
 }
 
-async function precacheShell() {
-  const cache = await caches.open(SHELL_CACHE);
+async function precachePublicShell() {
+  const cache = await caches.open(STATIC_CACHE);
   const seen = new Set();
-  for (const url of [...SHELL_ROUTE_URLS, ...PUBLIC_SHELL_URLS]) {
-    await precacheUrl(cache, seen, url);
+  for (const url of PUBLIC_SHELL_URLS) {
+    await precachePublicUrl(cache, seen, url);
   }
 }
 
-async function precacheUrl(cache, seen, url) {
+async function precacheNavigationUrl(navigationCache, staticCache, seen, url) {
   const absoluteUrl = new URL(url, self.location.origin);
-  if (absoluteUrl.origin !== self.location.origin) return;
-  if (absoluteUrl.pathname.startsWith("/api/")) return;
+  if (!isSameOriginNonApi(absoluteUrl)) return;
+  const cacheKey = absoluteUrl.href;
+  if (seen.has(cacheKey)) return;
+  seen.add(cacheKey);
+
+  const response = await fetch(cacheKey);
+  if (!response.ok) return;
+  await navigationCache.put(new Request(cacheKey), response.clone());
+
+  if (!isHtmlResponse(response)) return;
+  const html = await response.clone().text();
+  const staticUrls = extractSameOriginStaticUrls(html);
+  for (const staticUrl of staticUrls) {
+    await precachePublicUrl(staticCache, seen, staticUrl);
+  }
+}
+
+async function precachePublicUrl(cache, seen, url) {
+  const absoluteUrl = new URL(url, self.location.origin);
+  if (!isSameOriginNonApi(absoluteUrl)) return;
   const cacheKey = absoluteUrl.href;
   if (seen.has(cacheKey)) return;
   seen.add(cacheKey);
@@ -111,17 +188,14 @@ async function precacheUrl(cache, seen, url) {
   const response = await fetch(cacheKey);
   if (!response.ok) return;
   await cache.put(new Request(cacheKey), response.clone());
-
-  if (!isShellRoute(absoluteUrl.pathname) && !isHtmlResponse(response)) return;
-  const html = await response.clone().text();
-  const staticUrls = extractSameOriginStaticUrls(html);
-  for (const staticUrl of staticUrls) {
-    await precacheUrl(cache, seen, staticUrl);
-  }
 }
 
-function isShellRoute(pathname) {
-  return SHELL_ROUTE_URLS.includes(pathname);
+function isSameOriginNonApi(url) {
+  return url.origin === self.location.origin && !url.pathname.startsWith("/api/");
+}
+
+function isStaticUrl(url) {
+  return STATIC_CACHE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix));
 }
 
 function isHtmlResponse(response) {
@@ -134,8 +208,8 @@ function extractSameOriginStaticUrls(html) {
   let match;
   while ((match = attributePattern.exec(html)) !== null) {
     const url = new URL(match[1], self.location.origin);
-    if (url.origin !== self.location.origin) continue;
-    if (!STATIC_CACHE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) continue;
+    if (!isSameOriginNonApi(url)) continue;
+    if (!isStaticUrl(url)) continue;
     urls.push(url.href);
   }
   return urls;
