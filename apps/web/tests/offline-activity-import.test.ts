@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   listenOfflineImportFilesChanged,
   readyImportToWizardState,
+  refreshOfflineImportFileSummaries,
   stageActivityImportOffline,
   submitStagedActivityImport,
   type OfflineImportFile,
@@ -219,5 +220,36 @@ describe("offline activity import staging", () => {
     removeUserA();
     removeUserB();
     vi.unstubAllGlobals();
+  });
+
+  it("drops an obsolete mounted refresh result after cleanup or account change", async () => {
+    let resolveList: (files: OfflineImportFile[]) => void = () => {};
+    const fileStore: OfflineImportFileStore = {
+      async get() { return undefined; },
+      async put() {},
+      async remove() {},
+      async list() {
+        return new Promise<OfflineImportFile[]>((resolve) => { resolveList = resolve; });
+      }
+    };
+    let currentUserId = "user-a";
+    const refresh = refreshOfflineImportFileSummaries(fileStore, "user-a", () => currentUserId === "user-a");
+
+    currentUserId = "user-b";
+    resolveList([
+      {
+        id: "file-a",
+        userId: "user-a",
+        status: "ready_to_save",
+        blob: null,
+        originalName: "a.gpx",
+        sizeBytes: 1,
+        mimeType: "application/gpx+xml",
+        sha256: "sha",
+        createdAt: 1
+      }
+    ]);
+
+    await expect(refresh).resolves.toBeNull();
   });
 });

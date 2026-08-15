@@ -26,6 +26,8 @@ export type OfflineImportFile = {
   importData?: OfflineImportData;
 };
 
+export type OfflineImportFileSummary = Pick<OfflineImportFile, "id" | "originalName" | "sizeBytes" | "createdAt" | "status" | "importData">;
+
 export interface OfflineImportFileStore {
   get(userId: string, fileId: string): Promise<OfflineImportFile | undefined>;
   put(file: OfflineImportFile): Promise<void>;
@@ -49,6 +51,20 @@ export function listenOfflineImportFilesChanged(userId: string, onChanged: () =>
   };
   window.addEventListener(OFFLINE_IMPORT_FILES_CHANGED_EVENT, handler);
   return () => window.removeEventListener(OFFLINE_IMPORT_FILES_CHANGED_EVENT, handler);
+}
+
+export async function refreshOfflineImportFileSummaries(
+  fileStore: OfflineImportFileStore,
+  userId: string,
+  isCurrent: () => boolean
+): Promise<OfflineImportFileSummary[] | null> {
+  try {
+    const files = await fileStore.list(userId);
+    if (!isCurrent()) return null;
+    return files.map(({ id, originalName, sizeBytes, createdAt, status, importData }) => ({ id, originalName, sizeBytes, createdAt, status, importData }));
+  } catch {
+    return isCurrent() ? [] : null;
+  }
 }
 
 export type StageActivityImportInput = {

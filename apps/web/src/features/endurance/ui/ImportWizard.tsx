@@ -6,7 +6,13 @@ import type { EnduranceSport, ParsedActivity } from "@/contracts/endurance";
 import { useOfflineData } from "@/lib/offline/OfflineDataContext";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
 import { createIndexedDbImportFileStore } from "@/lib/offline/indexeddb-store";
-import { listenOfflineImportFilesChanged, readyImportToWizardState, stageActivityImportOffline, type OfflineImportFile } from "@/features/endurance/domain/activity-import-offline";
+import {
+  listenOfflineImportFilesChanged,
+  readyImportToWizardState,
+  refreshOfflineImportFileSummaries,
+  stageActivityImportOffline,
+  type OfflineImportFile
+} from "@/features/endurance/domain/activity-import-offline";
 
 type ImportStatus = "received" | "analyzed" | "duplicate" | "saved" | "failed";
 type ImportData = { id: string; status: ImportStatus; format: string; errorCode: string | null; analysis: ParsedActivity | { message: string } | null; duplicateOfActivityId: string | null };
@@ -55,25 +61,22 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
   const fileStoreRef = useRef(createIndexedDbImportFileStore());
   const userId = offlineData.snapshot?.userId ?? null;
 
-  const refreshStagedFiles = useCallback(async () => {
+  const refreshStagedFiles = useCallback(async (isCurrent: () => boolean = () => true) => {
     if (!userId) {
       setStagedFiles([]);
       return;
     }
-    try {
-      const files = await fileStoreRef.current.list(userId);
-      setStagedFiles(files.map(({ id, originalName, sizeBytes, createdAt, status, importData }) => ({ id, originalName, sizeBytes, createdAt, status, importData })));
-    } catch {
-      setStagedFiles([]);
-    }
+    const files = await refreshOfflineImportFileSummaries(fileStoreRef.current, userId, isCurrent);
+    if (files !== null) setStagedFiles(files);
   }, [userId]);
 
   useEffect(() => {
     let active = true;
-    void refreshStagedFiles();
+    const isCurrent = () => active;
+    void refreshStagedFiles(isCurrent);
     if (!userId) return () => { active = false; };
     const stopListening = listenOfflineImportFilesChanged(userId, () => {
-      if (active) void refreshStagedFiles();
+      void refreshStagedFiles(isCurrent);
     });
     return () => {
       active = false;
