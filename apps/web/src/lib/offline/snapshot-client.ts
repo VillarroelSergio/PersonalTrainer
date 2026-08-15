@@ -57,7 +57,10 @@ export async function refreshSnapshot(store: OfflineSnapshotStore, fetchFn: Fetc
   if (snapshot.userId !== userId) return cached ? { snapshot: cached, status: "offline" } : { snapshot: null, status: "needs-initial-sync" };
   if (!isCurrent()) return stale();
   await store.put(snapshot);
-  if (!isCurrent()) return stale();
+  if (!isCurrent()) {
+    await store.remove(userId);
+    return stale();
+  }
   return { snapshot, status: "synced" };
 }
 

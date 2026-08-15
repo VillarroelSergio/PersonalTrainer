@@ -16,6 +16,8 @@ const STATIC_CACHE_PREFIXES = ["/_next/static/", "/icons/", "/library/"];
 const ACTIVE_ACCOUNT_CACHE_URL = "/__trainer_sw/active-account";
 
 let activeNavigationCacheName = null;
+let accountShellGeneration = 0;
+let accountShellPrecacheController = null;
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -59,20 +61,32 @@ self.addEventListener("fetch", (event) => {
 
 async function activateAccountShell(userId, routes) {
   if (typeof userId !== "string" || userId.trim() === "") return;
+  accountShellGeneration += 1;
+  accountShellPrecacheController?.abort();
+  const generation = accountShellGeneration;
+  const controller = new AbortController();
+  accountShellPrecacheController = controller;
   const cacheName = accountNavigationCacheName(userId);
   activeNavigationCacheName = cacheName;
-  await persistActiveAccountShell(cacheName);
   await deleteOtherAccountShells(cacheName);
+  if (!isCurrentAccountShellGeneration(generation)) return;
 
   const navigationCache = await caches.open(cacheName);
   const staticCache = await caches.open(STATIC_CACHE);
   const seen = new Set();
   for (const route of routes) {
-    await precacheNavigationUrl(navigationCache, staticCache, seen, route);
+    if (!isCurrentAccountShellGeneration(generation)) return;
+    await precacheNavigationUrl(navigationCache, staticCache, seen, route, generation, controller.signal);
   }
+  if (!isCurrentAccountShellGeneration(generation)) return;
+  await persistActiveAccountShell(cacheName);
+  if (isCurrentAccountShellGeneration(generation)) accountShellPrecacheController = null;
 }
 
 async function clearAccountShell() {
+  accountShellGeneration += 1;
+  accountShellPrecacheController?.abort();
+  accountShellPrecacheController = null;
   activeNavigationCacheName = null;
   const keys = await caches.keys();
   await Promise.all(
@@ -93,6 +107,10 @@ async function deleteOtherAccountShells(cacheNameToKeep) {
 
 function accountNavigationCacheName(userId) {
   return `${NAVIGATION_CACHE_PREFIX}${userId.trim().replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 96)}`;
+}
+
+function isCurrentAccountShellGeneration(generation) {
+  return generation === accountShellGeneration;
 }
 
 async function persistActiveAccountShell(cacheName) {
@@ -159,21 +177,31 @@ async function precachePublicShell() {
   }
 }
 
-async function precacheNavigationUrl(navigationCache, staticCache, seen, url) {
+async function precacheNavigationUrl(navigationCache, staticCache, seen, url, generation, signal) {
   const absoluteUrl = new URL(url, self.location.origin);
   if (!isSameOriginNonApi(absoluteUrl)) return;
   const cacheKey = absoluteUrl.href;
   if (seen.has(cacheKey)) return;
   seen.add(cacheKey);
 
-  const response = await fetch(cacheKey);
+  if (!isCurrentAccountShellGeneration(generation)) return;
+  let response;
+  try {
+    response = await fetch(new Request(cacheKey, { signal }));
+  } catch {
+    return;
+  }
+  if (!isCurrentAccountShellGeneration(generation)) return;
   if (!response.ok) return;
   await navigationCache.put(new Request(cacheKey), response.clone());
+  if (!isCurrentAccountShellGeneration(generation)) return;
 
   if (!isHtmlResponse(response)) return;
   const html = await response.clone().text();
+  if (!isCurrentAccountShellGeneration(generation)) return;
   const staticUrls = extractSameOriginStaticUrls(html);
   for (const staticUrl of staticUrls) {
+    if (!isCurrentAccountShellGeneration(generation)) return;
     await precachePublicUrl(staticCache, seen, staticUrl);
   }
 }

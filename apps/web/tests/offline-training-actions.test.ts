@@ -147,7 +147,7 @@ describe("recovery offline helpers", () => {
   it("starts a recovery session locally", () => {
     const snapshot = emptySnapshot();
     const result = startRecoveryOffline(snapshot, { planId: "plan-a", sessionIndex: 1 }, createId());
-    expect(result.session).toMatchObject({ id: "local-recovery-1", status: "in_progress" });
+    expect(result.session).toMatchObject({ id: "local-recovery-1", planId: "plan-a", sessionIndex: 1, status: "in_progress" });
     expect(result.operation).toMatchObject({ kind: "start_recovery_session", recoverySessionId: "local-recovery-1" });
     expect((result.snapshot.data.recoverySessions as unknown[])).toContainEqual(result.session);
   });

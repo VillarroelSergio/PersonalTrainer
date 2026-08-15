@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
+type ResponseFixture = string | { body: string | Promise<string>; onFetch?: (request: Request | string) => void };
+
 type SwEventMap = {
   install: Array<{ waitUntil(promise: Promise<unknown>): void }>;
   activate: Array<{ waitUntil(promise: Promise<unknown>): void }>;
@@ -39,7 +41,7 @@ class MemoryCache {
   }
 }
 
-function loadServiceWorker(responses: Record<string, string> = {}, existingCachesByName?: Map<string, MemoryCache>) {
+function loadServiceWorker(responses: Record<string, ResponseFixture> = {}, existingCachesByName?: Map<string, MemoryCache>) {
   const listeners = new Map<keyof SwEventMap, Array<(event: never) => void>>();
   const cachesByName = existingCachesByName ?? new Map<string, MemoryCache>();
   const fetched: string[] = [];
@@ -51,7 +53,10 @@ function loadServiceWorker(responses: Record<string, string> = {}, existingCache
     const pathAndSearch = `${pathname}${parsedUrl.search}`;
     fetched.push(pathAndSearch);
     if (offline) throw new Error(`offline:${pathAndSearch}`);
-    return new Response(responses[pathAndSearch] ?? responses[pathname] ?? `ok:${url}`, {
+    const fixture = responses[pathAndSearch] ?? responses[pathname] ?? `ok:${url}`;
+    if (typeof fixture === "object") fixture.onFetch?.(request);
+    const body = typeof fixture === "object" ? await fixture.body : fixture;
+    return new Response(body, {
       status: 200,
       headers: { "content-type": pathname.endsWith(".js") ? "application/javascript" : "text/html" }
     });
@@ -154,6 +159,23 @@ describe("service worker shell cache", () => {
     expect(cachedUrls).not.toContain("/recuperar");
   });
 
+  it("serves every prepared operational route on the first offline navigation", async () => {
+    const routes = ["/hoy", "/plan", "/ejercicios", "/historial", "/checkin", "/entrenar?session=0", "/entrenar?session=0&addons=1", "/recuperar?session=0", "/resistencia?session=1"];
+    const sw = loadServiceWorker(Object.fromEntries(routes.map((route) => [route, `<!doctype html><main>${route}</main>`])));
+
+    await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes });
+    sw.goOffline();
+
+    for (const route of routes) {
+      const request = new Request(`https://trainer.test${route}`, { method: "GET" });
+      Object.defineProperty(request, "mode", { value: "navigate" });
+      const [navigationResponse] = sw.dispatchFetch(request);
+
+      await expect(navigationResponse.then((response) => response.text())).resolves.toBe(`<!doctype html><main>${route}</main>`);
+    }
+  });
+
   it("leaves API requests entirely to the browser instead of intercepting or caching them", () => {
     const sw = loadServiceWorker();
 
@@ -221,6 +243,34 @@ describe("service worker shell cache", () => {
     await expect(clearedResponse).rejects.toThrow("offline:/hoy");
   });
 
+  it("aborts an in-flight account precache and does not retain stale account HTML after clear", async () => {
+    let resolveRoute!: (body: string) => void;
+    let fetchedRoute!: Request | string;
+    let markRouteStarted!: () => void;
+    const routeStarted = new Promise<void>((resolve) => { markRouteStarted = resolve; });
+    const routeBody = new Promise<string>((resolver) => { resolveRoute = resolver; });
+    const sw = loadServiceWorker({
+      "/hoy": {
+        body: routeBody,
+        onFetch: (request) => {
+          fetchedRoute = request;
+          markRouteStarted();
+        }
+      }
+    });
+
+    await sw.dispatchInstall();
+    const precache = sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: ["/hoy"] });
+    await routeStarted;
+    await sw.dispatchMessage({ type: "TRAINER_CLEAR_ACCOUNT_SHELL" });
+    expect(typeof fetchedRoute).not.toBe("string");
+    expect((fetchedRoute as Request).signal.aborted).toBe(true);
+    resolveRoute("<!doctype html><main>stale A</main>");
+    await precache;
+    const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
+    expect(cachedUrls).not.toContain("/hoy");
+  });
+
   it("serves the account shell after a service worker restart by restoring the trusted active account", async () => {
     const firstWorker = loadServiceWorker({ "/hoy": "<!doctype html><main>Cuenta A persistida</main>" });
 
@@ -236,10 +286,10 @@ describe("service worker shell cache", () => {
     await expect(navigationResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main>Cuenta A persistida</main>");
   });
 
-  it("serves the prepared recovery session route offline without caching the bare /recuperar redirect", async () => {
+  it("serves a generic prepared recovery client shell offline without caching the bare /recuperar redirect", async () => {
     const sw = loadServiceWorker({
       "/recuperar": "<!doctype html><main>redirect:/hoy</main>",
-      "/recuperar?session=2": "<!doctype html><main>Recuperación sesión 2</main>"
+      "/recuperar?session=2": "<!doctype html><main data-route=\"recuperar\"></main>"
     });
 
     await sw.dispatchInstall();
@@ -250,7 +300,7 @@ describe("service worker shell cache", () => {
     Object.defineProperty(request, "mode", { value: "navigate" });
     const [navigationResponse] = sw.dispatchFetch(request);
 
-    await expect(navigationResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main>Recuperación sesión 2</main>");
+    await expect(navigationResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main data-route=\"recuperar\"></main>");
     const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
     expect(cachedUrls).toContain("/recuperar?session=2");
     expect(cachedUrls).not.toContain("/recuperar");

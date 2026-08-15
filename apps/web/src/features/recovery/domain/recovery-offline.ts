@@ -9,7 +9,7 @@ import type { FinishRecoverySessionPayload, OutboxOperation, StartRecoverySessio
 
 export type CreateId = () => string;
 
-type RecoverySession = { id: string; status: string; comment: string | null };
+type RecoverySession = { id: string; planId: string; sessionIndex: number; status: string; comment: string | null; startedAt: string };
 
 /** Starts a recovery session locally with a "local-recovery-N" id, mirroring startWorkoutOffline. */
 export function startRecoveryOffline(
@@ -18,7 +18,7 @@ export function startRecoveryOffline(
   createId: CreateId = createClientId
 ): { snapshot: OfflineSnapshot; operation: OutboxOperation; session: RecoverySession } {
   const sessionId = `local-recovery-${createId()}`;
-  const session: RecoverySession = { id: sessionId, status: "in_progress", comment: null };
+  const session: RecoverySession = { id: sessionId, planId: payload.planId, sessionIndex: payload.sessionIndex, status: "in_progress", comment: null, startedAt: new Date().toISOString() };
   const recoverySessions = (snapshot.data.recoverySessions as RecoverySession[] | undefined) ?? [];
   const nextSnapshot = applyLocalMutation(snapshot, { recoverySessions: [...recoverySessions, session] });
   const operation: OutboxOperation = { id: createId(), kind: "start_recovery_session", recoverySessionId: sessionId, payload, createdAt: Date.now(), status: "pending" };

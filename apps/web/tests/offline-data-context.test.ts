@@ -120,6 +120,45 @@ describe("runAccountScopedRefresh", () => {
     expect(committed).toEqual([]);
     expect(precached).toEqual([]);
   });
+
+  it("removes account A if logout happens while the successful snapshot put is still in flight", async () => {
+    let currentUserId: string | null = "account-a";
+    const written = new Map<string, OfflineSnapshot>();
+    const putStarted = deferredResponse();
+    const putMayComplete = deferredResponse();
+    const store: OfflineSnapshotStore = {
+      async get(userId) {
+        return written.get(userId);
+      },
+      async put(snapshot) {
+        putStarted.resolve(new Response());
+        await putMayComplete.promise;
+        written.set(snapshot.userId, snapshot);
+      },
+      async remove(userId) {
+        written.delete(userId);
+      }
+    };
+    const committed: Array<{ snapshot: OfflineSnapshot | null; status: string }> = [];
+    const precached: OfflineSnapshot[] = [];
+    const refreshPromise = runAccountScopedRefresh({
+      store,
+      fetchFn: okResponse({ snapshot: { userId: "account-a", syncedAt: 3, data: { activePlan: { id: "plan-a" } } }, serverTime: 3 }),
+      userId: "account-a",
+      getCurrentUserId: () => currentUserId,
+      commit: (result) => committed.push(result),
+      precache: (snapshot) => precached.push(snapshot)
+    });
+
+    await putStarted.promise;
+    currentUserId = null;
+    putMayComplete.resolve(new Response());
+
+    await expect(refreshPromise).resolves.toBe(false);
+    expect(written.has("account-a")).toBe(false);
+    expect(committed).toEqual([]);
+    expect(precached).toEqual([]);
+  });
 });
 
 describe("applyLocalMutation", () => {
