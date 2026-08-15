@@ -84,23 +84,62 @@ describe("check-in offline helpers", () => {
     expect(result.operation.kind).toBe("submit_checkin");
   });
 
-  it("updates the local daily adjustment when a check-in decision is queued", () => {
+  it("writes a plan-edit row when a check-in decision applies a change with ops", () => {
     const snapshot = emptySnapshot();
     const decision = {
       recommendationId: "rec-1",
       decision: "apply" as const,
       changeCode: "CHG-1",
-      changes: [{ code: "CHG-1", kind: "recovery" as const, description: "Convertir en recuperación", ops: [] }]
+      changes: [{ code: "CHG-1", kind: "recovery" as const, description: "Convertir en recuperación", ops: [{ op: "convert_recovery" as const }] }],
+      planId: "plan-a",
+      isoWeekStart: "2026-08-10",
+      originDay: "monday",
+      sessionIndex: 0
     };
     const result = decideOffline(snapshot, decision);
-    expect((result.snapshot.data.today as { adjustment: { kind: string } }).adjustment.kind).toBe("recovery");
+    const planEdits = result.snapshot.data.planEdits as Array<{ planId: string; sessionIndex: number; kind: string; targetDay: string | null }>;
+    expect(planEdits).toContainEqual(expect.objectContaining({ planId: "plan-a", sessionIndex: 0, kind: "recovery", targetDay: null }));
     expect(result.operation).toMatchObject({ kind: "decide_recommendation", payload: { recommendationId: "rec-1", decision: "apply", changeCode: "CHG-1" } });
   });
 
-  it("marks the adjustment as keep_planned when the person keeps the planned session", () => {
+  it("captures the reschedule target day when the applied change reschedules the session", () => {
     const snapshot = emptySnapshot();
-    const result = decideOffline(snapshot, { recommendationId: "rec-1", decision: "keep", changes: [] });
-    expect((result.snapshot.data.today as { adjustment: { kind: string } }).adjustment.kind).toBe("keep_planned");
+    const decision = {
+      recommendationId: "rec-1",
+      decision: "apply" as const,
+      changeCode: "CHG-2",
+      changes: [{ code: "CHG-2", kind: "reschedule" as const, description: "Mover a otro día", ops: [{ op: "reschedule" as const, targetDay: "wednesday" as const }] }],
+      planId: "plan-a",
+      isoWeekStart: "2026-08-10",
+      originDay: "monday",
+      sessionIndex: 0
+    };
+    const result = decideOffline(snapshot, decision);
+    const planEdits = result.snapshot.data.planEdits as Array<{ sessionIndex: number; kind: string; targetDay: string | null }>;
+    expect(planEdits).toContainEqual(expect.objectContaining({ sessionIndex: 0, kind: "reschedule", targetDay: "wednesday" }));
+  });
+
+  it("does not write a plan-edit row when the applied change has no ops", () => {
+    const snapshot = emptySnapshot();
+    const decision = {
+      recommendationId: "rec-1",
+      decision: "apply" as const,
+      changeCode: "CHG-1",
+      changes: [{ code: "CHG-1", kind: "keep_planned" as const, description: "Sin cambios", ops: [] }],
+      planId: "plan-a",
+      isoWeekStart: "2026-08-10",
+      originDay: "monday",
+      sessionIndex: 0
+    };
+    const result = decideOffline(snapshot, decision);
+    expect(result.snapshot.data.planEdits).toBeUndefined();
+  });
+
+  it("does not write a plan-edit row when the person keeps the planned session", () => {
+    const snapshot = emptySnapshot();
+    const result = decideOffline(snapshot, { recommendationId: "rec-1", decision: "keep", changes: [], planId: "plan-a", isoWeekStart: "2026-08-10", originDay: "monday", sessionIndex: 0 });
+    expect(result.snapshot.data.planEdits).toBeUndefined();
+    expect(result.operation).toMatchObject({ kind: "decide_recommendation", payload: { recommendationId: "rec-1", decision: "keep" } });
   });
 });
 

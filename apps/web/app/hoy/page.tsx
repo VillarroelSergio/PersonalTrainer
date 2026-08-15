@@ -1,75 +1,58 @@
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db/client";
-import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
-import { createPlanEditRepository } from "@/features/planning/domain/plan-edit-repository";
-import { buildWeekView, latestWeekStatuses, summarizeWeekSessions, visibleOccurrencesForDay, weeklyLoadWarning, type ExecutedStatus } from "@/features/planning/domain/plan-week";
-import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
-import { createWorkoutTrainingEngineRepository } from "@/features/training-engine/domain/repository";
-import { createRecoverySessionRepository } from "@/features/recovery/domain/recovery-session-repository";
+import Image from "next/image";
+import { authClient } from "@/lib/auth-client";
+import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { computeHoyView } from "@/features/home/domain/hoy-view";
+import { visibleOccurrencesForDay } from "@/features/planning/domain/plan-week";
 import { AppShell } from "@/components/AppShell";
-import { WEEKDAY_ABBREV, WEEKDAY_LABEL, WEEKDAYS, isoWeekStart, parseIsoDateLocal, todayWeekday, type Weekday } from "@/lib/weekdays";
+import { WEEKDAY_ABBREV, WEEKDAY_LABEL, WEEKDAYS, type Weekday } from "@/lib/weekdays";
 import type { PlanProposal } from "@/contracts/onboarding";
-import { logRouteTiming } from "@/lib/observability/route-timing";
+import { findMobilityExercise } from "@/features/catalog/data/mobility-catalog";
+import { sessionBlockLabel } from "@/features/catalog/data/session-blocks";
+import type { WeeklyLoadWarning } from "@/features/planning/domain/plan-week";
 
 const DONE_STATUSES = new Set(["completed", "adapted", "partial"]);
 const STATUS_LABEL: Record<string, string> = { completed: "completada", adapted: "adaptada", partial: "parcial", in_progress: "en curso" };
 
-export default async function HoyPage() {
-  const startedAt = Date.now();
-  const requestHeaders = await headers();
-  const requestId = requestHeaders.get("x-vercel-id");
-  const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user) redirect("/login");
+export default function HoyPage() {
+  const router = useRouter();
+  const session = authClient.useSession();
+  const offlineData = useOfflineData();
 
-  const db = getDb();
-  const dbStartedAt = Date.now();
-  const activePlan = await findActivePlanForOwner(db, session.user.id);
-  if (!activePlan) redirect("/onboarding");
+  useEffect(() => {
+    if (!session.isPending && !session.data?.user) router.replace("/login");
+  }, [session.isPending, session.data?.user, router]);
 
-  const content = JSON.parse(activePlan.contentJson) as PlanProposal;
-  const sessions = content.week?.sessions ?? [];
-  const repository = createWorkoutSessionRepository(db);
-  const today = todayWeekday();
-  const weekStart = isoWeekStart();
-  const editRepository = createPlanEditRepository(db);
-  const [fullHistory, adjustments] = await Promise.all([
-    repository.listSessionHistory(session.user.id, activePlan.id),
-    editRepository.listWeekAdjustments(session.user.id, activePlan.id, weekStart)
-  ]);
-  const weekStartDate = parseIsoDateLocal(weekStart);
-  const weekEndDate = new Date(weekStartDate);
-  weekEndDate.setDate(weekEndDate.getDate() + 7);
-  const statuses = latestWeekStatuses(fullHistory, weekStartDate, weekEndDate);
-  const weekOccurrences = buildWeekView(content, true, adjustments, statuses as Record<number, ExecutedStatus>);
-  const todayOccurrences = visibleOccurrencesForDay(weekOccurrences, today);
-  const todayIndex = todayOccurrences[0]?.sessionIndex ?? -1;
-  const todaySession = todayIndex >= 0 ? sessions[todayIndex] : null;
-  const engineRepository = createWorkoutTrainingEngineRepository(db);
-  const extraOccurrences = todayOccurrences.slice(1);
-  const allAdjustments = await Promise.all(
-    todayOccurrences.map((occurrence) => engineRepository.getAdjustment(session.user.id, activePlan.id, weekStart, occurrence.sessionIndex))
-  );
-  const adjustment = allAdjustments[0];
-  const recoveryRepository = createRecoverySessionRepository(db);
-  const recoveryStatus = todayIndex >= 0 && adjustment?.kind === "recovery" ? (await recoveryRepository.findLatest(session.user.id, activePlan.id, todayIndex))?.status ?? null : null;
-
-  const warn = weeklyLoadWarning(sessions);
-  const weekSummary = summarizeWeekSessions(sessions, statuses);
-  const extraOccurrenceAdjustments = allAdjustments.slice(1);
-
-  logRouteTiming("/hoy", requestId, startedAt, { dbMs: Date.now() - dbStartedAt });
+  useEffect(() => {
+    if (offlineData.snapshot && offlineData.snapshot.data.activePlan == null) router.replace("/onboarding");
+  }, [offlineData.snapshot, router]);
 
   return (
     <AppShell title="Trainer">
-      <p className="kicker">{content.initialBlock?.name ?? activePlan.name}</p>
+      <OfflineRouteBoundary>
+        {offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? <HoyContent snapshot={offlineData.snapshot} /> : null}
+      </OfflineRouteBoundary>
+    </AppShell>
+  );
+}
+
+function HoyContent({ snapshot }: { snapshot: NonNullable<ReturnType<typeof useOfflineData>["snapshot"]> }) {
+  const view = computeHoyView(snapshot);
+  const { sessions, today, todaySession, todayIndex, statuses, weekOccurrences, todayOccurrences, extraOccurrences, todayAdjustment, extraOccurrenceAdjustments, recoveryStatus, warn, weekSummary, kickerLabel } = view;
+
+  return (
+    <>
+      <p className="kicker">{kickerLabel}</p>
       <h1 className="view-title">Tu camino</h1>
 
       <h2 className="section-title">Entrenamiento de hoy</h2>
       <div className="today-stack">
-        <TodayHero session={todaySession} sessionIndex={todayIndex} status={todayIndex >= 0 ? statuses[todayIndex] : undefined} adjustment={adjustment} recoveryStatus={recoveryStatus} />
+        <TodayHero session={todaySession} sessionIndex={todayIndex} status={todayIndex >= 0 ? statuses[todayIndex] : undefined} adjustment={todayAdjustment} recoveryStatus={recoveryStatus} />
         {extraOccurrences.map((occurrence, index) => (
           <TodayHero key={`${occurrence.sessionIndex}-${occurrence.day}`} session={sessions[occurrence.sessionIndex]} sessionIndex={occurrence.sessionIndex} status={statuses[occurrence.sessionIndex]} adjustment={extraOccurrenceAdjustments[index]} recoveryStatus={null} />
         ))}
@@ -142,7 +125,7 @@ export default async function HoyPage() {
           <Link href="/checkin" className="btn btn--ghost btn--block btn--compact">Hacer check-in de hoy</Link>
         </>
       )}
-    </AppShell>
+    </>
   );
 }
 
@@ -160,7 +143,7 @@ function weekStoryLine(sessions: PlanProposal["week"]["sessions"], statuses: Rec
 /** Same phrase shape as the prototype's loadWarningPhrase (home.js), simplified: always
  * "queda junto a" instead of computing hour-gaps, since neighborWeekdays only ever returns
  * adjacent days (the exact gap is never more informative than "adjacent"). */
-function loadWarningPhrase(warn: NonNullable<ReturnType<typeof weeklyLoadWarning>>): string {
+function loadWarningPhrase(warn: WeeklyLoadWarning): string {
   const freeLabel = warn.freeDay ? WEEKDAY_LABEL[warn.freeDay] : null;
   const phrase = `${warn.session.title} el ${WEEKDAY_LABEL[warn.session.day as Weekday].toLowerCase()} queda junto a ${warn.conflict.title.toLowerCase()} (${WEEKDAY_LABEL[warn.conflict.day as Weekday].toLowerCase()}).`;
   return phrase + (freeLabel
@@ -252,6 +235,7 @@ function TodayHero({
       <Link href={`/entrenar?session=${sessionIndex}`} className="btn btn--primary btn--block btn--compact">
         {status === "in_progress" ? "Continuar sesión" : "Empezar sesión"}
       </Link>
+      {status !== "in_progress" && session.blocks?.length ? <OptionalSessionBlocks blocks={session.blocks} sessionIndex={sessionIndex} /> : null}
       {status !== "in_progress" && (
         <div className="today__alts">
           <TodayAlt kind="adapt" title="Ajustar a cómo llego hoy" meta="Check-in de 20 s · propone y confirmas" href="/checkin" />
@@ -259,6 +243,31 @@ function TodayHero({
         </div>
       )}
     </article>
+  );
+}
+
+function OptionalSessionBlocks({ blocks, sessionIndex }: { blocks: NonNullable<PlanProposal["week"]["sessions"][number]["blocks"]>; sessionIndex: number }) {
+  const minutes = blocks.reduce((total, block) => total + block.estimatedMinutes, 0);
+  return (
+    <section className="today__optional" aria-label="Bloques opcionales de la sesión">
+      <div className="today__optional-heading">
+        <div><p>Opcional</p><strong>Preparación y cierre</strong><span>Actívalo antes de empezar · +{minutes} min</span></div>
+        <span aria-hidden="true">＋</span>
+      </div>
+      <div className="today__optional-list">
+        {blocks.map((block) => {
+          const exercises = (block.variantIds ?? []).map(findMobilityExercise).filter((exercise): exercise is NonNullable<typeof exercise> => Boolean(exercise));
+          return (
+            <div className="today__optional-block" key={block.id}>
+              <div className="today__optional-block-title"><strong>{sessionBlockLabel(block)}</strong><span>{block.estimatedMinutes} min</span></div>
+              {exercises.map((exercise) => <div className="today__optional-exercise" key={exercise.id}><Image src={exercise.mediaUrl} alt={`${exercise.exerciseName} — ${exercise.variantName}`} width={34} height={34} /><span><strong>{exercise.variantName}</strong><small>{exercise.metric === "seconds" ? exercise.defaultDose : exercise.defaultDose}</small></span></div>)}
+              {exercises.length === 0 ? <p className="today__optional-copy">{block.instructions}</p> : null}
+            </div>
+          );
+        })}
+      </div>
+      <Link href={`/entrenar?session=${sessionIndex}&addons=1`} className="today__optional-action">Añadir a esta sesión <span aria-hidden="true">→</span></Link>
+    </section>
   );
 }
 

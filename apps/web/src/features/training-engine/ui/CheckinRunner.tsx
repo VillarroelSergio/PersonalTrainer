@@ -16,11 +16,14 @@ import { decideOffline, submitCheckinOffline } from "@/features/training-engine/
 import { createClientId } from "@/lib/client-id";
 import { useOfflineData } from "@/lib/offline/OfflineDataContext";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
+import { isoWeekStart } from "@/lib/weekdays";
+import type { RecommendationOp } from "@/contracts/training-engine";
+import type { PlanProposal } from "@/contracts/onboarding";
 
 type Energy = "low" | "normal" | "high";
 type TimeOption = 20 | 40 | 60 | 90;
 
-type RecommendationChange = { code: string; kind: string; description: string; ops: unknown[] };
+type RecommendationChange = { code: string; kind: string; description: string; ops: RecommendationOp[] };
 type Recommendation = {
   recommendationId: string;
   humanReason: string;
@@ -28,6 +31,7 @@ type Recommendation = {
   alternatives: string[];
   importantDiscomfort: boolean;
   decisionRequired: boolean;
+  sessionIndex: number | null;
 };
 
 const SAFETY_TEXT = "Esto no es un diagnóstico. Si la molestia persiste o es intensa, considera detener o adaptar la sesión y consultar a un profesional de salud.";
@@ -109,7 +113,25 @@ export function CheckinRunner() {
       router.push("/hoy");
     } catch (cause) {
       if (offlineData.snapshot) {
-        const result = decideOffline(offlineData.snapshot, { recommendationId: recommendation.recommendationId, decision, changeCode, changes: recommendation.changes }, createClientId);
+        const activePlan = offlineData.snapshot.data.activePlan as { id: string; contentJson: string } | null;
+        const sessionIndex = recommendation.sessionIndex;
+        const originDay = activePlan != null && sessionIndex != null
+          ? (JSON.parse(activePlan.contentJson) as PlanProposal).week?.sessions?.[sessionIndex]?.day ?? null
+          : null;
+        const result = decideOffline(
+          offlineData.snapshot,
+          {
+            recommendationId: recommendation.recommendationId,
+            decision,
+            changeCode,
+            changes: recommendation.changes,
+            planId: activePlan?.id ?? null,
+            isoWeekStart: isoWeekStart(),
+            originDay,
+            sessionIndex
+          },
+          createClientId
+        );
         offlineData.applyLocalMutation(result.snapshot.data);
         await sync.enqueue(result.operation);
         router.push("/hoy");

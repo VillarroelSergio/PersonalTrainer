@@ -52,6 +52,20 @@ async function networkFirst(request, event) {
   } catch {
     const cached = await caches.match(request);
     if (cached) return cached;
+    // No exact URL match (e.g. /entrenar?session=3 was never itself visited online). Routes
+    // like /hoy and /entrenar now build their screen client-side from the local snapshot, so
+    // their page content no longer depends on which query string was server-rendered — serve
+    // any cached navigation response for the same pathname instead of failing outright.
+    // findSamePathnameCacheUrl mirrors src/lib/offline/cache-fallback.ts (unit-tested there);
+    // service workers here run unbundled, so the algorithm is duplicated, not imported.
+    const cache = await caches.open(SHELL_CACHE);
+    const keys = await cache.keys();
+    const targetPathname = new URL(request.url).pathname;
+    const fallbackKey = keys.find((key) => new URL(key.url).pathname === targetPathname);
+    if (fallbackKey) {
+      const fallback = await cache.match(fallbackKey);
+      if (fallback) return fallback;
+    }
     // A first visit has no cached HTML. Retry without the abort signal so the
     // browser can still complete the initial render instead of failing blank.
     return fetch(request);

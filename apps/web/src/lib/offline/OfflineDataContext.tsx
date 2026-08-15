@@ -44,9 +44,12 @@ function useOfflineDataState() {
     // Reset synchronously on every userId change (including sign-in of a
     // different account on the same device) so the previous account's
     // in-memory snapshot is never rendered, even briefly, under the new
-    // session while the real hydration is still in flight.
+    // session while the real hydration is still in flight. Status starts as
+    // "loading" (not the terminal "needs-initial-sync") whenever a user is
+    // signed in, so OfflineRouteBoundary shows a neutral placeholder instead
+    // of "Conexión inicial necesaria" during the brief hydration window.
     setSnapshot(null);
-    setStatus("needs-initial-sync");
+    setStatus(userId ? "loading" : "needs-initial-sync");
     if (!userId) return;
     void refresh();
     function handleOnline() { void refresh(); }

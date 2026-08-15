@@ -7,7 +7,11 @@
 
 import type { OfflineSnapshot, OfflineSnapshotStore } from "./snapshot";
 
-export type SnapshotStatus = "offline" | "synced" | "needs-initial-sync";
+/** "loading" is UI-only (never returned by `refreshSnapshot` itself): it lets a consumer like
+ * `OfflineRouteBoundary` distinguish "still hydrating from IndexedDB/network, be patient" from
+ * the terminal "needs-initial-sync" (genuinely never synced) — both start out as `!snapshot`,
+ * but only the latter should ever show the "Conexión inicial necesaria" message. */
+export type SnapshotStatus = "offline" | "synced" | "needs-initial-sync" | "loading";
 export type FetchSnapshot = () => Promise<Response>;
 export type RefreshResult = { snapshot: OfflineSnapshot | null; status: SnapshotStatus };
 
