@@ -18,6 +18,7 @@ export type SyncDescription = {
   ariaLabel: string;
   icon: string;
   tone: SyncTone;
+  dotState: SyncTone;
   canRetry: boolean;
   conflicts: SyncConflictDescription[];
 };
@@ -38,7 +39,7 @@ export function describeSync(input: { state: SyncState; pending: number; conflic
     });
   }
 
-  if (conflicts.length > 0 || input.state === "conflicto") {
+  if (conflicts.length > 0) {
     const title = conflicts.length === 1 ? `Conflicto en ${conflicts[0].entity.toLowerCase()}` : `${conflicts.length} conflictos de sincronización`;
     return buildDescription({
       title,
@@ -92,8 +93,8 @@ export function describeSync(input: { state: SyncState; pending: number; conflic
   });
 }
 
-function buildDescription(description: Omit<SyncDescription, "ariaLabel">): SyncDescription {
-  return { ...description, ariaLabel: `Estado de sincronización: ${description.title}. ${description.body}` };
+function buildDescription(description: Omit<SyncDescription, "ariaLabel" | "dotState"> & { dotState?: SyncTone }): SyncDescription {
+  return { ...description, dotState: description.dotState ?? description.tone, ariaLabel: `Estado de sincronización: ${description.title}. ${description.body}` };
 }
 
 function describeConflict(operation: OutboxOperation): SyncConflictDescription {

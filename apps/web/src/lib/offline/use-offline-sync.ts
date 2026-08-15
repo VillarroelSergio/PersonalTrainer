@@ -6,6 +6,7 @@ import { createAccountScopedOutboxStore, flushOutbox, type OutboxOperation, type
 import { submitOperation } from "./sync-client";
 import { authClient } from "@/lib/auth-client";
 import { resolveSessionUserId } from "./snapshot-client";
+import { deriveIdleSyncState } from "./sync-state";
 
 /** Mirrors the prototype's SYNC_LABELS states (App.sync in prototype/js/core.js), minus "· simulado": this is the real state now. */
 export type SyncState = "local" | "sincronizando" | "sincronizado" | "conflicto" | "error";
@@ -28,9 +29,10 @@ export function useOfflineSync() {
   const refresh = useCallback(async () => {
     const all = await getScopedStore().all();
     const pendingCount = all.filter((operation) => operation.status === "pending").length;
+    const conflictOperations = all.filter((operation) => operation.status === "conflict");
     setPending(pendingCount);
-    setConflicts(all.filter((operation) => operation.status === "conflict"));
-    return pendingCount;
+    setConflicts(conflictOperations);
+    return { pendingCount, conflictCount: conflictOperations.length };
   }, [getScopedStore]);
 
   const flush = useCallback(async () => {
@@ -48,7 +50,7 @@ export function useOfflineSync() {
   }, [getScopedStore, refresh, userId]);
 
   useEffect(() => {
-    void refresh().then((pendingCount) => {
+    void refresh().then(({ pendingCount }) => {
       if (pendingCount > 0) void flush();
     });
     function handleOnline() { flush(); }
@@ -70,7 +72,8 @@ export function useOfflineSync() {
   /** "Conservar la versión del servidor": discard the queued local change. */
   const resolveKeepServer = useCallback(async (operationId: string) => {
     await getStore().remove(operationId);
-    await refresh();
+    const { conflictCount } = await refresh();
+    setState(deriveIdleSyncState({ conflictCount, online: typeof navigator === "undefined" ? true : navigator.onLine }));
   }, [getStore, refresh]);
 
   /** "Conservar la versión local": reapply the same decision on top of the version the server actually has now. */
@@ -80,7 +83,8 @@ export function useOfflineSync() {
     const operation = all.find((item) => item.id === operationId);
     if (!operation || operation.kind !== "finish_workout" || operation.conflictVersion === undefined) return;
     await store.put({ ...operation, baseVersion: operation.conflictVersion, status: "pending", conflictVersion: undefined });
-    await refresh();
+    const { conflictCount } = await refresh();
+    setState(deriveIdleSyncState({ conflictCount, online: typeof navigator === "undefined" ? true : navigator.onLine }));
     flush();
   }, [getScopedStore, getStore, refresh, flush]);
 

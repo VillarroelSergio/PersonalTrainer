@@ -106,7 +106,7 @@ function SyncIndicator() {
   return (
     <>
       <button ref={triggerRef} type="button" className="sync-pill" onClick={() => setOpen(true)} aria-label={description.ariaLabel}>
-        <span className="sync-dot" data-state={sync.state} aria-hidden="true" />
+        <span className="sync-dot" data-state={description.dotState} aria-hidden="true" />
         <span className="sync-pill__icon" aria-hidden="true">{description.icon}</span>
       </button>
 

@@ -176,6 +176,10 @@ a.chip:active:not(:focus-visible) {
 .sync-dot[data-state="conflicto"] { background: var(--warn); }
 .sync-dot[data-state="error"] { background: var(--accent); }
 .sync-dot[data-state="local"] { background: var(--ink-3); }
+.sync-dot[data-state="ok"] { background: var(--done); }
+.sync-dot[data-state="working"] { background: var(--cardio); }
+.sync-dot[data-state="offline"] { background: var(--ink-3); }
+.sync-dot[data-state="warning"] { background: var(--warn); }
 
 .sync-conflict {
   display: grid;

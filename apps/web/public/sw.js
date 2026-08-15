@@ -1,7 +1,7 @@
 /*
- * Minimal PWA shell cache. Next.js fingerprints change every build, so the
- * precache is limited to stable app shell routes and public manifest/icon files:
- *  - install fills enough shell entries for the first post-install offline load;
+ * Minimal PWA shell cache. Next.js fingerprints change every build, so install
+ * fetches stable shell routes and follows their same-origin static references:
+ *  - install fills enough HTML + _next/static entries for first offline load;
  *  - navigations (page loads) use network-first, falling back to the last
  *    successful render of that same route when there's no coverage;
  *  - hashed static assets (_next/static, icons, library media) use
@@ -11,7 +11,9 @@
  */
 const SHELL_CACHE = "trainer-shell-v2";
 const NAVIGATION_TIMEOUT_MS = 1800;
-const PRECACHE_URLS = ["/hoy", "/plan", "/ejercicios", "/historial", "/manifest.webmanifest", "/icons/icon.svg"];
+const SHELL_ROUTE_URLS = ["/hoy", "/plan", "/ejercicios", "/historial"];
+const PUBLIC_SHELL_URLS = ["/manifest.webmanifest", "/icons/icon.svg"];
+const STATIC_CACHE_PREFIXES = ["/_next/static/", "/icons/", "/library/"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -92,5 +94,49 @@ async function cacheResponse(request, response) {
 
 async function precacheShell() {
   const cache = await caches.open(SHELL_CACHE);
-  await cache.addAll(PRECACHE_URLS);
+  const seen = new Set();
+  for (const url of [...SHELL_ROUTE_URLS, ...PUBLIC_SHELL_URLS]) {
+    await precacheUrl(cache, seen, url);
+  }
+}
+
+async function precacheUrl(cache, seen, url) {
+  const absoluteUrl = new URL(url, self.location.origin);
+  if (absoluteUrl.origin !== self.location.origin) return;
+  if (absoluteUrl.pathname.startsWith("/api/")) return;
+  const cacheKey = absoluteUrl.href;
+  if (seen.has(cacheKey)) return;
+  seen.add(cacheKey);
+
+  const response = await fetch(cacheKey);
+  if (!response.ok) return;
+  await cache.put(new Request(cacheKey), response.clone());
+
+  if (!isShellRoute(absoluteUrl.pathname) && !isHtmlResponse(response)) return;
+  const html = await response.clone().text();
+  const staticUrls = extractSameOriginStaticUrls(html);
+  for (const staticUrl of staticUrls) {
+    await precacheUrl(cache, seen, staticUrl);
+  }
+}
+
+function isShellRoute(pathname) {
+  return SHELL_ROUTE_URLS.includes(pathname);
+}
+
+function isHtmlResponse(response) {
+  return (response.headers.get("content-type") || "").includes("text/html");
+}
+
+function extractSameOriginStaticUrls(html) {
+  const urls = [];
+  const attributePattern = /\b(?:src|href)=["']([^"']+)["']/g;
+  let match;
+  while ((match = attributePattern.exec(html)) !== null) {
+    const url = new URL(match[1], self.location.origin);
+    if (url.origin !== self.location.origin) continue;
+    if (!STATIC_CACHE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) continue;
+    urls.push(url.href);
+  }
+  return urls;
 }
