@@ -11,7 +11,7 @@
  */
 const SHELL_CACHE = "trainer-shell-v2";
 const NAVIGATION_TIMEOUT_MS = 1800;
-const SHELL_ROUTE_URLS = ["/hoy", "/plan", "/ejercicios", "/historial"];
+const SHELL_ROUTE_URLS = ["/hoy", "/plan", "/ejercicios", "/historial", "/entrenar", "/checkin", "/recuperar", "/resistencia"];
 const PUBLIC_SHELL_URLS = ["/manifest.webmanifest", "/icons/icon.svg"];
 const STATIC_CACHE_PREFIXES = ["/_next/static/", "/icons/", "/library/"];
 
