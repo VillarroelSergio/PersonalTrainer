@@ -175,6 +175,11 @@ describe("resolveSessionUserId", () => {
     expect(resolveSessionUserId("account-a", true)).toBeNull();
   });
 
+  it("uses the remembered account while offline auth is still unavailable", () => {
+    expect(resolveSessionUserId(undefined, true, "account-a")).toBe("account-a");
+    expect(resolveSessionUserId(null, false, "account-a")).toBe("account-a");
+  });
+
   it("returns null when nobody is signed in", () => {
     expect(resolveSessionUserId(undefined, false)).toBeNull();
     expect(resolveSessionUserId(null, false)).toBeNull();

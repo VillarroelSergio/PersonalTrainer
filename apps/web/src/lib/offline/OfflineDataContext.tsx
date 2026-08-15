@@ -5,7 +5,7 @@ import { authClient } from "@/lib/auth-client";
 import { createIndexedDbSnapshotStore } from "./indexeddb-store";
 import { runAccountScopedRefresh } from "./account-scoped-refresh";
 import { accountShellRoutesForSnapshot } from "./account-shell-routes";
-import { applyLocalMutation, resolveSessionUserId, type SnapshotStatus } from "./snapshot-client";
+import { applyLocalMutation, forgetRememberedOfflineAccount, readRememberedOfflineAccount, rememberOfflineAccount, resolveSessionUserId, type SnapshotStatus } from "./snapshot-client";
 import type { OfflineSnapshot, OfflineSnapshotStore } from "./snapshot";
 
 function fetchSnapshot(): Promise<Response> {
@@ -40,8 +40,10 @@ function useOfflineDataState() {
   const refreshEpochRef = useRef(0);
   const [snapshot, setSnapshot] = useState<OfflineSnapshot | null>(null);
   const [status, setStatus] = useState<SnapshotStatus>("needs-initial-sync");
+  const [online, setOnline] = useState(true);
   const session = authClient.useSession();
-  const userId = resolveSessionUserId(session.data?.user?.id, session.isPending);
+  const rememberedOfflineUserId = online ? null : readRememberedOfflineAccount();
+  const userId = resolveSessionUserId(session.data?.user?.id, session.isPending, rememberedOfflineUserId);
   activeUserIdRef.current = userId;
 
   const getStore = useCallback(() => {
@@ -65,6 +67,7 @@ function useOfflineDataState() {
       commit: (result) => {
         setSnapshot(result.snapshot);
         setStatus(result.status);
+        if (result.snapshot) rememberOfflineAccount(result.snapshot.userId);
       },
       precache: precacheAccountShell
     });
@@ -74,10 +77,27 @@ function useOfflineDataState() {
   const clear = useCallback(async () => {
     refreshEpochRef.current += 1;
     if (userId) await getStore().remove(userId);
+    forgetRememberedOfflineAccount();
     setSnapshot(null);
     setStatus("needs-initial-sync");
     clearAccountShell();
   }, [getStore, userId]);
+
+  useEffect(() => {
+    function handleOnlineState() { setOnline(navigator.onLine); }
+    handleOnlineState();
+    window.addEventListener("online", handleOnlineState);
+    window.addEventListener("offline", handleOnlineState);
+    return () => {
+      window.removeEventListener("online", handleOnlineState);
+      window.removeEventListener("offline", handleOnlineState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (session.data?.user?.id) rememberOfflineAccount(session.data.user.id);
+    else if (!session.isPending && online) forgetRememberedOfflineAccount();
+  }, [online, session.data?.user?.id, session.isPending]);
 
   useEffect(() => {
     // Reset synchronously on every userId change (including sign-in of a

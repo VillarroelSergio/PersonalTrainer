@@ -7,7 +7,7 @@ type ResponseFixture = string | { body: string | Promise<string>; onFetch?: (req
 type SwEventMap = {
   install: Array<{ waitUntil(promise: Promise<unknown>): void }>;
   activate: Array<{ waitUntil(promise: Promise<unknown>): void }>;
-  fetch: Array<{ request: Request; respondWith(promise: Promise<Response>): void }>;
+  fetch: Array<{ request: Request; respondWith(promise: Promise<Response>): void; waitUntil(promise: Promise<unknown>): void }>;
   message: Array<{ data: unknown; waitUntil(promise: Promise<unknown>): void }>;
 };
 
@@ -15,7 +15,10 @@ class MemoryCache {
   readonly urls = new Set<string>();
   readonly responses = new Map<string, Response>();
 
-  constructor(private readonly fetcher: (request: Request | string) => Promise<Response>) {}
+  constructor(
+    private readonly fetcher: (request: Request | string) => Promise<Response>,
+    private readonly beforePut?: () => Promise<void>
+  ) {}
 
   async addAll(urls: string[]) {
     for (const url of urls) {
@@ -26,6 +29,7 @@ class MemoryCache {
   }
 
   async put(request: Request, response: Response) {
+    await this.beforePut?.();
     const url = new URL(request.url);
     this.urls.add(`${url.pathname}${url.search}`);
     this.responses.set(request.url, response);
@@ -44,6 +48,8 @@ class MemoryCache {
 function loadServiceWorker(responses: Record<string, ResponseFixture> = {}, existingCachesByName?: Map<string, MemoryCache>) {
   const listeners = new Map<keyof SwEventMap, Array<(event: never) => void>>();
   const cachesByName = existingCachesByName ?? new Map<string, MemoryCache>();
+  const openGates = new Map<string, Array<Promise<void>>>();
+  const putGates = new Map<string, Array<{ promise: Promise<void>; started: () => void }>>();
   const fetched: string[] = [];
   let offline = false;
   const fetcher = vi.fn(async (request: Request | string) => {
@@ -65,9 +71,16 @@ function loadServiceWorker(responses: Record<string, ResponseFixture> = {}, exis
     keys: vi.fn(async () => [...cachesByName.keys()]),
     delete: vi.fn(async (key: string) => cachesByName.delete(key)),
     open: vi.fn(async (key: string) => {
+      const gate = openGates.get(key)?.shift();
+      if (gate) await gate;
       let cache = cachesByName.get(key);
       if (!cache) {
-        cache = new MemoryCache(fetcher);
+        cache = new MemoryCache(fetcher, async () => {
+          const gate = putGates.get(key)?.shift();
+          if (!gate) return;
+          gate.started();
+          await gate.promise;
+        });
         cachesByName.set(key, cache);
       }
       return cache;
@@ -110,16 +123,37 @@ function loadServiceWorker(responses: Record<string, ResponseFixture> = {}, exis
 
   function dispatchFetch(request: Request) {
     const responses: Array<Promise<Response>> = [];
-    const event = { request, respondWith: (promise: Promise<Response>) => responses.push(promise) };
+    const waits: Array<Promise<unknown>> = [];
+    const event = { request, respondWith: (promise: Promise<Response>) => responses.push(promise), waitUntil: (promise: Promise<unknown>) => waits.push(promise) };
     for (const listener of listeners.get("fetch") ?? []) listener(event as never);
-    return responses;
+    return Object.assign(responses, { waits });
   }
 
   function goOffline() {
     offline = true;
   }
 
-  return { cachesByName, dispatchFetch, dispatchInstall, dispatchMessage, fetched, goOffline };
+  function deferNextCacheOpen(cacheName: string) {
+    let resolve!: () => void;
+    const promise = new Promise<void>((resolver) => { resolve = resolver; });
+    const gates = openGates.get(cacheName) ?? [];
+    gates.push(promise);
+    openGates.set(cacheName, gates);
+    return { resolve };
+  }
+
+  function deferNextCachePut(cacheName: string) {
+    let resolve!: () => void;
+    let markStarted!: () => void;
+    const promise = new Promise<void>((resolver) => { resolve = resolver; });
+    const started = new Promise<void>((resolver) => { markStarted = resolver; });
+    const gates = putGates.get(cacheName) ?? [];
+    gates.push({ promise, started: markStarted });
+    putGates.set(cacheName, gates);
+    return { resolve, started };
+  }
+
+  return { cachesByName, deferNextCacheOpen, deferNextCachePut, dispatchFetch, dispatchInstall, dispatchMessage, fetched, goOffline };
 }
 
 describe("service worker shell cache", () => {
@@ -269,6 +303,49 @@ describe("service worker shell cache", () => {
     await precache;
     const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
     expect(cachedUrls).not.toContain("/hoy");
+  });
+
+  it("does not recreate an old account navigation cache when a network-first write finishes after clear", async () => {
+    const sw = loadServiceWorker({ "/plan": "<!doctype html><main>stale account A plan</main>" });
+
+    await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: [] });
+    const cacheWriteGate = sw.deferNextCacheOpen("trainer-nav-v3-account-a");
+    const request = new Request("https://trainer.test/plan", { method: "GET" });
+    Object.defineProperty(request, "mode", { value: "navigate" });
+    const navigation = sw.dispatchFetch(request);
+    const [onlineResponse] = navigation;
+    await expect(onlineResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main>stale account A plan</main>");
+
+    const clear = sw.dispatchMessage({ type: "TRAINER_CLEAR_ACCOUNT_SHELL" });
+    cacheWriteGate.resolve();
+    await Promise.all([clear, ...navigation.waits]);
+
+    const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
+    expect(cachedUrls).not.toContain("/plan");
+    expect([...sw.cachesByName.keys()]).not.toContain("trainer-nav-v3-account-a");
+  });
+
+  it("waits for an in-flight network-first write before deleting the old account cache", async () => {
+    const sw = loadServiceWorker({ "/plan": "<!doctype html><main>stale account A plan</main>" });
+
+    await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: [] });
+    const putGate = sw.deferNextCachePut("trainer-nav-v3-account-a");
+    const request = new Request("https://trainer.test/plan", { method: "GET" });
+    Object.defineProperty(request, "mode", { value: "navigate" });
+    const navigation = sw.dispatchFetch(request);
+    const [onlineResponse] = navigation;
+    await expect(onlineResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main>stale account A plan</main>");
+    await putGate.started;
+
+    const clear = sw.dispatchMessage({ type: "TRAINER_CLEAR_ACCOUNT_SHELL" });
+    putGate.resolve();
+    await Promise.all([clear, ...navigation.waits]);
+
+    expect([...sw.cachesByName.keys()]).not.toContain("trainer-nav-v3-account-a");
+    const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
+    expect(cachedUrls).not.toContain("/plan");
   });
 
   it("serves the account shell after a service worker restart by restoring the trusted active account", async () => {

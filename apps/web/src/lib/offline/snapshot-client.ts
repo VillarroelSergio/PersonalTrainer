@@ -16,6 +16,44 @@ export type FetchSnapshot = () => Promise<Response>;
 export type RefreshResult = { snapshot: OfflineSnapshot | null; status: SnapshotStatus; stale?: boolean };
 export type RefreshSnapshotOptions = { shouldAccept?: (userId: string) => boolean };
 
+const REMEMBERED_OFFLINE_ACCOUNT_KEY = "trainer.offline.account";
+
+function localStorageOrNull(): Storage | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Stores only the account identifier (never a credential) so a cached snapshot can
+ * hydrate after an offline hard reload while the auth session endpoint is unreachable. */
+export function rememberOfflineAccount(userId: string): void {
+  if (!userId.trim()) return;
+  try {
+    localStorageOrNull()?.setItem(REMEMBERED_OFFLINE_ACCOUNT_KEY, userId);
+  } catch {
+    // Storage may be disabled or full; IndexedDB remains the source of truth.
+  }
+}
+
+export function readRememberedOfflineAccount(): string | null {
+  try {
+    const value = localStorageOrNull()?.getItem(REMEMBERED_OFFLINE_ACCOUNT_KEY) ?? null;
+    return value?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function forgetRememberedOfflineAccount(): void {
+  try {
+    localStorageOrNull()?.removeItem(REMEMBERED_OFFLINE_ACCOUNT_KEY);
+  } catch {
+    // Best effort only; no application data is lost if localStorage is unavailable.
+  }
+}
+
 function isValidSnapshotBody(body: unknown): body is { data: { snapshot: OfflineSnapshot; serverTime: number } } {
   if (typeof body !== "object" || body === null) return false;
   const data = (body as { data?: unknown }).data;
@@ -77,7 +115,9 @@ export function applyLocalMutation(snapshot: OfflineSnapshot, patch: Partial<Off
  * second account on a shared device could momentarily render the first
  * account's cached data.
  */
-export function resolveSessionUserId(userId: string | null | undefined, isPending: boolean): string | null {
-  if (isPending || !userId) return null;
-  return userId;
+export function resolveSessionUserId(userId: string | null | undefined, isPending: boolean, rememberedOfflineUserId?: string | null): string | null {
+  if (isPending) return rememberedOfflineUserId || null;
+  if (userId) return userId;
+  if (rememberedOfflineUserId) return rememberedOfflineUserId;
+  return null;
 }

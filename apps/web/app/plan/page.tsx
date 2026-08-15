@@ -60,7 +60,7 @@ function PlanPageInner() {
   const offlineData = useOfflineData();
 
   useEffect(() => {
-    if (!session.isPending && !session.data?.user) router.replace("/login");
+    if (!session.isPending && !session.data?.user && navigator.onLine) router.replace("/login");
   }, [session.isPending, session.data?.user, router]);
 
   useEffect(() => {

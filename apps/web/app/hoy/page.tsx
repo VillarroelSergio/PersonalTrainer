@@ -15,6 +15,7 @@ import type { PlanProposal } from "@/contracts/onboarding";
 import { findMobilityExercise } from "@/features/catalog/data/mobility-catalog";
 import { sessionBlockLabel } from "@/features/catalog/data/session-blocks";
 import type { WeeklyLoadWarning } from "@/features/planning/domain/plan-week";
+import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 
 const DONE_STATUSES = new Set(["completed", "adapted", "partial"]);
 const STATUS_LABEL: Record<string, string> = { completed: "completada", adapted: "adaptada", partial: "parcial", in_progress: "en curso" };
@@ -23,10 +24,11 @@ export default function HoyPage() {
   const router = useRouter();
   const session = authClient.useSession();
   const offlineData = useOfflineData();
+  const routeAccess = describeProtectedSnapshotRouteAccess({ isOnline: typeof navigator === "undefined" ? true : navigator.onLine, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
 
   useEffect(() => {
-    if (!session.isPending && !session.data?.user) router.replace("/login");
-  }, [session.isPending, session.data?.user, router]);
+    if (routeAccess.redirectToLogin) router.replace("/login");
+  }, [routeAccess.redirectToLogin, router]);
 
   useEffect(() => {
     if (offlineData.snapshot && offlineData.snapshot.data.activePlan == null) router.replace("/onboarding");

@@ -9,6 +9,7 @@ import { CheckinRunner } from "@/features/training-engine/ui/CheckinRunner";
 import { computeCheckinView } from "@/features/training-engine/domain/checkin-view";
 import { useOfflineData } from "@/lib/offline/OfflineDataContext";
 import type { OfflineSnapshot } from "@/lib/offline/snapshot";
+import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 
 export default function CheckinPage() {
   return (
@@ -22,10 +23,11 @@ function CheckinPageInner() {
   const router = useRouter();
   const session = authClient.useSession();
   const offlineData = useOfflineData();
+  const routeAccess = describeProtectedSnapshotRouteAccess({ isOnline: typeof navigator === "undefined" ? true : navigator.onLine, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
 
   useEffect(() => {
-    if (!session.isPending && !session.data?.user) router.replace("/login");
-  }, [session.isPending, session.data?.user, router]);
+    if (routeAccess.redirectToLogin) router.replace("/login");
+  }, [routeAccess.redirectToLogin, router]);
 
   return (
     <AppShell title="Check-in" backHref="/hoy">

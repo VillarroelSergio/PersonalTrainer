@@ -18,6 +18,7 @@ const ACTIVE_ACCOUNT_CACHE_URL = "/__trainer_sw/active-account";
 let activeNavigationCacheName = null;
 let accountShellGeneration = 0;
 let accountShellPrecacheController = null;
+let navigationWriteTail = Promise.resolve();
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -68,6 +69,8 @@ async function activateAccountShell(userId, routes) {
   accountShellPrecacheController = controller;
   const cacheName = accountNavigationCacheName(userId);
   activeNavigationCacheName = cacheName;
+  await navigationWriteTail;
+  if (!isCurrentAccountShellGeneration(generation)) return;
   await deleteOtherAccountShells(cacheName);
   if (!isCurrentAccountShellGeneration(generation)) return;
 
@@ -88,6 +91,8 @@ async function clearAccountShell() {
   accountShellPrecacheController?.abort();
   accountShellPrecacheController = null;
   activeNavigationCacheName = null;
+  const pendingNavigationWrites = navigationWriteTail;
+  await pendingNavigationWrites;
   const keys = await caches.keys();
   await Promise.all(
     keys
@@ -133,13 +138,14 @@ async function networkFirst(request, event) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), NAVIGATION_TIMEOUT_MS);
   try {
+    const cacheGeneration = accountShellGeneration;
     const response = await Promise.race([
       fetch(new Request(request, { signal: controller.signal })),
       new Promise((_, reject) => setTimeout(() => reject(new Error("navigation_timeout")), NAVIGATION_TIMEOUT_MS))
     ]);
     const cacheName = await getActiveNavigationCacheName();
-    if (response.ok && cacheName) {
-      event.waitUntil(cacheNavigationResponse(cacheName, request, response.clone()));
+    if (response.ok && cacheName && isCurrentAccountShellGeneration(cacheGeneration)) {
+      event.waitUntil(queueNavigationCacheResponse(cacheName, cacheGeneration, request, response.clone()));
     }
     return response;
   } catch {
@@ -164,9 +170,17 @@ async function cacheFirst(request) {
   return response;
 }
 
-async function cacheNavigationResponse(cacheName, request, response) {
+async function cacheNavigationResponse(cacheName, generation, request, response) {
+  if (!isCurrentAccountShellGeneration(generation) || activeNavigationCacheName !== cacheName) return;
   const cache = await caches.open(cacheName);
+  if (!isCurrentAccountShellGeneration(generation) || activeNavigationCacheName !== cacheName) return;
   await cache.put(request, response);
+}
+
+function queueNavigationCacheResponse(cacheName, generation, request, response) {
+  const write = navigationWriteTail.then(() => cacheNavigationResponse(cacheName, generation, request, response));
+  navigationWriteTail = write.catch(() => {});
+  return write;
 }
 
 async function precachePublicShell() {

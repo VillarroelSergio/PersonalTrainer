@@ -9,6 +9,7 @@ import { AppShell } from "@/components/AppShell";
 import { RecoveryRunner } from "@/features/recovery/ui/RecoveryRunner";
 import { computeRecoveryView } from "@/features/recovery/domain/recovery-view";
 import type { OfflineSnapshot } from "@/lib/offline/snapshot";
+import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 
 export default function RecuperarPage() {
   return (
@@ -24,10 +25,11 @@ function RecuperarPageInner() {
   const sessionParam = searchParams.get("session") ?? undefined;
   const session = authClient.useSession();
   const offlineData = useOfflineData();
+  const routeAccess = describeProtectedSnapshotRouteAccess({ isOnline: typeof navigator === "undefined" ? true : navigator.onLine, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
 
   useEffect(() => {
-    if (!session.isPending && !session.data?.user) router.replace("/login");
-  }, [session.isPending, session.data?.user, router]);
+    if (routeAccess.redirectToLogin) router.replace("/login");
+  }, [routeAccess.redirectToLogin, router]);
 
   useEffect(() => {
     if (offlineData.snapshot && offlineData.snapshot.data.activePlan == null) router.replace("/onboarding");
