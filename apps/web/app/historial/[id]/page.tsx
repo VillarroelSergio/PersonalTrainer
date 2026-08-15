@@ -9,6 +9,7 @@ import { createHistoryRepository } from "@/features/history/domain/history-repos
 import { AppShell } from "@/components/AppShell";
 import { DISCOMFORT_INTENSITY_OPTIONS, DISCOMFORT_ZONE_OPTIONS } from "@/features/onboarding/presentation/constants";
 import { exerciseMediaAlt, exerciseMediaSrc, findVariant } from "@/features/catalog/data/exercise-catalog";
+import { WEEKDAY_LABEL, type Weekday } from "@/lib/weekdays";
 
 const STATUS_LABEL: Record<string, string> = { completed: "Completada", adapted: "Adaptada", partial: "Parcial", in_progress: "En curso" };
 const ZONE_LABEL: Record<string, string> = Object.fromEntries(DISCOMFORT_ZONE_OPTIONS.map((option) => [option.value, option.label]));
@@ -49,7 +50,7 @@ function StrengthDetail({ detail }: { detail: NonNullable<Awaited<ReturnType<Ret
     <AppShell title="Trainer" backHref="/historial">
       <p className="kicker">Fuerza · {detail.startedAt.toLocaleDateString("es-ES")}</p>
       <h1 className="view-title">{detail.title}</h1>
-      <p className="lede small">{STATUS_LABEL[detail.status] ?? detail.status}{detail.day ? ` · ${detail.day}` : ""}</p>
+      <p className="lede small">{STATUS_LABEL[detail.status] ?? detail.status}{detail.day ? ` · ${WEEKDAY_LABEL[detail.day as Weekday] ?? detail.day}` : ""}</p>
 
       {detail.exercises.length === 0 ? (
         <p className="lede small">Sin ejercicios registrados para esta sesión.</p>

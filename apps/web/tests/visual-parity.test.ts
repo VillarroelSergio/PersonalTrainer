@@ -47,7 +47,7 @@ describe("Plan session editor", () => {
     const planPage = readFileSync(join(__dirname, "..", "app", "plan", "page.tsx"), "utf8");
     const editor = readFileSync(join(__dirname, "..", "src", "features", "planning", "ui", "PlanSessionEditor.tsx"), "utf8");
     expect(planPage).toContain("PlanSessionEditor");
-    expect(editor).toContain("Editar ejercicios");
+    expect(editor).toContain("Editar sesión");
     expect(editor).toContain("Añadir ejercicio");
     expect(editor).toContain("Cambiar");
     expect(editor).toContain("Eliminar");

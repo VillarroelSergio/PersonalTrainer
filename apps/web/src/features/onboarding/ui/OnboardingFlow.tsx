@@ -18,6 +18,7 @@ import { DiscomfortScreen, FocusScreen } from "./screens/FocusDiscomfortScreen";
 import { BirthDateScreen, HeightScreen, WeightScreen } from "./screens/PhysicalScreens";
 import { ProposalScreen } from "./screens/ProposalScreen";
 import { TemplateCatalogScreen } from "./screens/TemplateCatalogScreen";
+import { SessionAddOnsScreen } from "./screens/SessionAddOnsScreen";
 
 type OnboardingFlowProps = {
   dataSource?: OnboardingDataSource;
@@ -174,6 +175,13 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
         <EquipmentScreen
           environments={form.environments}
           onToggleEquipment={(kind, equipment) => dispatch({ type: "TOGGLE_EQUIPMENT", kind, equipment })}
+        />
+      )}
+      {step === "session_addons" && (
+        <SessionAddOnsScreen
+          value={form.sessionAddOns}
+          environment={form.environments[0]?.kind}
+          onChange={(addOns) => dispatch({ type: "SET_SESSION_ADD_ONS", addOns })}
         />
       )}
       {step === "template" && (

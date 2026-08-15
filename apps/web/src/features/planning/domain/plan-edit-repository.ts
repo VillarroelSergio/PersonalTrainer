@@ -6,6 +6,7 @@ import type { PlanEditInput } from "@/contracts/plan";
 import type { PlanSessionContentInput } from "@/contracts/plan";
 import type { PlanProposal } from "@/contracts/onboarding";
 import { EXERCISE_CATALOG } from "@/features/catalog/data/exercise-catalog";
+import { findSessionBlock } from "@/features/catalog/data/session-blocks";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -139,19 +140,28 @@ export function createPlanEditRepository(database: Db) {
         seen.add(exercise.variantId);
       }
 
+      const blocks = input.blocks ?? plannedSession.blocks ?? [];
+      const seenBlocks = new Set<string>();
+      for (const block of blocks) {
+        if (seenBlocks.has(block.id)) throw new InvalidSessionContentError("No puedes añadir dos veces el mismo bloque.");
+        const canonical = findSessionBlock(block.id);
+        if (!canonical || canonical.kind !== block.kind) throw new InvalidSessionContentError("El bloque seleccionado no está disponible en el catálogo.");
+        seenBlocks.add(block.id);
+      }
+
       const updatedProposal: PlanProposal = {
         ...proposal,
         week: {
           ...proposal.week,
           sessions: proposal.week.sessions.map((session, sessionIndex) => (
-            sessionIndex === input.sessionIndex ? { ...session, exercises: input.exercises } : session
+            sessionIndex === input.sessionIndex ? { ...session, exercises: input.exercises, blocks } : session
           ))
         }
       };
       await tx.update(trainingPlan)
         .set({ contentJson: JSON.stringify(updatedProposal), version: plan.version + 1 })
         .where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId)));
-      return { sessionIndex: input.sessionIndex, exercises: input.exercises };
+      return { sessionIndex: input.sessionIndex, exercises: input.exercises, blocks };
     });
   }
 

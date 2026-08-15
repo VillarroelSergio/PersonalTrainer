@@ -1466,7 +1466,7 @@ textarea {
 /* Sistema único de controles: todos los campos y acciones comparten la misma
    altura compacta, borde y ritmo visual en móvil. Las casillas reales y los
    inputs de las filas de series conservan sus patrones especializados. */
-input:not(.sr-only):not([type="checkbox"]):not([type="radio"]),
+input:not(.sr-only):not([type="checkbox"]):not([type="radio"]):not(.searchbar__input),
 select,
 textarea {
   box-sizing: border-box;
@@ -1997,6 +1997,13 @@ textarea:focus-visible { border-color: var(--accent); }
 .view-strength--preview { padding-bottom: 24px; }
 .session-preview__start { position: sticky; bottom: 12px; margin-top: 14px; box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 24%, transparent); }
 .view-strength.is-closing { padding-bottom: 24px; }
+.session-blocks { display: grid; gap: 8px; margin: 12px 0 14px; }
+.session-blocks__title { margin: 0; color: var(--ink-2); font-size: .82rem; }
+.session-blocks__list { display: grid; gap: 7px; }
+.session-blocks__card { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 9px; padding: 8px; border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--rule-soft)); border-radius: var(--r-sm); background: var(--accent-wash); }
+.session-blocks__card img, .session-blocks__dot { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--paper); }
+.session-blocks__card strong { font-size: .8rem; }
+.session-blocks__card p { margin: 2px 0 0; color: var(--ink-3); font-size: .7rem; line-height: 1.35; }
 
 .sessionbar {
   position: fixed;

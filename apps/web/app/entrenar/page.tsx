@@ -46,6 +46,7 @@ export default async function EntrenarPage({ searchParams }: { searchParams: Pro
         planId={activePlan.id}
         sessionIndex={sessionIndex}
         previewExercises={plannedSession.exercises}
+        previewBlocks={plannedSession.blocks ?? []}
         favoriteVariantIds={favoriteVariantIds}
         recentVariantIds={recentVariantIds}
         autoStart={isResuming}

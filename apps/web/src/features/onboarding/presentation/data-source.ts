@@ -1,5 +1,7 @@
 import type { OnboardingDraft, PlanProposal } from "@/contracts/onboarding";
+import { createClientId } from "@/lib/client-id";
 import type { OnboardingFormState, StepId } from "./types";
+import { blocksForSessionAddOns } from "@/features/catalog/data/session-blocks";
 
 // Puerto que Codex sustituye por persistencia/API real (ver
 // docs/CLAUDE-ONBOARDING-ALIGNMENT-NOTES.md). Los métodos opcionales quedan
@@ -79,6 +81,7 @@ export function formStepPatch(form: OnboardingFormState, step: StepId) {
     case "strength_availability": return { strengthAvailability: form.strengthAvailability };
     case "endurance": return { enduranceActivities: form.enduranceActivities };
     case "duration": return { sessionDurationMinutes: form.sessionDurationMinutes };
+    case "session_addons": return { sessionAddOns: form.sessionAddOns };
     case "environment":
     case "equipment": return { environments: form.environments };
     case "template": return { selectedTemplateId: form.selectedTemplateId };
@@ -98,7 +101,8 @@ export class FixtureOnboardingDataSource implements OnboardingDataSource {
       day,
       kind: "strength" as const,
       title: draft.primaryGoal === "strength" ? "Fuerza de base" : "Fuerza general",
-      estimatedMinutes: draft.sessionDurationMinutes
+      estimatedMinutes: draft.sessionDurationMinutes + blocksForSessionAddOns(draft.sessionAddOns, draft.environments[0]).reduce((sum, block) => sum + block.estimatedMinutes, 0),
+      blocks: blocksForSessionAddOns(draft.sessionAddOns, draft.environments[0])
     }));
     const enduranceSessions = draft.enduranceActivities.flatMap((activity) =>
       Array.from({ length: activity.sessionsPerWeek }, (_, index) => ({
@@ -110,7 +114,7 @@ export class FixtureOnboardingDataSource implements OnboardingDataSource {
     );
 
     return {
-      proposalId: crypto.randomUUID(),
+      proposalId: createClientId(),
       ruleVersion: "plan-proposal-v1",
       reasons: [
         { code: "primary_goal", message: `Prioriza ${draft.primaryGoal} porque fue tu primer objetivo elegido.` },

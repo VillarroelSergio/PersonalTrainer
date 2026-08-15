@@ -1,4 +1,5 @@
 import type { OnboardingDraft } from "@/contracts/onboarding";
+import { createClientId } from "@/lib/client-id";
 import { ENVIRONMENT_COMPATIBLE_EQUIPMENT } from "./constants";
 import {
   visibleStepOrder,
@@ -13,6 +14,7 @@ import {
   type OnboardingState,
   type Weekday
 } from "./types";
+import { DEFAULT_COOLDOWN_ROUTINE_ID, DEFAULT_WARMUP_ROUTINE_ID } from "@/features/catalog/data/session-blocks";
 
 const DEFAULT_BIRTH_YEAR_OFFSET = 30;
 const MIN_AGE_YEARS = 12;
@@ -23,7 +25,7 @@ export function birthYearBounds(now: Date = new Date()): { min: number; max: num
 }
 
 function createClientOperationId(): string {
-  return crypto.randomUUID();
+  return createClientId();
 }
 
 export function createInitialFormState(now: Date = new Date()): OnboardingFormState {
@@ -42,6 +44,7 @@ export function createInitialFormState(now: Date = new Date()): OnboardingFormSt
     strengthAvailability: [],
     enduranceActivities: [],
     sessionDurationMinutes: 60,
+    sessionAddOns: { warmup: false, cooldown: false, warmupRoutineId: DEFAULT_WARMUP_ROUTINE_ID, cooldownRoutineId: DEFAULT_COOLDOWN_ROUTINE_ID },
     environments: [],
     selectedTemplateId: null,
     optionalMuscleFocus: [],
@@ -78,6 +81,7 @@ export type Action =
   | { type: "UPSERT_ENDURANCE_ACTIVITY"; activity: EnduranceActivity }
   | { type: "REMOVE_ENDURANCE_ACTIVITY"; kind: EnduranceActivity["kind"] }
   | { type: "SET_DURATION"; minutes: OnboardingFormState["sessionDurationMinutes"] }
+  | { type: "SET_SESSION_ADD_ONS"; addOns: OnboardingFormState["sessionAddOns"] }
   | { type: "TOGGLE_ENVIRONMENT"; kind: EnvironmentKind }
   | { type: "TOGGLE_EQUIPMENT"; kind: EnvironmentKind; equipment: EquipmentCategory }
   | { type: "SELECT_TEMPLATE"; templateId: string }
@@ -139,6 +143,8 @@ export function onboardingReducer(state: OnboardingState, action: Action): Onboa
       return { ...state, form: { ...state.form, enduranceActivities: state.form.enduranceActivities.filter((activity) => activity.kind !== action.kind) } };
     case "SET_DURATION":
       return { ...state, form: { ...state.form, sessionDurationMinutes: action.minutes } };
+    case "SET_SESSION_ADD_ONS":
+      return { ...state, form: { ...state.form, sessionAddOns: action.addOns } };
     case "TOGGLE_ENVIRONMENT":
       return { ...state, form: { ...state.form, environments: selectEnvironment(action.kind) } };
     case "TOGGLE_EQUIPMENT":
@@ -211,6 +217,7 @@ export function canAdvance(state: OnboardingState): boolean {
       return form.strengthAvailability.length > 0;
     case "endurance":
     case "duration":
+    case "session_addons":
       return true;
     case "environment":
       return form.environments.length > 0;
@@ -247,6 +254,7 @@ export function formToDraft(form: OnboardingFormState): OnboardingDraft {
     strengthAvailability: form.strengthAvailability,
     enduranceActivities: form.enduranceActivities,
     sessionDurationMinutes: form.sessionDurationMinutes,
+    sessionAddOns: form.sessionAddOns,
     environments: form.environments,
     selectedTemplateId: form.selectedTemplateId ?? undefined,
     optionalMuscleFocus: form.optionalMuscleFocus.length > 0 ? form.optionalMuscleFocus : undefined,
