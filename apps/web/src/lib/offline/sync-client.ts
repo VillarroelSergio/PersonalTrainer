@@ -59,9 +59,9 @@ function requestFor(operation: HttpOutboxOperation): { url: string; method: stri
 }
 
 /** Submits one queued operation over the real network to the same idempotent endpoints the online UI uses. Browser-only (fetch), not unit-tested directly — the retry/conflict/dedupe behaviour it feeds into (flushOutbox) is tested with a fake submit function instead. */
-export async function submitOperation(operation: OutboxOperation): Promise<SubmitResult> {
+export async function submitOperation(operation: OutboxOperation, options: { currentUserId?: string } = {}): Promise<SubmitResult> {
   if (operation.kind === "stage_activity_import") {
-    return submitStagedActivityImport(operation, { fileStore: createIndexedDbImportFileStore() });
+    return submitStagedActivityImport(operation, { fileStore: createIndexedDbImportFileStore(), currentUserId: options.currentUserId });
   }
 
   const { url, method, body } = requestFor(operation);

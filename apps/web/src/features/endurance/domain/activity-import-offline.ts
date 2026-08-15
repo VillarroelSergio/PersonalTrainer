@@ -2,16 +2,28 @@
 
 import { createClientId } from "@/lib/client-id";
 import type { OutboxOperation, SubmitResult } from "@/lib/offline/outbox";
+import type { EnduranceSport, ParsedActivity } from "@/contracts/endurance";
+
+export type OfflineImportData = {
+  id: string;
+  status: string;
+  format: string;
+  errorCode: string | null;
+  analysis: ParsedActivity | { message: string } | null;
+  duplicateOfActivityId: string | null;
+};
 
 export type OfflineImportFile = {
   id: string;
   userId: string;
-  blob: Blob;
+  status: "staged" | "ready_to_save";
+  blob: Blob | null;
   originalName: string;
   sizeBytes: number;
   mimeType: string;
   sha256: string;
   createdAt: number;
+  importData?: OfflineImportData;
 };
 
 export interface OfflineImportFileStore {
@@ -40,6 +52,7 @@ export async function stageActivityImportOffline(input: StageActivityImportInput
   const stagedFile: OfflineImportFile = {
     id: fileId,
     userId: input.userId,
+    status: "staged",
     blob: input.file,
     originalName: input.file.name,
     sizeBytes: input.file.size,
@@ -72,14 +85,16 @@ type FetchFn = typeof fetch;
 
 export async function submitStagedActivityImport(
   operation: OutboxOperation,
-  dependencies: { fileStore: OfflineImportFileStore; fetchFn?: FetchFn }
+  dependencies: { fileStore: OfflineImportFileStore; fetchFn?: FetchFn; currentUserId?: string }
 ): Promise<SubmitResult> {
   if (operation.kind !== "stage_activity_import") return { status: "rejected", message: "Operación de importación no compatible." };
 
   const fetchFn = dependencies.fetchFn ?? fetch;
   const { fileId, userId, originalName, sizeBytes, mimeType, sha256 } = operation.payload;
+  if (dependencies.currentUserId !== undefined && dependencies.currentUserId !== userId) return { status: "network_error" };
   const stagedFile = await dependencies.fileStore.get(userId, fileId);
   if (!stagedFile) return { status: "rejected", message: "No encontramos el archivo preparado para importar." };
+  if (!stagedFile.blob) return stagedFile.status === "ready_to_save" ? { status: "ok" } : { status: "rejected", message: "No encontramos el archivo preparado para importar." };
 
   let uploadUrlResponse: Response;
   try {
@@ -124,8 +139,19 @@ export async function submitStagedActivityImport(
   const confirmBody = await confirmResponse.json().catch(() => null);
   if (!confirmResponse.ok) return responseToSubmitResult(confirmResponse, confirmBody);
 
-  await dependencies.fileStore.remove(userId, fileId);
+  await dependencies.fileStore.put({ ...stagedFile, status: "ready_to_save", blob: null, importData: confirmBody?.data as OfflineImportData });
   return { status: "ok" };
+}
+
+export function readyImportToWizardState(file: OfflineImportFile): { importData: OfflineImportData; name: string; sport: EnduranceSport } | null {
+  if (file.status !== "ready_to_save" || !file.importData) return null;
+  const analysis = file.importData.analysis;
+  const sport = typeof analysis === "object" && analysis !== null && "sport" in analysis && analysis.sport !== "other" ? analysis.sport : "running";
+  return {
+    importData: file.importData,
+    name: file.originalName.replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " "),
+    sport
+  };
 }
 
 function responseToSubmitResult(response: Response, body: unknown): SubmitResult {

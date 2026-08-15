@@ -85,6 +85,26 @@ export function createMemoryOutboxStore(initial: OutboxOperation[] = []): Outbox
   };
 }
 
+function isVisibleToAccount(operation: OutboxOperation, userId: string | null): boolean {
+  if (operation.kind !== "stage_activity_import") return true;
+  return userId !== null && operation.payload.userId === userId;
+}
+
+export function createAccountScopedOutboxStore(store: OutboxStore, userId: string | null): OutboxStore {
+  return {
+    async all() {
+      return (await store.all()).filter((operation) => isVisibleToAccount(operation, userId));
+    },
+    async put(operation) {
+      await store.put(operation);
+    },
+    async remove(id) {
+      const visible = (await store.all()).some((operation) => operation.id === id && isVisibleToAccount(operation, userId));
+      if (visible) await store.remove(id);
+    }
+  };
+}
+
 export type SubmitResult = { status: "ok" } | { status: "network_error" } | { status: "conflict"; currentVersion: number } | { status: "rejected"; message: string };
 export type SubmitOperation = (operation: OutboxOperation) => Promise<SubmitResult>;
 

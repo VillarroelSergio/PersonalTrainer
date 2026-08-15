@@ -6,7 +6,7 @@ import type { EnduranceSport, ParsedActivity } from "@/contracts/endurance";
 import { useOfflineData } from "@/lib/offline/OfflineDataContext";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
 import { createIndexedDbImportFileStore } from "@/lib/offline/indexeddb-store";
-import { stageActivityImportOffline, type OfflineImportFile } from "@/features/endurance/domain/activity-import-offline";
+import { readyImportToWizardState, stageActivityImportOffline, type OfflineImportFile } from "@/features/endurance/domain/activity-import-offline";
 
 type ImportStatus = "received" | "analyzed" | "duplicate" | "saved" | "failed";
 type ImportData = { id: string; status: ImportStatus; format: string; errorCode: string | null; analysis: ParsedActivity | { message: string } | null; duplicateOfActivityId: string | null };
@@ -43,13 +43,14 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
   const [importData, setImportData] = useState<ImportData | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stagedFiles, setStagedFiles] = useState<Array<Pick<OfflineImportFile, "id" | "originalName" | "sizeBytes" | "createdAt">>>([]);
+  const [stagedFiles, setStagedFiles] = useState<Array<Pick<OfflineImportFile, "id" | "originalName" | "sizeBytes" | "createdAt" | "status" | "importData">>>([]);
   const [name, setName] = useState("");
   const [sport, setSport] = useState<EnduranceSport>("running");
   const [associatedSessionIndex, setAssociatedSessionIndex] = useState<number | null>(initialSessionIndex);
   const [committing, setCommitting] = useState(false);
   const [saved, setSaved] = useState<{ name: string; metrics: Array<{ metricType: string; value: number; unit: string }> } | null>(null);
   const [fileDeleted, setFileDeleted] = useState(false);
+  const [selectedStagedFileId, setSelectedStagedFileId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileStoreRef = useRef(createIndexedDbImportFileStore());
   const userId = offlineData.snapshot?.userId ?? null;
@@ -61,7 +62,7 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
     }
     let cancelled = false;
     fileStoreRef.current.list(userId).then((files) => {
-      if (!cancelled) setStagedFiles(files.map(({ id, originalName, sizeBytes, createdAt }) => ({ id, originalName, sizeBytes, createdAt })));
+      if (!cancelled) setStagedFiles(files.map(({ id, originalName, sizeBytes, createdAt, status, importData }) => ({ id, originalName, sizeBytes, createdAt, status, importData })));
     }).catch(() => {
       if (!cancelled) setStagedFiles([]);
     });
@@ -138,7 +139,7 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
     try {
       const staged = await stageActivityImportOffline({ file, userId, fileStore: fileStoreRef.current });
       setStagedFiles((current) => [
-        { id: staged.file.id, originalName: staged.file.originalName, sizeBytes: staged.file.sizeBytes, createdAt: staged.file.createdAt },
+        { id: staged.file.id, originalName: staged.file.originalName, sizeBytes: staged.file.sizeBytes, createdAt: staged.file.createdAt, status: staged.file.status, importData: staged.file.importData },
         ...current.filter((entry) => entry.id !== staged.file.id)
       ]);
       await offlineSync.enqueue(staged.operation);
@@ -146,6 +147,16 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
     } catch {
       setError("No pudimos preparar el archivo en este dispositivo.");
     }
+  }
+
+  function continueReadyImport(file: Pick<OfflineImportFile, "id" | "originalName" | "sizeBytes" | "createdAt" | "status" | "importData">) {
+    const state = readyImportToWizardState({ ...file, userId: userId ?? "", blob: null, mimeType: "", sha256: "" });
+    if (!state) return;
+    setSelectedStagedFileId(file.id);
+    setImportData(state.importData as ImportData);
+    setName(state.name);
+    setSport(state.sport);
+    setError(null);
   }
 
   async function commit(force: boolean) {
@@ -166,6 +177,11 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
         return;
       }
       setSaved({ name, metrics: body.data.metrics });
+      if (selectedStagedFileId && userId) {
+        await fileStoreRef.current.remove(userId, selectedStagedFileId);
+        setStagedFiles((current) => current.filter((file) => file.id !== selectedStagedFileId));
+        setSelectedStagedFileId(null);
+      }
     } catch {
       setError("No pudimos guardar la actividad. Comprueba tu conexión e inténtalo de nuevo.");
     } finally {
@@ -177,6 +193,7 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
     setImportData(null);
     setError(null);
     setSaved(null);
+    setSelectedStagedFileId(null);
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -233,7 +250,10 @@ export function ImportWizard({ isoWeekStart, enduranceSessions, initialSessionIn
               {stagedFiles.map((file) => (
                 <div className="import-file" key={file.id}>
                   <p className="import-file__name">{file.originalName}</p>
-                  <p className="import-file__meta">{formatFileSize(file.sizeBytes)} · pendiente de conexión</p>
+                  <p className="import-file__meta">{formatFileSize(file.sizeBytes)} · {file.status === "ready_to_save" ? "listo para guardar" : "pendiente de conexión"}</p>
+                  {file.status === "ready_to_save" ? (
+                    <button type="button" className="btn btn--ghost btn--block" onClick={() => continueReadyImport(file)}>Completar importación</button>
+                  ) : null}
                 </div>
               ))}
             </div>
