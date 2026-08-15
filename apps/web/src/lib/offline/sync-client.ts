@@ -1,6 +1,10 @@
 "use client";
 
 import type { OutboxOperation, SubmitResult } from "./outbox";
+import { submitStagedActivityImport } from "@/features/endurance/domain/activity-import-offline";
+import { createIndexedDbImportFileStore } from "./indexeddb-store";
+
+type HttpOutboxOperation = Exclude<OutboxOperation, { kind: "stage_activity_import" }>;
 
 /**
  * Maps every outbox operation kind to its real endpoint. Only `finish_workout`'s
@@ -11,7 +15,7 @@ import type { OutboxOperation, SubmitResult } from "./outbox";
  * e.g. recommendations/decision) is treated as a generic conflict with no known
  * `currentVersion` — best-effort mapping, not invented server capability.
  */
-function requestFor(operation: OutboxOperation): { url: string; method: string; body?: unknown } {
+function requestFor(operation: HttpOutboxOperation): { url: string; method: string; body?: unknown } {
   switch (operation.kind) {
     case "record_set":
       return { url: `/api/v1/workouts/${operation.workoutSessionId}/sets`, method: "PUT", body: operation.payload };
@@ -56,6 +60,10 @@ function requestFor(operation: OutboxOperation): { url: string; method: string; 
 
 /** Submits one queued operation over the real network to the same idempotent endpoints the online UI uses. Browser-only (fetch), not unit-tested directly — the retry/conflict/dedupe behaviour it feeds into (flushOutbox) is tested with a fake submit function instead. */
 export async function submitOperation(operation: OutboxOperation): Promise<SubmitResult> {
+  if (operation.kind === "stage_activity_import") {
+    return submitStagedActivityImport(operation, { fileStore: createIndexedDbImportFileStore() });
+  }
+
   const { url, method, body } = requestFor(operation);
 
   let response: Response;

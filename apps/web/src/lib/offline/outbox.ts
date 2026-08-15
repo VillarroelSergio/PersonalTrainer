@@ -37,6 +37,7 @@ export type FinishRecoverySessionPayload = { comment: string | null };
 export type SubmitCheckinPayload = CheckinInput & { checkinDate?: string };
 export type DecideRecommendationPayload = DecideRecommendationInput;
 export type ConfirmActivityImportPayload = { storageKey: string; originalName: string; sha256: string; sizeBytes: number };
+export type StageActivityImportPayload = { fileId: string; userId: string; originalName: string; sizeBytes: number; mimeType: string; sha256: string };
 export type SubstituteVariantPayload = { sessionExerciseId: string; variantId: string };
 
 type BaseFields = { id: string; createdAt: number; status: "pending" | "conflict" | "error" };
@@ -57,6 +58,7 @@ export type OutboxOperation =
   | (BaseFields & { kind: "plan_session_content_edit"; planId: string; payload: PlanSessionContentInput })
   | (BaseFields & { kind: "update_onboarding_draft"; payload: OnboardingFormPatch })
   | (BaseFields & { kind: "save_endurance_design"; payload: EnduranceDesignInput })
+  | (BaseFields & { kind: "stage_activity_import"; payload: StageActivityImportPayload })
   | (BaseFields & { kind: "confirm_activity_import"; payload: ConfirmActivityImportPayload })
   | (BaseFields & { kind: "commit_activity_import"; importId: string; payload: CommitImportInput })
   | (BaseFields & { kind: "create_share_link"; planId: string })
