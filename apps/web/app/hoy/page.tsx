@@ -37,7 +37,7 @@ export default function HoyPage() {
   return (
     <AppShell title="Trainer">
       <OfflineRouteBoundary>
-        {offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? <HoyContent snapshot={offlineData.snapshot} /> : null}
+        {routeAccess.canRender && offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? <HoyContent snapshot={offlineData.snapshot} /> : null}
       </OfflineRouteBoundary>
     </AppShell>
   );

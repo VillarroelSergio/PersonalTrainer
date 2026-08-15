@@ -40,7 +40,7 @@ function EntrenarPageInner() {
   return (
     <AppShell title="Entrenar" backHref="/hoy">
       <OfflineRouteBoundary>
-        {offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
+        {routeAccess.canRender && offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
           <EntrenarContent snapshot={offlineData.snapshot} sessionIndex={sessionIndex} addons={addons} />
         ) : null}
       </OfflineRouteBoundary>

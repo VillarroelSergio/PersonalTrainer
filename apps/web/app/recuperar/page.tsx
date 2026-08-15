@@ -38,7 +38,7 @@ function RecuperarPageInner() {
   return (
     <AppShell title="Trainer" backHref="/hoy">
       <OfflineRouteBoundary>
-        {offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
+        {routeAccess.canRender && offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
           <RecoveryContent snapshot={offlineData.snapshot} sessionParam={sessionParam} />
         ) : null}
       </OfflineRouteBoundary>

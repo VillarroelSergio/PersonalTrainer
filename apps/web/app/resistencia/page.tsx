@@ -40,7 +40,7 @@ function ResistenciaPageInner() {
   return (
     <AppShell title="Resistencia" backHref="/hoy">
       <OfflineRouteBoundary>
-        {offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
+        {routeAccess.canRender && offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
           <ResistenciaContent snapshot={offlineData.snapshot} sessionParam={sessionParam} />
         ) : null}
       </OfflineRouteBoundary>

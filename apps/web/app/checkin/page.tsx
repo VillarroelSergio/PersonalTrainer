@@ -32,7 +32,7 @@ function CheckinPageInner() {
   return (
     <AppShell title="Check-in" backHref="/hoy">
       <OfflineRouteBoundary>
-        {offlineData.snapshot ? <CheckinContent snapshot={offlineData.snapshot} /> : null}
+        {routeAccess.canRender && offlineData.snapshot ? <CheckinContent snapshot={offlineData.snapshot} /> : null}
       </OfflineRouteBoundary>
     </AppShell>
   );
