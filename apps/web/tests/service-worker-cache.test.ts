@@ -80,7 +80,7 @@ function loadServiceWorker(responses: Record<string, string> = {}) {
       listeners.set(type, existing);
     })
   };
-  const context = vm.createContext({ self, caches, fetch: fetcher, Request, Response, URL, Error, Promise, setTimeout, clearTimeout });
+  const context = vm.createContext({ self, caches, fetch: fetcher, Request, Response, URL, Error, Promise, AbortController, setTimeout, clearTimeout });
   const source = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
   vm.runInContext(source, context);
 
@@ -114,6 +114,24 @@ describe("service worker shell cache", () => {
     const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
     expect(cachedUrls).toEqual(expect.arrayContaining(["/hoy", "/plan", "/ejercicios", "/historial", "/manifest.webmanifest", "/icons/icon.svg"]));
     expect(cachedUrls.some((url) => url.startsWith("/api/"))).toBe(false);
+  });
+
+  it("precaches every snapshot-backed operational route required from /hoy", async () => {
+    const sw = loadServiceWorker();
+
+    await sw.dispatchInstall();
+
+    const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
+    expect(cachedUrls).toEqual(expect.arrayContaining([
+      "/hoy",
+      "/plan",
+      "/ejercicios",
+      "/historial",
+      "/entrenar",
+      "/checkin",
+      "/recuperar",
+      "/resistencia"
+    ]));
   });
 
   it("leaves API requests entirely to the browser instead of intercepting or caching them", () => {
@@ -155,5 +173,18 @@ describe("service worker shell cache", () => {
     const cachedUrls = [...sw.cachesByName.values()].flatMap((cache) => [...cache.urls]);
     expect(cachedUrls).toEqual(expect.arrayContaining(["/_next/static/css/app.css", "/_next/static/chunks/runtime.js", "/_next/static/chunks/app/hoy/page.js"]));
     expect(cachedUrls.some((url) => url.startsWith("/api/") || url.startsWith("https://analytics.example"))).toBe(false);
+  });
+
+  it("serves a snapshot-backed action route offline even when that exact query URL was never visited", async () => {
+    const sw = loadServiceWorker({ "/entrenar": "<!doctype html><main>Entrenar shell</main>" });
+
+    await sw.dispatchInstall();
+    sw.goOffline();
+
+    const request = new Request("https://trainer.test/entrenar?session=0", { method: "GET" });
+    Object.defineProperty(request, "mode", { value: "navigate" });
+    const [navigationResponse] = sw.dispatchFetch(request);
+
+    await expect(navigationResponse.then((response) => response.text())).resolves.toBe("<!doctype html><main>Entrenar shell</main>");
   });
 });
