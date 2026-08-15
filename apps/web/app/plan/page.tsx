@@ -19,6 +19,7 @@ import PlanSessionEditor from "@/features/planning/ui/PlanSessionEditor";
 import PlanManagementActions from "@/features/planning/ui/PlanManagementActions";
 import { WEEKDAY_LABEL, WEEKDAYS, isoDate, isoWeekStart, parseIsoDateLocal, type Weekday } from "@/lib/weekdays";
 import type { PlanProposal } from "@/contracts/onboarding";
+import { sessionBlockLabel } from "@/features/catalog/data/session-blocks";
 import { logRouteTiming } from "@/lib/observability/route-timing";
 
 const FINISHED_OR_ACTIVE = new Set(["in_progress", "completed", "adapted", "partial"]);
@@ -124,6 +125,10 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       </div>
 
       <Link href="/compartir" className="btn btn--ghost btn--sm">Compartir plan</Link>
+      <div className="notice notice--info" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <span><strong>¿Añadir movilidad?</strong> Elige una secuencia corta sin carga para preparar o cerrar tus sesiones.</span>
+        <Link href="/movilidad" className="btn btn--ghost btn--sm">Ver catálogo</Link>
+      </div>
 
       <nav className="tabnav" aria-label="Vistas del plan">
         {TABS.map((tab) => (
@@ -194,6 +199,7 @@ function DayRow({ day, occurrences, proposal, planId, weekStart }: { day: Weekda
   return (
     <>
       {occurrences.map((occurrence) => {
+        const plannedSession = proposal.week.sessions[occurrence.sessionIndex];
         const rowClass = ["dayrow"];
         if (occurrence.kind === "endurance") rowClass.push("dayrow--cardio");
         if (occurrence.status === "moved_away") rowClass.push("dayrow--ghost");
@@ -212,6 +218,7 @@ function DayRow({ day, occurrences, proposal, planId, weekStart }: { day: Weekda
                   {occurrence.estimatedMinutes} min previstos
                   {occurrence.movedFromDay ? ` · recolocada desde ${WEEKDAY_LABEL[occurrence.movedFromDay].toLowerCase()}` : ""}
                 </p>
+                {plannedSession?.blocks?.length ? <p className="dayrow__meta">{plannedSession.blocks.map((block) => sessionBlockLabel(block)).join(" · ")}</p> : null}
               </div>
               <span className={`state state--${STATUS_CLASS[occurrence.status] ?? "planificada"}`}>{STATUS_LABEL[occurrence.status] ?? occurrence.status}</span>
             </div>

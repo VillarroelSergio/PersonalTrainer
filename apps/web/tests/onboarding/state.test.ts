@@ -8,12 +8,12 @@ import { percentForElapsed, phaseForPercent, TRANSITION_DURATION_MS, TRANSITION_
 describe("onboardingReducer", () => {
   it("omits routine selection from guided onboarding", () => {
     expect(visibleStepOrder("guided")).not.toContain("template");
-    expect(visibleStepOrder("guided")).toHaveLength(13);
+    expect(visibleStepOrder("guided")).toHaveLength(14);
   });
 
   it("keeps routine selection for self-directed onboarding", () => {
     expect(visibleStepOrder("self_directed")).toContain("template");
-    expect(visibleStepOrder("self_directed")).toHaveLength(14);
+    expect(visibleStepOrder("self_directed")).toHaveLength(15);
   });
 
   it("has an illustration for every selectable equipment category", () => {
@@ -33,6 +33,7 @@ describe("onboardingReducer", () => {
       "duration",
       "environment",
       "equipment",
+      "session_addons",
       "template",
       "focus",
       "discomfort"

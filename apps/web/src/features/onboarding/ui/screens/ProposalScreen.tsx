@@ -9,6 +9,8 @@ import { EQUIPMENT_CAPABILITIES } from "@/features/catalog/data/equipment-capabi
 import { exerciseMediaAlt, exerciseMediaSrc } from "@/features/catalog/data/exercise-catalog";
 import { compatibleExerciseAlternatives, exerciseById } from "@/features/planning/domain/exercise-alternatives";
 import { replaceProposalExerciseVariant } from "@/features/planning/domain/plan-proposal-editor";
+import { sessionBlockLabel } from "@/features/catalog/data/session-blocks";
+import { findMobilityExercise } from "@/features/catalog/data/mobility-catalog";
 import { WEEKDAY_OPTIONS } from "../../presentation/constants";
 import styles from "./ProposalScreen.module.css";
 
@@ -238,9 +240,21 @@ function ExerciseList({ session, sessionIndex, editing = false, environment, onO
   onOpenPicker?: (sessionIndex: number, exerciseIndex: number, event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   if (session.kind !== "strength") return <p className={styles.exerciseEmpty}>Actividad exterior · se detalla fuera de la rutina de fuerza.</p>;
-  if (!session.exercises?.length) return <p className={styles.exerciseEmpty}>No hay ejercicios compatibles para este equipamiento.</p>;
 
   return (
+    <>
+    {session.blocks?.length ? (
+      <ul className={styles.blockList} aria-label={`Preparación y cierre de ${session.title}`}>
+        {session.blocks.map((block) => {
+          const preview = block.variantIds?.map(findMobilityExercise).find((item): item is NonNullable<typeof item> => Boolean(item));
+          return <li key={block.id} className={styles.blockItem}>
+            {preview ? <Image className={styles.blockImage} src={preview.mediaUrl} alt="" width={44} height={44} /> : <span className={styles.blockDot} aria-hidden="true" />}
+            <span><strong>{sessionBlockLabel(block)}</strong><small>{block.estimatedMinutes} min · {block.kind === "warmup" ? "antes de entrenar" : "al terminar"}</small></span>
+          </li>;
+        })}
+      </ul>
+    ) : null}
+    {!session.exercises?.length ? <p className={styles.exerciseEmpty}>No hay ejercicios compatibles para este equipamiento.</p> : (
     <ul className={styles.exerciseList} aria-label={`Ejercicios de ${session.title}`}>
       {session.exercises.map((exercise, exerciseIndex) => {
         const options = exerciseOptions(exercise.variantId, environment);
@@ -264,5 +278,7 @@ function ExerciseList({ session, sessionIndex, editing = false, environment, onO
         );
       })}
     </ul>
+    )}
+    </>
   );
 }

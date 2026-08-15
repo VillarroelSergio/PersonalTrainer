@@ -49,6 +49,19 @@ export class VersionConflictError extends Error {
  * so this factory only takes the drizzle `database` handle.
  */
 export function createWorkoutSessionRepository(database: Db) {
+  // /plan y /historial llaman a listSessionHistory varias veces en el mismo
+  // request (vista de semana + progreso + adherencia): sin este cache por
+  // instancia, cada llamada repetía la misma consulta a workout_session.
+  const historyCache = new Map<string, ReturnType<typeof fetchSessionHistory>>();
+  function fetchSessionHistory(ownerId: string, planId: string) {
+    return database
+      .select({ id: workoutSession.id, sessionIndex: workoutSession.sessionIndex, status: workoutSession.status, startedAt: workoutSession.startedAt, endedAt: workoutSession.endedAt, globalEffort: workoutSession.globalEffort, comment: workoutSession.comment })
+      .from(workoutSession)
+      .where(and(eq(workoutSession.ownerId, ownerId), eq(workoutSession.planId, planId)))
+      .orderBy(workoutSession.startedAt)
+      .then((rows) => rows.reverse());
+  }
+
   const runStartOrResume = async (ownerId: string, planId: string, sessionIndex: number, adjustmentOps: RecommendationOp[] = []) => {
     return database.transaction(async (tx) => {
       const existing = (
@@ -182,14 +195,15 @@ export function createWorkoutSessionRepository(database: Db) {
       runFinish(ownerId, workoutSessionId, clientOperationId, baseVersion, status, globalEffort, comment, discomfortJson),
     getBaseline: async (ownerId: string, variantId: string) => (await database.select().from(performanceBaseline).where(and(eq(performanceBaseline.ownerId, ownerId), eq(performanceBaseline.variantId, variantId))).limit(1)).at(0),
     /** Every finished (or in-progress) session for this plan, most recent first — the real chronological source for Historial (Fase 3), never a fixture. Owner-scoped. */
-    listSessionHistory: async (ownerId: string, planId: string) =>
-      (
-        await database
-          .select({ id: workoutSession.id, sessionIndex: workoutSession.sessionIndex, status: workoutSession.status, startedAt: workoutSession.startedAt, endedAt: workoutSession.endedAt, globalEffort: workoutSession.globalEffort, comment: workoutSession.comment })
-          .from(workoutSession)
-          .where(and(eq(workoutSession.ownerId, ownerId), eq(workoutSession.planId, planId)))
-          .orderBy(workoutSession.startedAt)
-      ).reverse(),
+    listSessionHistory: (ownerId: string, planId: string) => {
+      const key = `${ownerId}:${planId}`;
+      let cached = historyCache.get(key);
+      if (!cached) {
+        cached = fetchSessionHistory(ownerId, planId);
+        historyCache.set(key, cached);
+      }
+      return cached;
+    },
     /** Latest known status per plan session index, for the weekly rail. Owner-scoped. */
     listLatestStatuses: async (ownerId: string, planId: string) => {
       const rows = await database

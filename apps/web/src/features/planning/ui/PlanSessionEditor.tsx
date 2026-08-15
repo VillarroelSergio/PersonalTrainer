@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import type { PlanProposal } from "@/contracts/onboarding";
 import { EQUIPMENT_CAPABILITIES } from "@/features/catalog/data/equipment-capabilities";
 import { EXERCISE_CATALOG, exerciseMediaAlt, exerciseMediaSrc, findVariant, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
+import { allEditableSessionBlocks, findSessionBlock, sessionBlockLabel } from "@/features/catalog/data/session-blocks";
+import { findMobilityExercise } from "@/features/catalog/data/mobility-catalog";
+import type { TrainingBlock } from "@/features/catalog/domain/training-block";
 import styles from "./PlanSessionEditor.module.css";
 
 type PlannedSession = PlanProposal["week"]["sessions"][number];
@@ -39,6 +42,7 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
   const [pickerMode, setPickerMode] = useState<PickerMode | null>(null);
   const [pickerQuery, setPickerQuery] = useState("");
   const [draft, setDraft] = useState<ExerciseDraft[]>(session.exercises ?? []);
+  const [blockDraft, setBlockDraft] = useState<TrainingBlock[]>(session.blocks ?? []);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
@@ -62,6 +66,7 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
 
   function openEditor(event: MouseEvent<HTMLButtonElement>) {
     setDraft(session.exercises ?? []);
+    setBlockDraft(session.blocks ?? []);
     setError(null);
     setPickerMode(null);
     setPickerQuery("");
@@ -105,6 +110,15 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
     setDraft((current) => current.length <= 1 ? current : current.filter((_, index) => index !== exerciseIndex));
   }
 
+  function toggleBlock(blockId: string) {
+    setBlockDraft((current) => {
+      const existing = current.find((block) => block.id === blockId);
+      if (existing) return current.filter((block) => block.id !== blockId);
+      const block = findSessionBlock(blockId);
+      return block ? [...current, block] : current;
+    });
+  }
+
   function updateMetric(exerciseIndex: number, key: "targetSets" | "targetRepsMin" | "targetRepsMax", value: string) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
@@ -129,7 +143,7 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ isoWeekStart: weekStart, sessionIndex, exercises: draft })
+      body: JSON.stringify({ isoWeekStart: weekStart, sessionIndex, exercises: draft, blocks: blockDraft })
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
@@ -160,8 +174,8 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
 
   return (
     <>
-      <button type="button" className="btn btn--ghost btn--sm" onClick={openEditor} aria-label={`Editar ejercicios de ${session.title}`}>
-        Editar ejercicios
+      <button type="button" className="btn btn--ghost btn--sm" onClick={openEditor} aria-label={`Editar sesión de ${session.title}`}>
+        Editar sesión
       </button>
 
       {sheetOpen ? (
@@ -205,6 +219,25 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
                 <span aria-hidden="true">＋</span>
                 <span><strong>Añadir ejercicio</strong><small>Busca en todo el catálogo</small></span>
               </button>
+              <section className={styles.blocksSection} aria-labelledby={`planSessionBlocksTitle-${sessionIndex}`}>
+                <div>
+                  <h3 id={`planSessionBlocksTitle-${sessionIndex}`}>Preparación y cierre</h3>
+                  <p className={styles.helper}>Añade o quita bloques sin convertirlos en series de fuerza.</p>
+                </div>
+                <div className={styles.blockOptions} role="group" aria-label="Bloques disponibles">
+                  {allEditableSessionBlocks().filter((block) => block.kind !== "mobility" || block.id.startsWith("mobility-")).map((block) => {
+                    const selected = blockDraft.some((current) => current.id === block.id);
+                    const preview = block.variantIds?.map(findMobilityExercise).find(Boolean);
+                    return (
+                      <button key={block.id} type="button" className={selected ? `${styles.blockOption} ${styles.blockSelected}` : styles.blockOption} aria-pressed={selected} onClick={() => toggleBlock(block.id)}>
+                        {preview ? <Image className={styles.blockImage} src={preview.mediaUrl} alt="" width={42} height={42} /> : <span className={styles.blockIcon} aria-hidden="true">＋</span>}
+                        <span><strong>{sessionBlockLabel(block)}</strong><small>{block.estimatedMinutes} min · {block.kind === "warmup" ? "calentamiento" : block.kind === "cooldown" ? "vuelta a la calma" : "movilidad"}</small></span>
+                        <span className={styles.blockCheck} aria-hidden="true">{selected ? "✓" : "＋"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
             </div>
             <div className={styles.footer}>
               <button type="button" className="btn btn--ghost btn--sm" onClick={closeEditor} disabled={pending}>Cancelar</button>

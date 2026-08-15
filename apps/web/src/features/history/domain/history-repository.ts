@@ -56,10 +56,25 @@ export function createHistoryRepository(database: Db) {
   const engineRepo = createWorkoutTrainingEngineRepository(database);
   const recoveryRepo = createRecoverySessionRepository(database);
 
-  async function loadPlan(ownerId: string, planId: string) {
-    const plan = (await database.select().from(trainingPlan).where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId)))).at(0);
-    if (!plan) return null;
-    return { plan, proposal: JSON.parse(plan.contentJson) as PlanProposal };
+  // listSessionHistory y computeAdherence llaman a loadPlan para el mismo
+  // ownerId/planId dentro del mismo request (p. ej. ProgressSection en
+  // /plan): sin este cache repetían la misma consulta a training_plan.
+  const planCache = new Map<string, ReturnType<typeof fetchPlan>>();
+  function fetchPlan(ownerId: string, planId: string) {
+    return database.select().from(trainingPlan).where(and(eq(trainingPlan.id, planId), eq(trainingPlan.ownerId, ownerId))).then((rows) => {
+      const plan = rows.at(0);
+      if (!plan) return null;
+      return { plan, proposal: JSON.parse(plan.contentJson) as PlanProposal };
+    });
+  }
+  function loadPlan(ownerId: string, planId: string) {
+    const key = `${ownerId}:${planId}`;
+    let cached = planCache.get(key);
+    if (!cached) {
+      cached = fetchPlan(ownerId, planId);
+      planCache.set(key, cached);
+    }
+    return cached;
   }
 
   return {
@@ -83,8 +98,11 @@ export function createHistoryRepository(database: Db) {
         .filter(({ session }) => session.kind === "strength" && (session.exercises?.length ?? 0) > 0)
         .map(({ session, sessionIndex }) => ({ sessionIndex, day: session.day }));
 
-      const history = await workoutRepo.listSessionHistory(ownerId, planId);
-      const recoveryForAdherence = await recoveryRepo.listCompletedForAdherence(ownerId, planId);
+      const [history, recoveryForAdherence, adjustments] = await Promise.all([
+        workoutRepo.listSessionHistory(ownerId, planId),
+        recoveryRepo.listCompletedForAdherence(ownerId, planId),
+        engineRepo.listAdjustments(ownerId, planId)
+      ]);
       const executed = history
         .filter((row) => (FINISHED_STATUSES as readonly string[]).includes(row.status))
         .map((row) => ({ sessionIndex: row.sessionIndex, isoWeekStart: isoWeekStart(row.startedAt), status: row.status as "completed" | "adapted" | "partial" }))
@@ -93,8 +111,6 @@ export function createHistoryRepository(database: Db) {
         // Tagged source: "recovery" so computeAdherence can also surface it as "recuperación válida"
         // (renderAdherencia, history.js) without double-counting it against completadas/adaptadas.
         .concat(recoveryForAdherence.map((row) => ({ ...row, source: "recovery" as const })));
-
-      const adjustments = await engineRepo.listAdjustments(ownerId, planId);
 
       return computeAdherence(strengthSessions, loaded.plan.createdAt, today, executed, adjustments);
     },

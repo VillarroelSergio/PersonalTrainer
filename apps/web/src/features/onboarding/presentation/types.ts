@@ -1,4 +1,4 @@
-import type { OnboardingDraft, PlanProposal } from "@/contracts/onboarding";
+import type { OnboardingDraft, PlanProposal, SessionAddOns } from "@/contracts/onboarding";
 
 // Derivados de OnboardingDraft en vez de redeclarados: si el contrato de Codex
 // cambia una unión, este archivo no queda desincronizado en silencio.
@@ -28,6 +28,7 @@ export type StepId =
   | "strength_availability"
   | "endurance"
   | "duration"
+  | "session_addons"
   | "environment"
   | "equipment"
   | "template"
@@ -46,6 +47,7 @@ export const STEP_ORDER: StepId[] = [
   "duration",
   "environment",
   "equipment",
+  "session_addons",
   "template",
   "focus",
   "discomfort"
@@ -65,6 +67,7 @@ export const STEP_LABELS: Record<StepId, string> = {
   strength_availability: "Días de fuerza",
   endurance: "Actividad exterior",
   duration: "Duración",
+  session_addons: "Preparación y cierre",
   environment: "Entorno",
   equipment: "Equipamiento",
   template: "Rutina",
@@ -89,6 +92,7 @@ export type OnboardingFormState = {
   strengthAvailability: Weekday[];
   enduranceActivities: EnduranceActivity[];
   sessionDurationMinutes: OnboardingDraft["sessionDurationMinutes"];
+  sessionAddOns: SessionAddOns;
   environments: Environment[];
   selectedTemplateId: string | null;
   optionalMuscleFocus: MuscleFocus[];

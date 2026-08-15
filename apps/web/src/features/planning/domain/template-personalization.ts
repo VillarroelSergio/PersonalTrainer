@@ -5,6 +5,7 @@ import { EDITORIAL_VARIANTS } from "@/features/catalog/data/editorial-exercises"
 import { isEquipmentRequirementSatisfied } from "@/features/catalog/domain/editorial-content";
 import { capabilitiesForEnvironment } from "@/features/catalog/domain/inventory";
 import { REP_RANGE_BY_GOAL } from "@/features/planning/domain/session-exercise-assignment";
+import { blocksForSessionAddOns } from "@/features/catalog/data/session-blocks";
 
 /**
  * Resuelve una plantilla contra el entorno/capacidades declarados en el
@@ -18,6 +19,7 @@ export function personalizeTemplate(templateVersion: PlanTemplateVersion, draft:
   const capabilities = capabilitiesForEnvironment(environment);
   const [targetRepsMin, targetRepsMax] = REP_RANGE_BY_GOAL[draft.primaryGoal];
   const days = weekdaySchema.options.filter((day) => draft.strengthAvailability.includes(day));
+  const blocks = blocksForSessionAddOns(draft.sessionAddOns, environment);
 
   const sessions = templateVersion.content.blockBlueprints.map((blueprint, index) => {
     const exercises = blueprint.patterns
@@ -34,8 +36,9 @@ export function personalizeTemplate(templateVersion: PlanTemplateVersion, draft:
       day: days[index % days.length] ?? weekdaySchema.options[0],
       kind: "strength" as const,
       title: blueprint.title,
-      estimatedMinutes: draft.sessionDurationMinutes,
-      exercises
+      estimatedMinutes: draft.sessionDurationMinutes + blocks.reduce((total, block) => total + block.estimatedMinutes, 0),
+      exercises,
+      blocks
     };
   });
 

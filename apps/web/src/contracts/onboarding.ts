@@ -15,6 +15,12 @@ export const equipmentCategorySchema = z.enum([
   "resistance_bands"
 ]);
 export const discomfortSchema = z.object({ zone: z.enum(["neck", "shoulder", "back", "elbow", "wrist", "hip", "knee", "ankle"]), side: z.enum(["left", "right", "center"]).optional(), intensity: z.enum(["mild", "moderate", "important"]), kind: z.enum(["pain", "stiffness", "fatigue"]).optional() });
+export const sessionAddOnsSchema = z.object({
+  warmup: z.boolean(),
+  cooldown: z.boolean(),
+  warmupRoutineId: z.string().min(1),
+  cooldownRoutineId: z.string().min(1)
+});
 
 export const onboardingDraftSchema = z.object({
   clientOperationId: z.string().uuid(),
@@ -31,6 +37,7 @@ export const onboardingDraftSchema = z.object({
   enduranceActivities: z.array(z.object({ kind: z.enum(["running", "cycling", "walking"]), sessionsPerWeek: z.number().int().min(1).max(7) })).max(3),
   sessionDurationMinutes: z.union([z.literal(20), z.literal(40), z.literal(60), z.literal(90)]),
   environments: z.array(z.object({ kind: z.enum(["full_gym", "basic_gym", "home", "outdoors"]), equipment: z.array(equipmentCategorySchema) })).length(1),
+  sessionAddOns: sessionAddOnsSchema.optional(),
   optionalMuscleFocus: z.array(z.enum(["upper_body", "lower_body", "push", "pull", "full_body"])).max(3).optional(),
   discomfort: discomfortSchema.optional()
 }).superRefine((draft, context) => {
@@ -39,6 +46,7 @@ export const onboardingDraftSchema = z.object({
 
 export type OnboardingDraft = z.infer<typeof onboardingDraftSchema>;
 export type Goal = z.infer<typeof goalSchema>;
+export type SessionAddOns = z.infer<typeof sessionAddOnsSchema>;
 
 export type PlanProposal = {
   proposalId: string;
@@ -80,6 +88,7 @@ export const onboardingFormPatchSchema = z.object({
   strengthAvailability: z.array(weekdaySchema).max(7).optional(),
   enduranceActivities: z.array(z.object({ kind: z.enum(["running", "cycling", "walking"]), sessionsPerWeek: z.number().int().min(1).max(7) })).max(3).optional(),
   sessionDurationMinutes: z.union([z.literal(20), z.literal(40), z.literal(60), z.literal(90)]).optional(),
+  sessionAddOns: sessionAddOnsSchema.optional(),
   environments: z.array(z.object({ kind: z.enum(["full_gym", "basic_gym", "home", "outdoors"]), equipment: z.array(equipmentCategorySchema) })).length(1).optional(),
   selectedTemplateId: z.string().min(1).nullable().optional(),
   optionalMuscleFocus: z.array(z.enum(["upper_body", "lower_body", "push", "pull", "full_body"])).max(3).optional(),

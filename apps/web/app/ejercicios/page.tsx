@@ -90,6 +90,7 @@ export default async function EjerciciosPage({ searchParams }: { searchParams: P
       </form>
 
       <div className="dayrow__actions" style={{ marginBottom: 12 }}>
+        <Link href="/movilidad" className="chip chip--compact">Movilidad y estiramientos</Link>
         {!showFavorites ? (
           <Link href={`/ejercicios?favoritos=1${selected ? `&grupo=${selected}` : ""}${query ? `&q=${encodeURIComponent(q ?? "")}` : ""}`} className="chip chip--compact">☆ Favoritos</Link>
         ) : (

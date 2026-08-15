@@ -16,7 +16,7 @@ export async function createPlanSessionContentResponse(request: Request, user: S
   if (!user) return error(401, "UNAUTHENTICATED", "Necesitas iniciar sesión.");
   const body = await request.json().catch(() => null);
   const parsed = planSessionContentInputSchema.safeParse(body);
-  if (!parsed.success) return error(400, "VALIDATION_ERROR", "La edición de ejercicios no es válida.", parsed.error.flatten());
+  if (!parsed.success) return error(400, "VALIDATION_ERROR", "La edición del contenido de la sesión no es válida.", parsed.error.flatten());
 
   try {
     const result = await createPlanEditRepository(database).updateSessionContent(user.id, planId, parsed.data);
