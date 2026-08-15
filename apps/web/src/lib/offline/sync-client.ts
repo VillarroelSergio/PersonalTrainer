@@ -17,6 +17,8 @@ function requestFor(operation: OutboxOperation): { url: string; method: string; 
       return { url: `/api/v1/workouts/${operation.workoutSessionId}/sets`, method: "PUT", body: operation.payload };
     case "remove_set":
       return { url: `/api/v1/workouts/${operation.workoutSessionId}/sets`, method: "DELETE", body: operation.payload };
+    case "substitute_variant":
+      return { url: `/api/v1/workouts/${operation.workoutSessionId}/exercises/${operation.payload.sessionExerciseId}`, method: "PATCH", body: { variantId: operation.payload.variantId } };
     case "finish_workout":
       return { url: `/api/v1/workouts/${operation.workoutSessionId}/finish`, method: "POST", body: { clientOperationId: operation.id, baseVersion: operation.baseVersion, ...operation.payload } };
     case "start_workout":

@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { EXERCISE_CATALOG, exerciseMediaAlt, exerciseMediaSrc, findVariant, MUSCLE_GROUP_LABEL, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
 import { createClientId } from "@/lib/client-id";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
+import { finishWorkoutOffline, recordSetOffline, removeSetOffline, startWorkoutOffline, substituteVariantOffline } from "@/features/workouts/domain/workout-offline";
 import { DISCOMFORT_ZONE_OPTIONS } from "@/features/onboarding/presentation/constants";
 import type { DiscomfortZone } from "@/features/onboarding/presentation/types";
 import { MOLESTIA_OPTIONS, type MolestiaLevel } from "@/features/training-engine/domain/checkin-discomfort";
@@ -52,6 +54,8 @@ export function WorkoutRunner({
   autoStart?: boolean;
 }) {
   const router = useRouter();
+  const offlineData = useOfflineData();
+  const sync = useOfflineSyncContext();
   const [workout, setWorkout] = useState<WorkoutSession | null>(null);
   const [exercises, setExercises] = useState<SessionExercise[]>([]);
   const [starting, setStarting] = useState(false);
@@ -119,7 +123,26 @@ export function WorkoutRunner({
       setWorkout(body.data.workoutSession);
       setExercises(body.data.sessionExercises);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No pudimos iniciar la sesión.");
+      if (offlineData.snapshot) {
+        // No coverage: no network — start the session locally from the preview so the
+        // person can keep training; the outbox reconciles it with a real server id later.
+        const previewSessionExercises: SessionExercise[] = previewExercises.map((exercise, index) => ({
+          id: `local-exercise-${index + 1}`,
+          variantId: exercise.variantId,
+          position: index,
+          status: "pending",
+          targetSets: exercise.targetSets,
+          targetRepsMin: exercise.targetRepsMin,
+          targetRepsMax: exercise.targetRepsMax
+        }));
+        const started = startWorkoutOffline(offlineData.snapshot, { planId, sessionIndex }, createClientId);
+        offlineData.applyLocalMutation(started.snapshot.data);
+        await sync.enqueue(started.operation);
+        setWorkout(started.session);
+        setExercises(previewSessionExercises);
+      } else {
+        setError(cause instanceof Error ? cause.message : "No pudimos iniciar la sesión.");
+      }
     } finally {
       setStarting(false);
     }
@@ -241,14 +264,14 @@ function SessionBlocks({ blocks }: { blocks: TrainingBlock[] }) {
   if (blocks.length === 0) return null;
   return (
     <section className="session-blocks" aria-label="Preparación y cierre de la sesión">
-      <h2 className="session-blocks__title">Preparación y cierre</h2>
+      <div className="session-blocks__heading"><div><p className="session-blocks__eyebrow">Añadido a esta sesión</p><h2 className="session-blocks__title">Preparación y cierre</h2></div><span className="session-blocks__meta">Opcional</span></div>
       <div className="session-blocks__list">
         {blocks.map((block) => {
-          const preview = block.variantIds?.map(findMobilityExercise).find((item): item is NonNullable<typeof item> => Boolean(item));
+          const exercises = (block.variantIds ?? []).map(findMobilityExercise).filter((item): item is NonNullable<typeof item> => Boolean(item));
           return (
             <article className="session-blocks__card" key={block.id}>
-              {preview ? <Image src={preview.mediaUrl} alt="" width={48} height={48} /> : <span className="session-blocks__dot" aria-hidden="true" />}
-              <div><strong>{sessionBlockLabel(block)}</strong><p>{block.estimatedMinutes} min · {block.instructions}</p></div>
+              <div className="session-blocks__card-heading"><strong>{sessionBlockLabel(block)}</strong><span>{block.estimatedMinutes} min</span></div>
+              {exercises.length ? <div className="session-blocks__exercise-list">{exercises.map((exercise) => <div className="session-blocks__exercise" key={exercise.id}><Image src={exercise.mediaUrl} alt={`${exercise.exerciseName} — ${exercise.variantName}`} width={48} height={48} /><span><strong>{exercise.variantName}</strong><small>{exercise.metric === "seconds" ? `Tiempo · ${exercise.defaultDose}` : `Repeticiones · ${exercise.defaultDose}`}</small></span></div>)}</div> : <p>{block.instructions}</p>}
             </article>
           );
         })}
@@ -309,6 +332,7 @@ function ExerciseCard({
   const [guideOpen, setGuideOpen] = useState(false);
   const [variantSheetOpen, setVariantSheetOpen] = useState(false);
   const sync = useOfflineSyncContext();
+  const offlineData = useOfflineData();
 
   useEffect(() => {
     onStats(exercise.id, { total: sets.length, done: sets.filter((set) => set.saved).length });
@@ -328,7 +352,13 @@ function ExerciseCard({
       if (!response.ok) throw new Error("request failed");
     } catch {
       // No coverage: queue the series and mark it saved locally — the sync-pill in the header shows it as pending until it reaches the server.
-      await sync.enqueue({ id: operationId, kind: "record_set", workoutSessionId: workoutId, payload, createdAt: Date.now(), status: "pending" });
+      if (offlineData.snapshot) {
+        const result = recordSetOffline(offlineData.snapshot, workoutId, payload, () => operationId);
+        offlineData.applyLocalMutation(result.snapshot.data);
+        await sync.enqueue(result.operation);
+      } else {
+        await sync.enqueue({ id: operationId, kind: "record_set", workoutSessionId: workoutId, payload, createdAt: Date.now(), status: "pending" });
+      }
     }
   }
 
@@ -355,7 +385,13 @@ function ExerciseCard({
       });
       if (!response.ok) throw new Error("request failed");
     } catch {
-      await sync.enqueue({ id: operationId, kind: "remove_set", workoutSessionId: workoutId, payload, createdAt: Date.now(), status: "pending" });
+      if (offlineData.snapshot) {
+        const result = removeSetOffline(offlineData.snapshot, workoutId, payload, () => operationId);
+        offlineData.applyLocalMutation(result.snapshot.data);
+        await sync.enqueue(result.operation);
+      } else {
+        await sync.enqueue({ id: operationId, kind: "remove_set", workoutSessionId: workoutId, payload, createdAt: Date.now(), status: "pending" });
+      }
     }
     setSets((current) => current.map((set) => (set.setNumber === setNumber ? { ...set, saved: false } : set)));
   }
@@ -398,16 +434,28 @@ function ExerciseCard({
   }
 
   async function substitute(newVariantId: string) {
-    const response = await fetch(`/api/v1/workouts/${workoutId}/exercises/${exercise.id}`, {
-      method: "PATCH",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ variantId: newVariantId })
-    });
-    const body = await response.json();
-    if (response.ok) {
+    try {
+      const response = await fetch(`/api/v1/workouts/${workoutId}/exercises/${exercise.id}`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ variantId: newVariantId })
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error?.message ?? "request failed");
       setVariantSheetOpen(false);
       onSubstitute(body.data);
+    } catch {
+      // Offline: apply the substitution locally and queue it so it reaches the server on flush.
+      if (offlineData.snapshot) {
+        const result = substituteVariantOffline(offlineData.snapshot, workoutId, exercise.id, newVariantId);
+        offlineData.applyLocalMutation(result.snapshot.data);
+        await sync.enqueue(result.operation);
+        if (result.exercise) {
+          setVariantSheetOpen(false);
+          onSubstitute(result.exercise);
+        }
+      }
     }
   }
 
@@ -598,6 +646,7 @@ function CloseForm({ workoutId, baseVersion, onClosed }: { workoutId: string; ba
   const [zone, setZone] = useState<DiscomfortZone>("back");
   const [error, setError] = useState<string | null>(null);
   const sync = useOfflineSyncContext();
+  const offlineData = useOfflineData();
 
   async function submit() {
     const operationId = createClientId();
@@ -618,7 +667,13 @@ function CloseForm({ workoutId, baseVersion, onClosed }: { workoutId: string; ba
       setError(body?.error?.message ?? "No pudimos cerrar la sesión.");
     } catch {
       // No coverage: the close queues and applies once back online. Leaving the screen now is safe — the outbox owns delivery, and a version conflict (someone else closed it first) surfaces in the sync-pill, never silently.
-      await sync.enqueue({ id: operationId, kind: "finish_workout", workoutSessionId: workoutId, baseVersion, payload, createdAt: Date.now(), status: "pending" });
+      if (offlineData.snapshot) {
+        const result = finishWorkoutOffline(offlineData.snapshot, workoutId, baseVersion, payload, () => operationId);
+        offlineData.applyLocalMutation(result.snapshot.data);
+        await sync.enqueue(result.operation);
+      } else {
+        await sync.enqueue({ id: operationId, kind: "finish_workout", workoutSessionId: workoutId, baseVersion, payload, createdAt: Date.now(), status: "pending" });
+      }
       onClosed();
     }
   }

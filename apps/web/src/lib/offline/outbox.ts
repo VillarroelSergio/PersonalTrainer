@@ -37,12 +37,14 @@ export type FinishRecoverySessionPayload = { comment: string | null };
 export type SubmitCheckinPayload = CheckinInput & { checkinDate?: string };
 export type DecideRecommendationPayload = DecideRecommendationInput;
 export type ConfirmActivityImportPayload = { storageKey: string; originalName: string; sha256: string; sizeBytes: number };
+export type SubstituteVariantPayload = { sessionExerciseId: string; variantId: string };
 
 type BaseFields = { id: string; createdAt: number; status: "pending" | "conflict" | "error" };
 
 export type OutboxOperation =
   | (BaseFields & { kind: "record_set"; workoutSessionId: string; payload: RecordSetPayload })
   | (BaseFields & { kind: "remove_set"; workoutSessionId: string; payload: RemoveSetPayload })
+  | (BaseFields & { kind: "substitute_variant"; workoutSessionId: string; payload: SubstituteVariantPayload })
   | (BaseFields & { kind: "finish_workout"; workoutSessionId: string; baseVersion: number; payload: FinishWorkoutPayload; conflictVersion?: number })
   | (BaseFields & { kind: "start_workout"; workoutSessionId: string; payload: StartWorkoutPayload })
   | (BaseFields & { kind: "start_recovery_session"; recoverySessionId: string; payload: StartRecoverySessionPayload })
