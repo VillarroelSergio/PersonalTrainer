@@ -15,8 +15,8 @@
 
 import { findVariant } from "@/features/catalog/data/exercise-catalog";
 import type { Baseline } from "@/features/workouts/domain/progression";
-import { computeAdherence, type AdherenceCounts, type AdjustmentOccurrence, type ExecutedOccurrence, type PlannedStrengthOccurrence } from "./history-engine";
-import type { EnduranceActivityEntry, SessionDetail, SessionDetailExercise, SessionHistoryEntry, VariantProgressEntry, WeekStats } from "./history-repository";
+import { computeAdherence, loadCategoryForPattern, type AdherenceCounts, type AdjustmentOccurrence, type ExecutedOccurrence, type PlannedStrengthOccurrence } from "./history-engine";
+import type { EnduranceActivityEntry, SessionDetail, SessionDetailExercise, SessionHistoryEntry, VariantProgressEntry, WeeklyLoad, WeekStats } from "./history-repository";
 import { isoDate, isoWeekStart, parseIsoDateLocal, type Weekday } from "@/lib/weekdays";
 import type { OfflineSnapshot } from "@/lib/offline/snapshot";
 import type { PlanProposal } from "@/contracts/onboarding";
@@ -39,6 +39,41 @@ function addDays(date: Date, days: number): Date {
 
 function historyData(snapshot: OfflineSnapshot) {
   return (snapshot.data.history as { workoutSessions?: WorkoutSessionRow[]; sessionExercises?: SessionExerciseRow[]; setPerformances?: SetPerformanceRow[] } | undefined) ?? {};
+}
+
+const WEEKLY_LOAD_FINISHED_STATUSES = new Set(["completed", "adapted", "partial"]);
+
+/** Account-wide (no planId filter) — mirrors `history-repository.ts`'s `computeWeeklyLoad` exactly: one unit per finished `setPerformance` row (a "serie"), joined up through its session exercise/workout session, plus resistenciaMinutos from account-wide endurance activities. Neither half is plan-scoped, same as the real query. */
+export function computeWeeklyLoadView(snapshot: OfflineSnapshot, weekStartIso: string): WeeklyLoad {
+  const weekStart = parseIsoDateLocal(weekStartIso);
+  const weekEnd = addDays(weekStart, 7);
+  const { workoutSessions = [], sessionExercises = [], setPerformances = [] } = historyData(snapshot);
+
+  const finishedSessionsById = new Map(workoutSessions.filter((row) => WEEKLY_LOAD_FINISHED_STATUSES.has(row.status)).map((row) => [row.id, row]));
+  const exerciseById = new Map(sessionExercises.map((row) => [row.id, row]));
+
+  const load: WeeklyLoad = { piernas: 0, treSuperior: 0, resistenciaMinutos: 0 };
+  for (const set of setPerformances) {
+    const exercise = exerciseById.get(set.sessionExerciseId);
+    if (!exercise) continue;
+    const session = finishedSessionsById.get(exercise.workoutSessionId);
+    if (!session) continue;
+    const startedAt = new Date(session.startedAt);
+    if (startedAt < weekStart || startedAt >= weekEnd) continue;
+    const variant = findVariant(exercise.variantId);
+    if (!variant) continue;
+    if (loadCategoryForPattern(variant.movementPattern) === "piernas") load.piernas += 1;
+    else load.treSuperior += 1;
+  }
+
+  const activities = (snapshot.data.enduranceActivities as EnduranceActivityRow[] | undefined) ?? [];
+  for (const activity of activities) {
+    const startedAt = new Date(activity.startedAt);
+    if (startedAt < weekStart || startedAt >= weekEnd || activity.durationS == null) continue;
+    load.resistenciaMinutos += Math.round(activity.durationS / 60);
+  }
+
+  return load;
 }
 
 function activePlanFor(snapshot: OfflineSnapshot, planId: string): { plan: ActivePlanRow; proposal: PlanProposal } | null {

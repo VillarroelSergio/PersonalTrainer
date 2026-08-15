@@ -37,6 +37,8 @@ function requestFor(operation: OutboxOperation): { url: string; method: string; 
       return { url: `/api/v1/me/favorites/exercise-variants/${operation.variantId}`, method: "DELETE" };
     case "plan_session_edit":
       return { url: `/api/v1/plans/${operation.planId}/session-edits`, method: "POST", body: operation.payload };
+    case "plan_session_content_edit":
+      return { url: `/api/v1/plans/${operation.planId}/session-content`, method: "POST", body: operation.payload };
     case "update_onboarding_draft":
       return { url: "/api/v1/onboarding/draft", method: "PUT", body: operation.payload };
     case "save_endurance_design":

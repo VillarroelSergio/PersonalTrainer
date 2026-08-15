@@ -1,6 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { EXERCISE_CATALOG } from "@/features/catalog/data/exercise-catalog";
+import { listPlansForOwner } from "@/features/planning/domain/training-plan-repository";
 import type * as schema from "@/lib/db/schema";
 import {
   activityImport,
@@ -37,6 +38,10 @@ export async function createOfflineSnapshotResponse(request: Request, user_: Ses
   const [profileRow] = await database.select({ id: user.id, name: user.name, email: user.email }).from(user).where(eq(user.id, ownerId));
   const [draft] = await database.select({ formJson: onboardingDraft.formJson, updatedAt: onboardingDraft.updatedAt }).from(onboardingDraft).where(eq(onboardingDraft.ownerId, ownerId));
   const [activePlan] = await database.select().from(trainingPlan).where(and(eq(trainingPlan.ownerId, ownerId), eq(trainingPlan.status, "active")));
+  // Every plan the owner has ever had (draft/active/archived), not just the active one — "/plan"'s
+  // "Tus planes" tab (Fase 5, Task 6) needs the full list to read offline, same raw owner-scoped
+  // dump pattern already used for enduranceActivities/performanceBaselines below.
+  const plans = await listPlansForOwner(database, ownerId);
 
   const planEdits = await database.select().from(sessionAdjustment).where(eq(sessionAdjustment.ownerId, ownerId));
   const checkins = await database.select().from(checkin).where(eq(checkin.ownerId, ownerId));
@@ -76,6 +81,7 @@ export async function createOfflineSnapshotResponse(request: Request, user_: Ses
       profile: profileRow ?? null,
       onboardingDraft: draft ? { ...draft, form: JSON.parse(draft.formJson) } : null,
       activePlan: activePlan ?? null,
+      plans,
       planEdits,
       history: { workoutSessions, sessionExercises, setPerformances },
       recoverySessions,

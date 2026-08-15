@@ -3,23 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { WEEKDAY_LABEL, WEEKDAYS, type Weekday } from "@/lib/weekdays";
+import { applySessionEditOffline } from "@/features/planning/domain/plan-session-edit-offline";
+import { createClientId } from "@/lib/client-id";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
 
 type EditBody =
   | { kind: "move"; isoWeekStart: string; sessionIndex: number; targetDay: Weekday }
   | { kind: "skip" | "remove" | "restore"; isoWeekStart: string; sessionIndex: number };
 
 type PlanSessionActionsProps = { planId: string; weekStart: string; sessionIndex: number; status: string; currentDay: Weekday };
-
-async function submitEdit(planId: string, body: EditBody): Promise<string | null> {
-  const response = await fetch(`/api/v1/plans/${planId}/session-edits`, {
-    method: "POST", credentials: "same-origin",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  if (response.ok) return null;
-  const parsed = await response.json().catch(() => null);
-  return parsed?.error?.message ?? "No pudimos guardar el cambio. Inténtalo de nuevo.";
-}
 
 export default function PlanSessionActions({ planId, weekStart, sessionIndex, status, currentDay }: PlanSessionActionsProps) {
   const router = useRouter();
@@ -31,6 +24,8 @@ export default function PlanSessionActions({ planId, weekStart, sessionIndex, st
   const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const offlineData = useOfflineData();
+  const sync = useOfflineSyncContext();
 
   useEffect(() => {
     if (!sheetOpen) return;
@@ -50,9 +45,35 @@ export default function PlanSessionActions({ planId, weekStart, sessionIndex, st
   async function run(body: EditBody) {
     setPending(true);
     setError(null);
-    const message = await submitEdit(planId, body);
+    let response: Response;
+    try {
+      response = await fetch(`/api/v1/plans/${planId}/session-edits`, {
+        method: "POST", credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch {
+      // Network failure (not a server rejection): apply the edit locally and queue it — the
+      // change IS saved, just not synced yet, same treatment as CheckinRunner/WorkoutRunner.
+      if (offlineData.snapshot) {
+        const result = applySessionEditOffline(offlineData.snapshot, planId, body, createClientId);
+        offlineData.applyLocalMutation(result.snapshot.data);
+        await sync.enqueue(result.operation);
+        setPending(false);
+        setSheetOpen(false);
+        router.refresh();
+        return;
+      }
+      setPending(false);
+      setError("No pudimos guardar el cambio. Inténtalo de nuevo.");
+      return;
+    }
     setPending(false);
-    if (message) { setError(message); return; }
+    if (!response.ok) {
+      const parsed = await response.json().catch(() => null);
+      setError(parsed?.error?.message ?? "No pudimos guardar el cambio. Inténtalo de nuevo.");
+      return;
+    }
     setSheetOpen(false);
     router.refresh();
   }

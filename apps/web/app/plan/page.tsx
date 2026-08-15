@@ -1,35 +1,23 @@
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+"use client";
+
+import { Suspense, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db/client";
-import { findActivePlanForOwner, listPlansForOwner } from "@/features/planning/domain/training-plan-repository";
-import { createPlanEditRepository } from "@/features/planning/domain/plan-edit-repository";
-import {
-  buildWeekView, occurrenceRenderKey, occurrencesByDay, sessionAction, computeBlockProgress, computeWeekMinutes, computeConsistencyWeeks, evolutionNote,
-  type BlockProgress, type ExecutedStatus, type FinishedSessionRow
-} from "@/features/planning/domain/plan-week";
-import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
-import { createHistoryRepository } from "@/features/history/domain/history-repository";
-import { pickAchievements } from "@/features/history/domain/history-engine";
+import { authClient } from "@/lib/auth-client";
+import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { computePlanView, TABS, type PlanProgress, type PlanRow } from "@/features/planning/domain/plan-view";
+import { occurrenceRenderKey, sessionAction, type BlockProgress, type WeekOccurrence } from "@/features/planning/domain/plan-week";
 import { AppShell } from "@/components/AppShell";
 import PlanSessionActions from "@/features/planning/ui/PlanSessionActions";
 import PlanSessionEditor from "@/features/planning/ui/PlanSessionEditor";
 import PlanManagementActions from "@/features/planning/ui/PlanManagementActions";
-import { WEEKDAY_LABEL, WEEKDAYS, isoDate, isoWeekStart, parseIsoDateLocal, type Weekday } from "@/lib/weekdays";
+import { WEEKDAY_LABEL, WEEKDAYS, type Weekday } from "@/lib/weekdays";
 import type { PlanProposal } from "@/contracts/onboarding";
 import { sessionBlockLabel } from "@/features/catalog/data/session-blocks";
-import { logRouteTiming } from "@/lib/observability/route-timing";
-
-const FINISHED_OR_ACTIVE = new Set(["in_progress", "completed", "adapted", "partial"]);
-
-const TABS = [
-  { key: "semana", label: "Semana" },
-  { key: "fases", label: "Fases" },
-  { key: "planes", label: "Tus planes" }
-] as const;
-type TabKey = (typeof TABS)[number]["key"];
+import { findMobilityExercise } from "@/features/catalog/data/mobility-catalog";
+import type { OfflineSnapshot } from "@/lib/offline/snapshot";
 
 /** The schema only ever assigns "draft" | "active" | "archived" (see activation.ts) — no "paused"/"finished" state exists yet, so those prototype states never render here. Declared limitation, not an oversight. */
 const PLAN_STATUS_LABEL: Record<string, string> = { draft: "Borrador", active: "Activo", archived: "Archivado" };
@@ -44,10 +32,6 @@ const STATUS_CLASS: Record<string, string> = {
   moved_away: "rest", moved_here: "planificada", skipped: "omitida", removed: "omitida"
 };
 
-function addDays(date: Date, days: number): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-}
-
 // Mismo asset aprobado que el mapa corporal de molestias (CheckinRunner.tsx,
 // docs/PROTOTYPE-PARITY-MOBILE.md) — vista frontal, sin nueva ilustración.
 const BODY_MAP_IMG = "/library/body-map/body-map-front-back-v1.webp";
@@ -61,56 +45,45 @@ function loadColor(seriesCount: number): string {
   return `hsl(${130 - t * 130}deg 60% 45%)`;
 }
 
-export default async function PlanPage({ searchParams }: { searchParams: Promise<{ week?: string; vista?: TabKey }> }) {
-  const startedAt = Date.now();
-  const requestHeaders = await headers();
-  const requestId = requestHeaders.get("x-vercel-id");
-  const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user) redirect("/login");
-  const ownerId = session.user.id;
-  const db = getDb();
+export default function PlanPage() {
+  return (
+    <Suspense fallback={null}>
+      <PlanPageInner />
+    </Suspense>
+  );
+}
 
-  const dbStartedAt = Date.now();
-  const activePlan = await findActivePlanForOwner(db, ownerId);
-  if (!activePlan) redirect("/onboarding");
+function PlanPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const session = authClient.useSession();
+  const offlineData = useOfflineData();
 
-  const { week, vista: requestedVista } = await searchParams;
-  const vista: TabKey = TABS.some((tab) => tab.key === requestedVista) ? requestedVista! : "semana";
-  const offset = Math.max(0, Number.parseInt(week ?? "0", 10) || 0);
-  const currentWeekStart = isoWeekStart();
-  const weekStart = isoDate(addDays(parseIsoDateLocal(currentWeekStart), offset * 7));
+  useEffect(() => {
+    if (!session.isPending && !session.data?.user) router.replace("/login");
+  }, [session.isPending, session.data?.user, router]);
 
-  const proposal = JSON.parse(activePlan.contentJson) as PlanProposal;
-  const editRepo = createPlanEditRepository(db);
-  const workoutRepo = createWorkoutSessionRepository(db);
-  const historyRepo = createHistoryRepository(db);
-
-  const weekStartDate = parseIsoDateLocal(weekStart);
-  const weekEndDate = addDays(weekStartDate, 7);
-  const [adjustments, fullHistory, plans] = await Promise.all([
-    editRepo.listWeekAdjustments(ownerId, activePlan.id, weekStart),
-    workoutRepo.listSessionHistory(ownerId, activePlan.id),
-    vista === "planes" ? listPlansForOwner(db, ownerId) : Promise.resolve([])
-  ]);
-  const executedStatuses: Record<number, ExecutedStatus> = {};
-  for (const row of fullHistory) {
-    if (row.startedAt >= weekStartDate && row.startedAt < weekEndDate && FINISHED_OR_ACTIVE.has(row.status)) {
-      executedStatuses[row.sessionIndex] = row.status as ExecutedStatus;
-    }
-  }
-
-  const occurrences = buildWeekView(proposal, weekStart >= currentWeekStart, adjustments, executedStatuses);
-  const byDay = occurrencesByDay(occurrences);
-
-  const visibleOccurrences = occurrences.filter((occurrence) => occurrence.status !== "moved_away" && occurrence.status !== "removed");
-  const weekSessionCount = visibleOccurrences.length;
-  const weekPlannedMinutes = visibleOccurrences.reduce((sum, occurrence) => sum + occurrence.estimatedMinutes, 0);
-
-  const blockProgress = computeBlockProgress(activePlan.createdAt, proposal.initialBlock?.weeks ?? 1);
-  logRouteTiming("/plan", requestId, startedAt, { dbMs: Date.now() - dbStartedAt });
+  useEffect(() => {
+    if (offlineData.snapshot && offlineData.snapshot.data.activePlan == null) router.replace("/onboarding");
+  }, [offlineData.snapshot, router]);
 
   return (
     <AppShell title="Trainer">
+      <OfflineRouteBoundary>
+        {offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
+          <PlanContent snapshot={offlineData.snapshot} weekParam={searchParams.get("week")} vistaParam={searchParams.get("vista")} />
+        ) : null}
+      </OfflineRouteBoundary>
+    </AppShell>
+  );
+}
+
+function PlanContent({ snapshot, weekParam, vistaParam }: { snapshot: OfflineSnapshot; weekParam: string | null; vistaParam: string | null }) {
+  const view = computePlanView(snapshot, weekParam, vistaParam);
+  const { activePlan, proposal, vista, offset, weekStart, byDay, weekSessionCount, weekPlannedMinutes, blockProgress, plans, progress } = view;
+
+  return (
+    <>
       <p className="kicker">{proposal.initialBlock?.name ?? activePlan.name}</p>
       <h1 className="view-title">Tu plan</h1>
 
@@ -169,21 +142,14 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       <h2 className="section-title">Tu progreso</h2>
       <ProgressSection
         planName={proposal.initialBlock?.name ?? activePlan.name}
-        planId={activePlan.id}
-        ownerId={ownerId}
         blockProgress={blockProgress}
-        historyRepo={historyRepo}
-        fullHistory={fullHistory}
-        weekDoneCount={visibleOccurrences.filter((occurrence) => ["completed", "adapted", "partial"].includes(occurrence.status)).length}
-        weekPlannedCount={visibleOccurrences.length}
-        weekStartDate={weekStartDate}
-        weekEndDate={weekEndDate}
+        progress={progress}
       />
-    </AppShell>
+    </>
   );
 }
 
-function DayRow({ day, occurrences, proposal, planId, weekStart }: { day: Weekday; occurrences: ReturnType<typeof occurrencesByDay>[Weekday]; proposal: PlanProposal; planId: string; weekStart: string }) {
+function DayRow({ day, occurrences, proposal, planId, weekStart }: { day: Weekday; occurrences: WeekOccurrence[]; proposal: PlanProposal; planId: string; weekStart: string }) {
   const isToday = day === (WEEKDAYS[(new Date().getDay() + 6) % 7] as Weekday);
 
   if (occurrences.length === 0) {
@@ -218,7 +184,12 @@ function DayRow({ day, occurrences, proposal, planId, weekStart }: { day: Weekda
                   {occurrence.estimatedMinutes} min previstos
                   {occurrence.movedFromDay ? ` · recolocada desde ${WEEKDAY_LABEL[occurrence.movedFromDay].toLowerCase()}` : ""}
                 </p>
-                {plannedSession?.blocks?.length ? <p className="dayrow__meta">{plannedSession.blocks.map((block) => sessionBlockLabel(block)).join(" · ")}</p> : null}
+                {plannedSession?.blocks?.length ? <div className="dayrow__blocks" aria-label="Rutinas opcionales de la sesión">
+                  {plannedSession.blocks.map((block) => <div className="dayrow__block" key={block.id}>
+                    <div><strong>{sessionBlockLabel(block)}</strong><span>{block.estimatedMinutes} min · opcional</span></div>
+                    <div className="dayrow__block-images">{(block.variantIds ?? []).map(findMobilityExercise).filter((exercise): exercise is NonNullable<typeof exercise> => Boolean(exercise)).map((exercise) => <Image key={exercise.id} src={exercise.mediaUrl} alt={`${exercise.exerciseName} — ${exercise.variantName}`} width={28} height={28} />)}</div>
+                  </div>)}
+                </div> : null}
               </div>
               <span className={`state state--${STATUS_CLASS[occurrence.status] ?? "planificada"}`}>{STATUS_LABEL[occurrence.status] ?? occurrence.status}</span>
             </div>
@@ -274,7 +245,7 @@ function FasesTab({ proposal, blockProgress }: { proposal: PlanProposal; blockPr
   );
 }
 
-function PlanesTab({ plans, activePlanId }: { plans: Awaited<ReturnType<typeof listPlansForOwner>>; activePlanId: string }) {
+function PlanesTab({ plans, activePlanId }: { plans: PlanRow[]; activePlanId: string }) {
   return (
     <>
       <ul className="planlist">
@@ -311,31 +282,14 @@ function PlanesTab({ plans, activePlanId }: { plans: Awaited<ReturnType<typeof l
  * progreso de bloque, figuras de la semana, carga semanal por bloque (reutiliza
  * historyRepo.computeWeeklyLoad, la misma fuente que Historial), evolución breve de una
  * frase (MVP-DEFINITION §6: "no gráficos densos"), actividad reciente y un logro. */
-async function ProgressSection({
-  planName, planId, ownerId, blockProgress, historyRepo, fullHistory, weekDoneCount, weekPlannedCount, weekStartDate, weekEndDate
+function ProgressSection({
+  planName, blockProgress, progress
 }: {
   planName: string;
-  planId: string;
-  ownerId: string;
   blockProgress: BlockProgress;
-  historyRepo: ReturnType<typeof createHistoryRepository>;
-  fullHistory: FinishedSessionRow[];
-  weekDoneCount: number;
-  weekPlannedCount: number;
-  weekStartDate: Date;
-  weekEndDate: Date;
+  progress: PlanProgress;
 }) {
-  const minutes = computeWeekMinutes(fullHistory, weekStartDate, weekEndDate);
-  const consistencyWeeks = computeConsistencyWeeks(fullHistory);
-  const [weeklyLoad, adherence, recentHistory] = await Promise.all([
-    historyRepo.computeWeeklyLoad(ownerId, isoWeekStart()),
-    historyRepo.computeAdherence(ownerId, planId),
-    historyRepo.listSessionHistory(ownerId, planId)
-  ]);
-  const note = evolutionNote(fullHistory);
-  const recentActivity = recentHistory.slice(0, 3);
-  const totalAdherencia = adherence ? adherence.completadas + adherence.adaptadas : 0;
-  const achievements = pickAchievements(totalAdherencia);
+  const { minutes, consistencyWeeks, weeklyLoad, recentActivity, note, achievements, weekDoneCount, weekPlannedCount } = progress;
 
   return (
     <>

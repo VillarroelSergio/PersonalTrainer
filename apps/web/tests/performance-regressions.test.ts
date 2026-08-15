@@ -22,14 +22,10 @@ describe("mobile performance regressions", () => {
     expect(login).not.toContain('router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/")');
   });
 
-  it("keeps independent server reads parallel on the critical pages", () => {
-    const plan = readFileSync(app("plan", "page.tsx"), "utf8");
-
-    expect(plan).toContain("const [adjustments, fullHistory, plans] = await Promise.all([");
-    // /historial and /ejercicios are snapshot-driven client components (Fase 5, Task 6): they no
-    // longer issue their own server reads at all — data comes synchronously from the already-loaded
-    // offline snapshot — so the parallel-fetch concern this test guards against doesn't apply to them.
-  });
+  // "keeps independent server reads parallel on the critical pages" (formerly here) is gone: /plan,
+  // /historial and /ejercicios are all snapshot-driven client components now (Fase 5, Task 6) — none
+  // of them issue their own server reads anymore, so the parallel-fetch concern it guarded no longer
+  // applies to any of them.
 
   it("batches history child records instead of issuing one query per row", () => {
     const historyRepository = readFileSync(src("features", "history", "domain", "history-repository.ts"), "utf8");
@@ -72,12 +68,11 @@ describe("mobile accessibility regressions", () => {
 });
 
 describe("route timing semantics", () => {
-  it("records database duration separately from total route duration", () => {
-    const plan = readFileSync(app("plan", "page.tsx"), "utf8");
+  it("still exposes a dbMs timing field for the server routes that still log it", () => {
+    // /plan (the last page.tsx asserted here) is now a snapshot-driven client component (Fase 5,
+    // Task 6) with no server-side db call or logRouteTiming left to time; route-timing.ts's dbMs
+    // field itself is unchanged and still used by the auth route, so only that much is asserted now.
     const timing = readFileSync(src("lib", "observability", "route-timing.ts"), "utf8");
-
     expect(timing).toContain("dbMs");
-    expect(plan).toContain("{ dbMs: Date.now() - dbStartedAt }");
-    expect(plan).not.toContain("{ data: Date.now() - startedAt }");
   });
 });

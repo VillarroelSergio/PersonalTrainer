@@ -7,8 +7,13 @@ import type { PlanProposal } from "@/contracts/onboarding";
 import { EQUIPMENT_CAPABILITIES } from "@/features/catalog/data/equipment-capabilities";
 import { EXERCISE_CATALOG, exerciseMediaAlt, exerciseMediaSrc, findVariant, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
 import { allEditableSessionBlocks, findSessionBlock, sessionBlockLabel } from "@/features/catalog/data/session-blocks";
-import { findMobilityExercise } from "@/features/catalog/data/mobility-catalog";
+import { findMobilityExercise, MOBILITY_EXERCISES } from "@/features/catalog/data/mobility-catalog";
 import type { TrainingBlock } from "@/features/catalog/domain/training-block";
+import { applySessionContentEditOffline } from "@/features/planning/domain/plan-session-edit-offline";
+import type { PlanSessionContentInput } from "@/contracts/plan";
+import { createClientId } from "@/lib/client-id";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
 import styles from "./PlanSessionEditor.module.css";
 
 type PlannedSession = PlanProposal["week"]["sessions"][number];
@@ -43,9 +48,13 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
   const [pickerQuery, setPickerQuery] = useState("");
   const [draft, setDraft] = useState<ExerciseDraft[]>(session.exercises ?? []);
   const [blockDraft, setBlockDraft] = useState<TrainingBlock[]>(session.blocks ?? []);
+  const [customizingBlockId, setCustomizingBlockId] = useState<string | null>(null);
+  const [mobilityQuery, setMobilityQuery] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
+  const offlineData = useOfflineData();
+  const sync = useOfflineSyncContext();
 
   useEffect(() => {
     if (!sheetOpen) return;
@@ -67,6 +76,8 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
   function openEditor(event: MouseEvent<HTMLButtonElement>) {
     setDraft(session.exercises ?? []);
     setBlockDraft(session.blocks ?? []);
+    setCustomizingBlockId(null);
+    setMobilityQuery("");
     setError(null);
     setPickerMode(null);
     setPickerQuery("");
@@ -119,6 +130,15 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
     });
   }
 
+  function removeMobilityExercise(blockId: string, exerciseId: string) {
+    setBlockDraft((current) => current.map((block) => block.id === blockId ? { ...block, variantIds: (block.variantIds ?? []).filter((id) => id !== exerciseId) } : block));
+  }
+
+  function addMobilityExercise(blockId: string, exerciseId: string) {
+    setBlockDraft((current) => current.map((block) => block.id === blockId && !block.variantIds?.includes(exerciseId) ? { ...block, variantIds: [...(block.variantIds ?? []), exerciseId] } : block));
+    setMobilityQuery("");
+  }
+
   function updateMetric(exerciseIndex: number, key: "targetSets" | "targetRepsMin" | "targetRepsMax", value: string) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
@@ -139,12 +159,34 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
     }
     setPending(true);
     setError(null);
-    const response = await fetch(`/api/v1/plans/${planId}/session-content`, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ isoWeekStart: weekStart, sessionIndex, exercises: draft, blocks: blockDraft })
-    });
+    // blockDraft is TrainingBlock[] (catalog domain type, allows kind "strength" for other
+    // callers); the session-content endpoint's blocks are always warmup/mobility/cooldown in
+    // practice (toggleBlock only ever adds session blocks from allEditableSessionBlocks()).
+    const body: PlanSessionContentInput = { isoWeekStart: weekStart, sessionIndex, exercises: draft, blocks: blockDraft as PlanSessionContentInput["blocks"] };
+    let response: Response;
+    try {
+      response = await fetch(`/api/v1/plans/${planId}/session-content`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch {
+      // Network failure (not a server rejection): apply the edit locally and queue it — the
+      // change IS saved, just not synced yet, same treatment as CheckinRunner/WorkoutRunner.
+      if (offlineData.snapshot) {
+        const result = applySessionContentEditOffline(offlineData.snapshot, planId, body, createClientId);
+        offlineData.applyLocalMutation(result.snapshot.data);
+        await sync.enqueue(result.operation);
+        setPending(false);
+        closeEditor();
+        router.refresh();
+        return;
+      }
+      setPending(false);
+      setError("No pudimos guardar los ejercicios.");
+      return;
+    }
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
       setError(payload?.error?.message ?? "No pudimos guardar los ejercicios.");
@@ -169,6 +211,7 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
     !normalizedQuery
     || `${variant.exerciseName} ${variant.variantName} ${equipmentLabel(variant)}`.toLocaleLowerCase("es").includes(normalizedQuery)
   ));
+  const visibleMobilityOptions = MOBILITY_EXERCISES.filter((exercise) => !mobilityQuery.trim() || `${exercise.exerciseName} ${exercise.variantName}`.toLocaleLowerCase("es").includes(mobilityQuery.trim().toLocaleLowerCase("es")));
 
   if (session.kind !== "strength") return null;
 
@@ -229,14 +272,36 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
                     const selected = blockDraft.some((current) => current.id === block.id);
                     const preview = block.variantIds?.map(findMobilityExercise).find(Boolean);
                     return (
-                      <button key={block.id} type="button" className={selected ? `${styles.blockOption} ${styles.blockSelected}` : styles.blockOption} aria-pressed={selected} onClick={() => toggleBlock(block.id)}>
-                        {preview ? <Image className={styles.blockImage} src={preview.mediaUrl} alt="" width={42} height={42} /> : <span className={styles.blockIcon} aria-hidden="true">＋</span>}
-                        <span><strong>{sessionBlockLabel(block)}</strong><small>{block.estimatedMinutes} min · {block.kind === "warmup" ? "calentamiento" : block.kind === "cooldown" ? "vuelta a la calma" : "movilidad"}</small></span>
-                        <span className={styles.blockCheck} aria-hidden="true">{selected ? "✓" : "＋"}</span>
-                      </button>
+                      <div key={block.id} className={styles.blockOptionRow}>
+                        <button type="button" className={selected ? `${styles.blockOption} ${styles.blockSelected}` : styles.blockOption} aria-pressed={selected} onClick={() => toggleBlock(block.id)}>
+                          {preview ? <Image className={styles.blockImage} src={preview.mediaUrl} alt="" width={42} height={42} /> : <span className={styles.blockIcon} aria-hidden="true">＋</span>}
+                          <span><strong>{sessionBlockLabel(block)}</strong><small>{block.estimatedMinutes} min · {block.variantIds?.length ?? 0} ejercicios · {block.kind === "warmup" ? "antes" : block.kind === "cooldown" ? "después" : "movilidad"}</small></span>
+                          <span className={styles.blockCheck} aria-hidden="true">{selected ? "✓" : "＋"}</span>
+                        </button>
+                        {selected && block.variantIds?.length ? <button type="button" className={styles.customizeBlockButton} onClick={() => { setCustomizingBlockId(block.id); setMobilityQuery(""); }}>Personalizar</button> : null}
+                      </div>
                     );
                   })}
                 </div>
+                {customizingBlockId ? (() => {
+                  const block = blockDraft.find((candidate) => candidate.id === customizingBlockId);
+                  if (!block) return null;
+                  return (
+                    <div className={styles.blockCustomizer} aria-label={`Personalizar ${sessionBlockLabel(block)}`}>
+                      <div className={styles.blockCustomizerHeading}><div><strong>Personalizar {sessionBlockLabel(block)}</strong><small>Quita o añade ejercicios a esta rutina.</small></div><button type="button" className={styles.closeCustomizer} onClick={() => setCustomizingBlockId(null)}>Cerrar</button></div>
+                      <ol className={styles.blockExerciseList}>
+                        {(block.variantIds ?? []).map((exerciseId, index) => {
+                          const exercise = findMobilityExercise(exerciseId);
+                          return <li key={exerciseId} className={styles.blockExerciseRow}>{exercise ? <Image src={exercise.mediaUrl} alt={`${exercise.exerciseName} — ${exercise.variantName}`} width={42} height={42} /> : null}<span><strong>{exercise?.variantName ?? exerciseId}</strong><small>{exercise ? (exercise.metric === "seconds" ? `Tiempo · ${exercise.defaultDose}` : `Repeticiones · ${exercise.defaultDose}`) : "Ejercicio no disponible"}</small></span><button type="button" className={styles.removeBlockExercise} onClick={() => removeMobilityExercise(block.id, exerciseId)} disabled={(block.variantIds ?? []).length <= 1} aria-label={`Quitar ejercicio ${index + 1}`}>×</button></li>;
+                        })}
+                      </ol>
+                      <label className={styles.mobilitySearch}>Añadir ejercicio<input type="search" value={mobilityQuery} onChange={(event) => setMobilityQuery(event.target.value)} placeholder="Busca movilidad o estiramiento…" /></label>
+                      <div className={styles.mobilityPickerList} aria-label="Ejercicios de movilidad disponibles">
+                        {visibleMobilityOptions.slice(0, 8).map((exercise) => <button key={exercise.id} type="button" className={styles.mobilityPickerOption} onClick={() => addMobilityExercise(block.id, exercise.id)}><Image src={exercise.mediaUrl} alt={`${exercise.exerciseName} — ${exercise.variantName}`} width={38} height={38} /><span><strong>{exercise.variantName}</strong><small>{exercise.exerciseName}</small></span><span aria-hidden="true">＋</span></button>)}
+                      </div>
+                    </div>
+                  );
+                })() : null}
               </section>
             </div>
             <div className={styles.footer}>

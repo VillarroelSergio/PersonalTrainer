@@ -6,7 +6,7 @@
  * itself never touches a browser API and can be exercised without a DOM.
  */
 
-import type { PlanEditInput } from "@/contracts/plan";
+import type { PlanEditInput, PlanSessionContentInput } from "@/contracts/plan";
 import type { CheckinInput, DecideRecommendationInput } from "@/contracts/training-engine";
 import type { OnboardingFormPatch } from "@/contracts/onboarding";
 import type { CommitImportInput, EnduranceDesignInput } from "@/contracts/endurance";
@@ -54,6 +54,7 @@ export type OutboxOperation =
   | (BaseFields & { kind: "set_favorite"; variantId: string })
   | (BaseFields & { kind: "unset_favorite"; variantId: string })
   | (BaseFields & { kind: "plan_session_edit"; planId: string; payload: PlanEditInput })
+  | (BaseFields & { kind: "plan_session_content_edit"; planId: string; payload: PlanSessionContentInput })
   | (BaseFields & { kind: "update_onboarding_draft"; payload: OnboardingFormPatch })
   | (BaseFields & { kind: "save_endurance_design"; payload: EnduranceDesignInput })
   | (BaseFields & { kind: "confirm_activity_import"; payload: ConfirmActivityImportPayload })

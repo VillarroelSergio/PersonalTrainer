@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeAdherenceView,
+  computeWeeklyLoadView,
   computeWeekStatsView,
   getEnduranceActivityDetailView,
   getSessionDetailView,
@@ -153,6 +154,39 @@ describe("getSessionDetailView", () => {
 
   it("returns null when the session id doesn't exist", () => {
     expect(getSessionDetailView(baseSnapshot(), PLAN_ID, "missing")).toBeNull();
+  });
+});
+
+describe("computeWeeklyLoadView", () => {
+  it("counts one unit per finished set (piernas vs. tren superior) and resistenciaMinutos account-wide, ignoring planId", () => {
+    const monday = "2026-08-03T00:00:00.000Z"; // a Monday
+    const snapshot = baseSnapshot({
+      history: {
+        workoutSessions: [
+          { id: "s1", planId: PLAN_ID, sessionIndex: 0, status: "completed", startedAt: monday, endedAt: null, globalEffort: null, comment: null, discomfortJson: null },
+          { id: "s2", planId: OTHER_PLAN_ID, sessionIndex: 0, status: "in_progress", startedAt: monday, endedAt: null, globalEffort: null, comment: null, discomfortJson: null }
+        ],
+        sessionExercises: [
+          { id: "e1", workoutSessionId: "s1", variantId: "squat-barbell", position: 0, status: "active" },
+          { id: "e2", workoutSessionId: "s2", variantId: "squat-barbell", position: 0, status: "active" }
+        ],
+        setPerformances: [
+          { id: "p1", sessionExerciseId: "e1", setNumber: 1, loadKg: 60, repetitions: 8, difficulty: "just_right" },
+          { id: "p2", sessionExerciseId: "e1", setNumber: 2, loadKg: 60, repetitions: 8, difficulty: "just_right" },
+          // s2's exercise belongs to an in_progress (unfinished) session: excluded, like the real query.
+          { id: "p3", sessionExerciseId: "e2", setNumber: 1, loadKg: 60, repetitions: 8, difficulty: "just_right" }
+        ]
+      },
+      enduranceActivities: [
+        { id: "a1", ownerId: "owner-1", planId: OTHER_PLAN_ID, sport: "running", name: "Carrera", source: "manual", startedAt: monday, durationS: 1800, distanceM: 5000 }
+      ]
+    });
+    const load = computeWeeklyLoadView(snapshot, isoWeekStart(new Date(monday)));
+    expect(load).toEqual({ piernas: 2, treSuperior: 0, resistenciaMinutos: 30 });
+  });
+
+  it("returns all zeros for a week with no finished sets or activities", () => {
+    expect(computeWeeklyLoadView(baseSnapshot(), isoWeekStart())).toEqual({ piernas: 0, treSuperior: 0, resistenciaMinutos: 0 });
   });
 });
 
