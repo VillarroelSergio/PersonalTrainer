@@ -1,16 +1,25 @@
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+"use client";
+
+import { Suspense, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db/client";
-import { findActivePlanForOwner } from "@/features/planning/domain/training-plan-repository";
-import { createHistoryRepository, type EnduranceActivityEntry, type SessionHistoryEntry } from "@/features/history/domain/history-repository";
+import { authClient } from "@/lib/auth-client";
+import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import {
+  computeAdherenceView,
+  computeWeekStatsView,
+  listEnduranceActivitiesView,
+  listSessionHistoryView,
+  listVariantProgressView
+} from "@/features/history/domain/historial-view";
 import { pickAchievements } from "@/features/history/domain/history-engine";
+import type { EnduranceActivityEntry, SessionHistoryEntry, VariantProgressEntry } from "@/features/history/domain/history-repository";
 import { AppShell } from "@/components/AppShell";
 import { WEEKDAY_LABEL, isoDate, isoWeekStart, parseIsoDateLocal, type Weekday } from "@/lib/weekdays";
-import { logRouteTiming } from "@/lib/observability/route-timing";
 import { exerciseMediaAlt, exerciseMediaSrc, findVariant } from "@/features/catalog/data/exercise-catalog";
+import type { OfflineSnapshot } from "@/lib/offline/snapshot";
 
 const TABS = [
   { key: "registro", label: "Fuerza y cardio" },
@@ -22,26 +31,48 @@ const STATUS_LABEL: Record<string, string> = { completed: "Completada", adapted:
 const STATUS_BAR: Record<string, string> = { completed: "completada", adapted: "adaptada", partial: "parcial", in_progress: "en_curso" };
 const SPORT_LABEL: Record<string, string> = { running: "Correr", cycling: "Bici", walking: "Caminar", other: "Otra actividad" };
 
-export default async function HistorialPage({ searchParams }: { searchParams: Promise<{ tab?: string; semana?: string }> }) {
-  const startedAt = Date.now();
-  const requestHeaders = await headers();
-  const requestId = requestHeaders.get("x-vercel-id");
-  const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user) redirect("/login");
-  const ownerId = session.user.id;
+export default function HistorialPage() {
+  return (
+    <Suspense fallback={null}>
+      <HistorialPageInner />
+    </Suspense>
+  );
+}
 
-  const dbStartedAt = Date.now();
-  const activePlan = await findActivePlanForOwner(getDb(), ownerId);
-  if (!activePlan) redirect("/onboarding");
+function HistorialPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const session = authClient.useSession();
+  const offlineData = useOfflineData();
 
-  const { tab: rawTab, semana } = await searchParams;
+  useEffect(() => {
+    if (!session.isPending && !session.data?.user) router.replace("/login");
+  }, [session.isPending, session.data?.user, router]);
+
+  useEffect(() => {
+    if (offlineData.snapshot && offlineData.snapshot.data.activePlan == null) router.replace("/onboarding");
+  }, [offlineData.snapshot, router]);
+
+  const rawTab = searchParams.get("tab") ?? undefined;
+  const semana = searchParams.get("semana") ?? undefined;
   const tab: TabKey = TABS.some((item) => item.key === rawTab) ? (rawTab as TabKey) : "registro";
-
-  const historyRepo = createHistoryRepository(getDb());
-  logRouteTiming("/historial", requestId, startedAt, { dbMs: Date.now() - dbStartedAt });
 
   return (
     <AppShell title="Trainer">
+      <OfflineRouteBoundary>
+        {offlineData.snapshot && offlineData.snapshot.data.activePlan != null ? (
+          <HistorialContent snapshot={offlineData.snapshot} tab={tab} semana={semana} />
+        ) : null}
+      </OfflineRouteBoundary>
+    </AppShell>
+  );
+}
+
+function HistorialContent({ snapshot, tab, semana }: { snapshot: OfflineSnapshot; tab: TabKey; semana?: string }) {
+  const activePlan = snapshot.data.activePlan as { id: string };
+
+  return (
+    <>
       <div className="history-heading">
         <div>
           <h1 className="view-title">Historial</h1>
@@ -59,10 +90,10 @@ export default async function HistorialPage({ searchParams }: { searchParams: Pr
       </div>
 
       <div id="historyPanel" className="tabpanel" role="tabpanel" aria-labelledby={`historyTab-${tab}`}>
-        {tab === "registro" && <RegistroTab ownerId={ownerId} planId={activePlan.id} semana={semana} historyRepo={historyRepo} />}
-        {tab === "adherencia" && <AdherenciaTab historyRepo={historyRepo} ownerId={ownerId} planId={activePlan.id} />}
+        {tab === "registro" && <RegistroTab snapshot={snapshot} planId={activePlan.id} semana={semana} />}
+        {tab === "adherencia" && <AdherenciaTab snapshot={snapshot} planId={activePlan.id} />}
       </div>
-    </AppShell>
+    </>
   );
 }
 
@@ -88,12 +119,11 @@ function buildTimeline(sessions: SessionHistoryEntry[], activities: EnduranceAct
   return [...strength, ...endurance].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
 }
 
-async function RegistroTab({ ownerId, planId, semana, historyRepo }: { ownerId: string; planId: string; semana?: string; historyRepo: ReturnType<typeof createHistoryRepository> }) {
-  const [allSessions, enduranceActivities, progress] = await Promise.all([
-    historyRepo.listSessionHistory(ownerId, planId),
-    historyRepo.listEnduranceActivities(ownerId),
-    historyRepo.listVariantProgress(ownerId)
-  ]);
+function RegistroTab({ snapshot, planId, semana }: { snapshot: OfflineSnapshot; planId: string; semana?: string }) {
+  const allSessions = listSessionHistoryView(snapshot, planId);
+  const enduranceActivities = listEnduranceActivitiesView(snapshot);
+  const progress = listVariantProgressView(snapshot);
+
   const selectedWeek = semana ?? isoWeekStart();
   const filteredSessions = allSessions.filter((session) => isoWeekStart(session.startedAt) === selectedWeek);
 
@@ -136,7 +166,7 @@ async function RegistroTab({ ownerId, planId, semana, historyRepo }: { ownerId: 
   );
 }
 
-function ProgresoSection({ progress }: { progress: Awaited<ReturnType<ReturnType<typeof createHistoryRepository>["listVariantProgress"]>> }) {
+function ProgresoSection({ progress }: { progress: VariantProgressEntry[] }) {
   if (progress.length === 0) return null;
 
   return (
@@ -167,11 +197,9 @@ function ProgresoSection({ progress }: { progress: Awaited<ReturnType<ReturnType
   );
 }
 
-async function AdherenciaTab({ historyRepo, ownerId, planId }: { historyRepo: ReturnType<typeof createHistoryRepository>; ownerId: string; planId: string }) {
-  const [adherence, weekStats] = await Promise.all([
-    historyRepo.computeAdherence(ownerId, planId),
-    historyRepo.computeWeekStats(ownerId, planId)
-  ]);
+function AdherenciaTab({ snapshot, planId }: { snapshot: OfflineSnapshot; planId: string }) {
+  const adherence = computeAdherenceView(snapshot, planId);
+  const weekStats = computeWeekStatsView(snapshot, planId);
   const totalAdherencia = adherence ? adherence.completadas + adherence.adaptadas : 0;
   const achievements = pickAchievements(totalAdherencia);
   const achievementText = achievements.alcanzado

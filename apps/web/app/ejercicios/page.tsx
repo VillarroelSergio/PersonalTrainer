@@ -1,14 +1,17 @@
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+"use client";
+
+import { Suspense, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db/client";
+import { authClient } from "@/lib/auth-client";
+import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
+import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { computeEjerciciosView } from "@/features/catalog/domain/ejercicios-view";
 import { EXERCISE_CATALOG, exerciseMediaAlt, exerciseMediaSrc, findVariant, MUSCLE_GROUPS, MUSCLE_GROUP_LABEL, MUSCLE_GROUP_IMAGE, type MuscleGroup, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
-import { listOwnedFavoriteVariantIds } from "@/features/catalog/domain/favorite-repository";
 import { FavoriteToggle } from "@/features/catalog/ui/FavoriteToggle";
-import { createWorkoutSessionRepository } from "@/features/workouts/domain/workout-session-repository";
 import { AppShell } from "@/components/AppShell";
+import type { OfflineSnapshot } from "@/lib/offline/snapshot";
 
 function ExerciseListItem({ variant, isFavorite }: { variant: ExerciseVariant; isFavorite: boolean }) {
   return (
@@ -39,19 +42,42 @@ function ExerciseListItem({ variant, isFavorite }: { variant: ExerciseVariant; i
   );
 }
 
-export default async function EjerciciosPage({ searchParams }: { searchParams: Promise<{ grupo?: string; q?: string; favoritos?: string }> }) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect("/login");
+export default function EjerciciosPage() {
+  return (
+    <Suspense fallback={null}>
+      <EjerciciosPageInner />
+    </Suspense>
+  );
+}
 
-  const db = getDb();
-  const workoutRepo = createWorkoutSessionRepository(db);
-  const [favoriteVariantIds, recentVariantIds] = await Promise.all([
-    listOwnedFavoriteVariantIds(db, session.user.id),
-    workoutRepo.listRecentVariantIds(session.user.id, 5)
-  ]);
+function EjerciciosPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const session = authClient.useSession();
+  const offlineData = useOfflineData();
+
+  useEffect(() => {
+    if (!session.isPending && !session.data?.user) router.replace("/login");
+  }, [session.isPending, session.data?.user, router]);
+
+  return (
+    <AppShell title="Trainer">
+      <OfflineRouteBoundary>
+        {offlineData.snapshot ? <EjerciciosContent snapshot={offlineData.snapshot} searchParams={searchParams} /> : null}
+      </OfflineRouteBoundary>
+    </AppShell>
+  );
+}
+
+function EjerciciosContent({ snapshot, searchParams }: { snapshot: OfflineSnapshot; searchParams: URLSearchParams }) {
+  const { favoriteVariantIds, recentVariantIds } = computeEjerciciosView(snapshot);
   const favoriteIds = new Set(favoriteVariantIds);
   const recentVariants = recentVariantIds.map(findVariant).filter((variant): variant is ExerciseVariant => variant != null);
-  const { grupo, q, favoritos } = await searchParams;
+
+  const grupo = searchParams.get("grupo") ?? undefined;
+  const q = searchParams.get("q") ?? undefined;
+  const favoritos = searchParams.get("favoritos") ?? undefined;
+
   const query = q?.trim().toLocaleLowerCase("es") ?? "";
   const showFavorites = favoritos === "1";
   const selected = grupo && MUSCLE_GROUPS.includes(grupo as MuscleGroup) ? (grupo as MuscleGroup) : null;
@@ -71,7 +97,7 @@ export default async function EjerciciosPage({ searchParams }: { searchParams: P
   const clearSearchQuery = clearSearchParams.toString();
 
   return (
-    <AppShell title="Trainer">
+    <>
       <h1 className="view-title">Ejercicios</h1>
       <p className="lede small">Busca por grupo muscular. No modelamos el inventario exacto de tu gimnasio.</p>
 
@@ -140,6 +166,6 @@ export default async function EjerciciosPage({ searchParams }: { searchParams: P
           )}
         </>
       )}
-    </AppShell>
+    </>
   );
 }

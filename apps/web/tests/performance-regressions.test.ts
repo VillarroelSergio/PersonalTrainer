@@ -24,13 +24,11 @@ describe("mobile performance regressions", () => {
 
   it("keeps independent server reads parallel on the critical pages", () => {
     const plan = readFileSync(app("plan", "page.tsx"), "utf8");
-    const history = readFileSync(app("historial", "page.tsx"), "utf8");
-    const exercises = readFileSync(app("ejercicios", "page.tsx"), "utf8");
 
     expect(plan).toContain("const [adjustments, fullHistory, plans] = await Promise.all([");
-    expect(history).toContain("const [allSessions, enduranceActivities, progress] = await Promise.all([");
-    expect(history).toContain("const [adherence, weekStats] = await Promise.all([");
-    expect(exercises).toContain("const [favoriteVariantIds, recentVariantIds] = await Promise.all([");
+    // /historial and /ejercicios are snapshot-driven client components (Fase 5, Task 6): they no
+    // longer issue their own server reads at all — data comes synchronously from the already-loaded
+    // offline snapshot — so the parallel-fetch concern this test guards against doesn't apply to them.
   });
 
   it("batches history child records instead of issuing one query per row", () => {

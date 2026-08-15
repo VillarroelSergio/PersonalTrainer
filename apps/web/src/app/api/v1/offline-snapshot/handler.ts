@@ -4,10 +4,13 @@ import { EXERCISE_CATALOG } from "@/features/catalog/data/exercise-catalog";
 import type * as schema from "@/lib/db/schema";
 import {
   activityImport,
+  activityMetric,
   checkin,
+  enduranceActivity,
   favoriteVariant,
   importFile,
   onboardingDraft,
+  performanceBaseline,
   recommendation,
   recoverySession,
   sessionAdjustment,
@@ -58,6 +61,14 @@ export async function createOfflineSnapshotResponse(request: Request, user_: Ses
     .from(activityImport)
     .where(eq(activityImport.ownerId, ownerId));
 
+  // enduranceActivity/activityMetric/performanceBaseline: raw owner-scoped dumps, no joins — /historial
+  // and /plan's ProgressSection do the joining/aggregation client-side (Fase 5, Task 6).
+  // activity_metric has no owner_id column (see schema.ts): scoped via its parent activity ids instead.
+  const enduranceActivities = await database.select().from(enduranceActivity).where(eq(enduranceActivity.ownerId, ownerId));
+  const enduranceActivityIds = enduranceActivities.map((row) => row.id);
+  const activityMetrics = enduranceActivityIds.length === 0 ? [] : await database.select().from(activityMetric).where(inArray(activityMetric.activityId, enduranceActivityIds));
+  const performanceBaselines = await database.select().from(performanceBaseline).where(eq(performanceBaseline.ownerId, ownerId));
+
   const snapshot: OfflineSnapshot = {
     userId: ownerId,
     syncedAt: Date.now(),
@@ -72,6 +83,9 @@ export async function createOfflineSnapshotResponse(request: Request, user_: Ses
       recommendations,
       favorites,
       activityImports: { imports: activityImports, files: importFiles },
+      enduranceActivities,
+      activityMetrics,
+      performanceBaselines,
       catalog: EXERCISE_CATALOG
     }
   };

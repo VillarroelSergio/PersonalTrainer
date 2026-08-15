@@ -4,10 +4,13 @@ import { getDb } from "@/lib/db/client";
 import {
   account,
   activityImport,
+  activityMetric,
   checkin,
+  enduranceActivity,
   favoriteVariant,
   importFile,
   onboardingDraft,
+  performanceBaseline,
   recoverySession,
   sessionExercise,
   setPerformance,
@@ -34,6 +37,10 @@ async function fixture(ownerId: string) {
   const storageKey = `activity-imports/${ownerId}/secret-file.fit`;
   await db.insert(importFile).values({ id: `file-${ownerId}`, ownerId, storageKey, originalName: "carrera.fit", format: "fit", sizeBytes: 10, sha256: `hash-${ownerId}`, uploadedAt: now });
   await db.insert(activityImport).values({ id: `import-${ownerId}`, ownerId, fileId: `file-${ownerId}`, format: "fit", status: "saved", createdAt: now });
+  const activityId = `activity-${ownerId}`;
+  await db.insert(enduranceActivity).values({ id: activityId, ownerId, sport: "running", name: "Carrera", source: "manual", fingerprint: `fp-${ownerId}`, startedAt: now, durationS: 1800, distanceM: 5000, createdAt: now });
+  await db.insert(activityMetric).values({ id: `metric-${ownerId}`, activityId, metricType: "avg_pace_sec_per_km", value: 300, unit: "s/km", source: "manual" });
+  await db.insert(performanceBaseline).values({ ownerId, variantId: "squat-back", confidence: 60, summaryJson: JSON.stringify({ ruleVersion: "progression-v1", confidence: 0.6, hasBaseline: true, lastLoadKg: 40, lastRepetitions: 10, suggestion: { type: "maintain", reason: "test" } }), ruleVersion: "progression-v1", calculatedAt: now });
   return { db, storageKey };
 }
 
@@ -73,6 +80,9 @@ describe("GET /api/v1/offline-snapshot", () => {
       const serialized = JSON.stringify(body.data.snapshot.data);
 
       expect(body.data.snapshot.data).toMatchObject({ activePlan: { id: `plan-${ownerA}` } });
+      expect(body.data.snapshot.data.enduranceActivities).toMatchObject([{ id: `activity-${ownerA}` }]);
+      expect(body.data.snapshot.data.activityMetrics).toMatchObject([{ activityId: `activity-${ownerA}` }]);
+      expect(body.data.snapshot.data.performanceBaselines).toMatchObject([{ ownerId: ownerA, variantId: "squat-back" }]);
       expect(serialized).not.toContain(ownerB);
       expect(serialized).not.toContain(storageKeyA);
       expect(serialized).not.toContain(storageKeyB);

@@ -42,7 +42,7 @@ function latestStatusesForPlan(workoutSessions: WorkoutSessionRow[], planId: str
 
 /** Mirrors `workout-session-repository.ts`'s `listRecentVariantIds`: most-recently-used distinct
  * variant ids across this account's real history, newest first. */
-function recentVariantIdsFrom(workoutSessions: WorkoutSessionRow[], sessionExercises: SessionExerciseRow[], limit: number): string[] {
+export function recentVariantIdsFrom(workoutSessions: WorkoutSessionRow[], sessionExercises: SessionExerciseRow[], limit: number): string[] {
   const startedAtByWorkout = new Map(workoutSessions.map((row) => [row.id, new Date(row.startedAt).getTime()]));
   const rows = sessionExercises
     .map((row) => ({ variantId: row.variantId, startedAt: startedAtByWorkout.get(row.workoutSessionId) ?? 0 }))
