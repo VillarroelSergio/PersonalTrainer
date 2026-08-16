@@ -1,6 +1,10 @@
 import type { OfflineSnapshot } from "./snapshot";
 
-const BASE_ACCOUNT_SHELL_ROUTES = ["/hoy", "/plan", "/ejercicios", "/historial", "/checkin"];
+/** Every route here renders client-side from the local snapshot, so one cached shell per
+ * pathname covers all its query strings (see findSamePathnameCacheUrl). Server-rendered
+ * routes (/movilidad, /ejercicios/[id], /compartir/[token]) are deliberately absent: they
+ * read the database per request and cannot render offline. */
+const BASE_ACCOUNT_SHELL_ROUTES = ["/hoy", "/plan", "/ejercicios", "/historial", "/checkin", "/perfil", "/compartir"];
 
 type PlanLike = {
   week?: {
@@ -8,8 +12,22 @@ type PlanLike = {
   };
 };
 
+/** /historial/[id] is client-rendered but its id is a path segment, so the
+ * same-pathname cache fallback cannot stand in for a detail page it never saw.
+ * Each entry the snapshot already carries gets its own shell.
+ * ponytail: bounded by whatever the snapshot holds — add a cap here if the
+ * offline-snapshot endpoint ever stops trimming history. */
+function historyDetailRoutes(snapshot: OfflineSnapshot): string[] {
+  const workoutSessions = (snapshot.data.history as { workoutSessions?: Array<{ id?: unknown }> } | undefined)?.workoutSessions ?? [];
+  const enduranceActivities = (snapshot.data.enduranceActivities as Array<{ id?: unknown }> | undefined) ?? [];
+  return [...workoutSessions, ...enduranceActivities]
+    .map((row) => row?.id)
+    .filter((id): id is string => typeof id === "string" && id.trim() !== "")
+    .map((id) => `/historial/${encodeURIComponent(id)}`);
+}
+
 export function accountShellRoutesForSnapshot(snapshot: OfflineSnapshot): string[] {
-  const routes = new Set(BASE_ACCOUNT_SHELL_ROUTES);
+  const routes = new Set([...BASE_ACCOUNT_SHELL_ROUTES, ...historyDetailRoutes(snapshot)]);
   const contentJson = (snapshot.data.activePlan as { contentJson?: unknown } | null | undefined)?.contentJson;
   if (typeof contentJson !== "string") return [...routes];
 

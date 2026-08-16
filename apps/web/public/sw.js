@@ -14,6 +14,8 @@ const NAVIGATION_TIMEOUT_MS = 1800;
 const PUBLIC_SHELL_URLS = ["/manifest.webmanifest", "/icons/icon.svg"];
 const STATIC_CACHE_PREFIXES = ["/_next/static/", "/icons/", "/library/"];
 const ACTIVE_ACCOUNT_CACHE_URL = "/__trainer_sw/active-account";
+const APP_ENTRY_URL = "/hoy";
+const OFFLINE_HTML = '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sin conexión</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#171613;color:#f5f2ec;font:16px/1.5 system-ui,sans-serif;padding:24px;text-align:center}a{color:#e8663a}</style></head><body><div><p>Esta pantalla todavía no está guardada para usarla sin conexión.</p><p><a href="/hoy">Volver a Inicio</a></p></div></body></html>';
 
 let activeNavigationCacheName = null;
 let accountShellGeneration = 0;
@@ -149,25 +151,60 @@ async function networkFirst(request, event) {
     }
     return response;
   } catch {
-    const cacheName = await getActiveNavigationCacheName();
-    if (cacheName) {
-      const cache = await caches.open(cacheName);
-      const cached = await cache.match(request);
-      if (cached) return cached;
-    }
-    return fetch(request);
+    return offlineNavigationFallback(request);
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * Never rejects: a rejected respondWith is what produced Safari's
+ * "FetchEvent.respondWith received an error" page instead of the app.
+ * Exact URL → same pathname (query strings never change the cached shell,
+ * every route builds its screen client-side from the local snapshot) →
+ * "/" redirected to the app entry the server would redirect to anyway →
+ * a plain offline notice for routes that were never precached.
+ */
+async function offlineNavigationFallback(request) {
+  const cacheName = await getActiveNavigationCacheName();
+  if (cacheName) {
+    const cache = await caches.open(cacheName);
+    // ignoreVary: Next sends "Vary: RSC, Next-Router-State-Tree, …" and a precached
+    // entry was stored under a plain fetch, so a strict Vary match can miss an entry
+    // that is in fact the right shell for this URL.
+    const exact = await cache.match(request, { ignoreVary: true });
+    if (exact) return exact;
+
+    // Mirrors findSamePathnameCacheUrl in src/lib/offline/cache-fallback.ts.
+    const targetPathname = new URL(request.url).pathname;
+    const keys = await cache.keys();
+    const samePathname = keys.find((key) => new URL(key.url).pathname === targetPathname);
+    if (samePathname) {
+      const cached = await cache.match(samePathname);
+      if (cached) return cached;
+    }
+
+    if (targetPathname === "/") {
+      const entry = await cache.match(new Request(new URL(APP_ENTRY_URL, self.location.origin).href));
+      if (entry) return Response.redirect(new URL(APP_ENTRY_URL, self.location.origin).href, 302);
+    }
+  }
+  return new Response(OFFLINE_HTML, { status: 503, headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
 async function cacheFirst(request) {
   const cache = await caches.open(STATIC_CACHE);
   const cached = await cache.match(request);
   if (cached) return cached;
-  const response = await fetch(request);
-  if (response.ok) await cache.put(request, response.clone());
-  return response;
+  try {
+    const response = await fetch(request);
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  } catch {
+    // Same reason as offlineNavigationFallback: a thrown respondWith for a
+    // missing chunk breaks the whole page instead of just that asset.
+    return new Response("", { status: 504 });
+  }
 }
 
 async function cacheNavigationResponse(cacheName, generation, request, response) {

@@ -210,6 +210,52 @@ describe("service worker shell cache", () => {
     }
   });
 
+  it("serves an offline navigation whose query string was never precached from the same pathname", async () => {
+    const sw = loadServiceWorker({ "/plan": "<!doctype html><main>plan</main>", "/hoy": "<!doctype html><main>hoy</main>" });
+
+    await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: ["/hoy", "/plan"] });
+    sw.goOffline();
+
+    const request = new Request("https://trainer.test/plan?vista=fases&week=2", { method: "GET" });
+    Object.defineProperty(request, "mode", { value: "navigate" });
+    const [response] = sw.dispatchFetch(request);
+
+    await expect(response.then((served) => served.text())).resolves.toBe("<!doctype html><main>plan</main>");
+  });
+
+  it("redirects an offline navigation to / towards the cached app entry instead of failing", async () => {
+    const sw = loadServiceWorker({ "/hoy": "<!doctype html><main>hoy</main>" });
+
+    await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: ["/hoy"] });
+    sw.goOffline();
+
+    const request = new Request("https://trainer.test/", { method: "GET" });
+    Object.defineProperty(request, "mode", { value: "navigate" });
+    const [response] = sw.dispatchFetch(request);
+    const served = await response;
+
+    expect(served.status).toBe(302);
+    expect(served.headers.get("location")).toBe("https://trainer.test/hoy");
+  });
+
+  it("answers an offline navigation to a route that was never precached instead of rejecting", async () => {
+    const sw = loadServiceWorker({ "/hoy": "<!doctype html><main>hoy</main>" });
+
+    await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: ["/hoy"] });
+    sw.goOffline();
+
+    const request = new Request("https://trainer.test/ejercicios/press-banca", { method: "GET" });
+    Object.defineProperty(request, "mode", { value: "navigate" });
+    const [response] = sw.dispatchFetch(request);
+    const served = await response;
+
+    expect(served.status).toBe(503);
+    expect(await served.text()).toContain("sin conexión");
+  });
+
   it("leaves API requests entirely to the browser instead of intercepting or caching them", () => {
     const sw = loadServiceWorker();
 
@@ -267,14 +313,21 @@ describe("service worker shell cache", () => {
     await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-b", routes: [] });
     const requestB = new Request("https://trainer.test/hoy", { method: "GET" });
     Object.defineProperty(requestB, "mode", { value: "navigate" });
+    // Account B gets the generic offline notice, never account A's HTML. It is a
+    // served response rather than a rejection on purpose: a rejected respondWith
+    // shows Safari's "FetchEvent.respondWith received an error" page.
     const [accountBResponse] = sw.dispatchFetch(requestB);
-    await expect(accountBResponse).rejects.toThrow("offline:/hoy");
+    const accountB = await accountBResponse;
+    expect(accountB.status).toBe(503);
+    expect(await accountB.text()).not.toContain("Cuenta A");
 
     await sw.dispatchMessage({ type: "TRAINER_CLEAR_ACCOUNT_SHELL" });
     const requestCleared = new Request("https://trainer.test/hoy", { method: "GET" });
     Object.defineProperty(requestCleared, "mode", { value: "navigate" });
     const [clearedResponse] = sw.dispatchFetch(requestCleared);
-    await expect(clearedResponse).rejects.toThrow("offline:/hoy");
+    const cleared = await clearedResponse;
+    expect(cleared.status).toBe(503);
+    expect(await cleared.text()).not.toContain("Cuenta A");
   });
 
   it("aborts an in-flight account precache and does not retain stale account HTML after clear", async () => {

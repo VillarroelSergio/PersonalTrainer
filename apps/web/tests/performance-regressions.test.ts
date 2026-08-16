@@ -11,7 +11,10 @@ describe("mobile performance regressions", () => {
 
     expect(serviceWorker).toContain("NAVIGATION_TIMEOUT_MS");
     expect(serviceWorker).toContain("Promise.race");
-    expect(serviceWorker).toContain("return fetch(request);");
+    // The timeout must fall back to the offline chain, never to a bare fetch: a
+    // rejected respondWith renders Safari's error page instead of the app.
+    expect(serviceWorker).toContain("return offlineNavigationFallback(request);");
+    expect(serviceWorker).not.toContain("return fetch(request);");
   });
 
   it("does not route an authenticated login through the root database redirect", () => {
