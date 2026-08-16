@@ -256,6 +256,22 @@ describe("service worker shell cache", () => {
     expect(await served.text()).toContain("sin conexión");
   });
 
+  it("caches the next/image URLs a page references so pictures still load offline", async () => {
+    const sw = loadServiceWorker({
+      "/hoy": `<!doctype html><html><body><img srcset="/_next/image?url=%2Flibrary%2Fpress.png&amp;w=640&amp;q=75 1x, /_next/image?url=%2Flibrary%2Fpress.png&amp;w=1080&amp;q=75 2x" src="/_next/image?url=%2Flibrary%2Fpress.png&amp;w=1080&amp;q=75" /></body></html>`,
+      "/_next/image?url=%2Flibrary%2Fpress.png&w=640&q=75": "press-640",
+      "/_next/image?url=%2Flibrary%2Fpress.png&w=1080&q=75": "press-1080"
+    });
+
+    await sw.dispatchInstall();
+    await sw.dispatchMessage({ type: "TRAINER_PRECACHE_ACCOUNT_SHELL", userId: "account-a", routes: ["/hoy"] });
+    sw.goOffline();
+
+    const [imageResponse] = sw.dispatchFetch(new Request("https://trainer.test/_next/image?url=%2Flibrary%2Fpress.png&w=640&q=75"));
+
+    await expect(imageResponse.then((response) => response.text())).resolves.toBe("press-640");
+  });
+
   it("serves /login offline on a device that never synced an account", async () => {
     const sw = loadServiceWorker({ "/login": "<!doctype html><main>Entrar</main>" });
 

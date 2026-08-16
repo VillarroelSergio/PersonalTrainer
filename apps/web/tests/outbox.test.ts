@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMemoryOutboxStore, flushOutbox, type OutboxOperation, type SubmitResult } from "@/lib/offline/outbox";
 
-function setOp(id: string, createdAt: number, status: OutboxOperation["status"] = "pending"): OutboxOperation {
-  return { id, kind: "record_set", workoutSessionId: "ws-1", payload: { sessionExerciseId: "se-1", setNumber: 1, loadKg: 40, repetitions: 10, difficulty: null }, createdAt, status };
+function setOp(id: string, createdAt: number, status: OutboxOperation["status"] = "pending", workoutSessionId = "ws-1"): OutboxOperation {
+  return { id, kind: "record_set", workoutSessionId, payload: { sessionExerciseId: "se-1", setNumber: 1, loadKg: 40, repetitions: 10, difficulty: null }, createdAt, status };
 }
 
 describe("flushOutbox (pure)", () => {
@@ -82,5 +82,42 @@ describe("flushOutbox (pure)", () => {
     const summary = await flushOutbox(storeWithStartAndSet, submit);
     expect(summary).toMatchObject({ synced: 2 });
     expect(order).toEqual(["start_workout", "record_set"]);
+  });
+
+  it("repoints sets queued against a local session id at the id the server assigned", async () => {
+    const startOp: OutboxOperation = {
+      id: "start-1", kind: "start_workout", workoutSessionId: "local-workout-1", createdAt: 1, status: "pending",
+      payload: { planId: "plan-1", sessionIndex: 0 }
+    };
+    const store = createMemoryOutboxStore([startOp, setOp("set-1", 2, "pending", "local-workout-1")]);
+    const submitted: Array<string | undefined> = [];
+    const submit = async (op: OutboxOperation): Promise<SubmitResult> => {
+      submitted.push("workoutSessionId" in op ? op.workoutSessionId : undefined);
+      return op.kind === "start_workout" ? { status: "ok", serverId: "ws-real-1" } : { status: "ok" };
+    };
+
+    const summary = await flushOutbox(store, submit);
+
+    // Without the remap the set goes to /workouts/local-workout-1/sets, the server rejects
+    // an id it never issued, and the queue stops with the whole workout unsynced.
+    expect(submitted).toEqual(["local-workout-1", "ws-real-1"]);
+    expect(summary).toMatchObject({ synced: 2, pending: 0 });
+  });
+
+  it("leaves operations for other sessions untouched when one session is remapped", async () => {
+    const startOp: OutboxOperation = {
+      id: "start-1", kind: "start_workout", workoutSessionId: "local-workout-1", createdAt: 1, status: "pending",
+      payload: { planId: "plan-1", sessionIndex: 0 }
+    };
+    const store = createMemoryOutboxStore([startOp, setOp("set-1", 2, "pending", "ws-9")]);
+    const submitted: Array<string | undefined> = [];
+    const submit = async (op: OutboxOperation): Promise<SubmitResult> => {
+      submitted.push("workoutSessionId" in op ? op.workoutSessionId : undefined);
+      return op.kind === "start_workout" ? { status: "ok", serverId: "ws-real-1" } : { status: "ok" };
+    };
+
+    await flushOutbox(store, submit);
+
+    expect(submitted).toEqual(["local-workout-1", "ws-9"]);
   });
 });
