@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
 import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
 import { GOAL_OPTIONS, DURATION_OPTIONS, ENVIRONMENT_OPTIONS, EQUIPMENT_OPTIONS } from "@/features/onboarding/presentation/constants";
 import { profileFormDataToPatch } from "@/features/profile/domain/profile-patch";
@@ -36,9 +37,11 @@ export default function PerfilPage() {
   const session = authClient.useSession();
   const offlineData = useOfflineData();
 
+  const routeAccess = describeProtectedSnapshotRouteAccess({ sessionFailed: session.error != null, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
+
   useEffect(() => {
-    if (!session.isPending && !session.data?.user && navigator.onLine) router.replace("/login");
-  }, [session.isPending, session.data?.user, router]);
+    if (routeAccess.redirectToLogin) router.replace("/login");
+  }, [routeAccess.redirectToLogin, router]);
 
   return (
     <AppShell title="Perfil" backHref="/hoy">
