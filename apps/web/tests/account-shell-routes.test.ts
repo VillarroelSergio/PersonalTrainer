@@ -37,4 +37,24 @@ describe("accountShellRoutesForSnapshot", () => {
     expect(accountShellRoutesForSnapshot(snapshot)).not.toContain("/recuperar");
     expect(accountShellRoutesForSnapshot(snapshot)).not.toContain("/entrenar?session=2&addons=1");
   });
+
+  it("includes every snapshot-backed route the app links to, including per-id history detail", () => {
+    const snapshot: OfflineSnapshot = {
+      userId: "user-a",
+      syncedAt: 1,
+      data: {
+        activePlan: null,
+        history: { workoutSessions: [{ id: "ws-1" }, { id: "ws-2" }, { id: "" }, {}] },
+        enduranceActivities: [{ id: "ea-1" }]
+      }
+    };
+
+    const routes = accountShellRoutesForSnapshot(snapshot);
+
+    expect(routes).toEqual(expect.arrayContaining(["/perfil", "/compartir", "/historial/ws-1", "/historial/ws-2", "/historial/ea-1"]));
+    // Server-rendered routes read the database per request and cannot render offline.
+    expect(routes).not.toContain("/movilidad");
+    expect(routes).not.toContain("/importar");
+    expect(routes.some((route) => route === "/historial/" || route === "/historial/undefined")).toBe(false);
+  });
 });

@@ -40,9 +40,12 @@ function useOfflineDataState() {
   const refreshEpochRef = useRef(0);
   const [snapshot, setSnapshot] = useState<OfflineSnapshot | null>(null);
   const [status, setStatus] = useState<SnapshotStatus>("needs-initial-sync");
-  const [online, setOnline] = useState(true);
   const session = authClient.useSession();
-  const rememberedOfflineUserId = online ? null : readRememberedOfflineAccount();
+  // Never gated on navigator.onLine: iOS reports onLine === true on a Wi-Fi with no
+  // internet and inside an installed PWA after a network drop, and that false positive
+  // used to leave userId null on every route, so no snapshot ever hydrated. The session
+  // request failing is the real signal, and it holds whatever navigator.onLine claims.
+  const rememberedOfflineUserId = readRememberedOfflineAccount();
   const userId = resolveSessionUserId(session.data?.user?.id, session.isPending, rememberedOfflineUserId);
   activeUserIdRef.current = userId;
 
@@ -84,20 +87,12 @@ function useOfflineDataState() {
   }, [getStore, userId]);
 
   useEffect(() => {
-    function handleOnlineState() { setOnline(navigator.onLine); }
-    handleOnlineState();
-    window.addEventListener("online", handleOnlineState);
-    window.addEventListener("offline", handleOnlineState);
-    return () => {
-      window.removeEventListener("online", handleOnlineState);
-      window.removeEventListener("offline", handleOnlineState);
-    };
-  }, []);
-
-  useEffect(() => {
     if (session.data?.user?.id) rememberOfflineAccount(session.data.user.id);
-    else if (!session.isPending && online) forgetRememberedOfflineAccount();
-  }, [online, session.data?.user?.id, session.isPending]);
+    // Only a session request that actually answered "nobody is signed in" clears the
+    // remembered account. A failed request (session.error) means unreachable, not
+    // signed out — forgetting there would strand the device with no offline identity.
+    else if (!session.isPending && !session.error) forgetRememberedOfflineAccount();
+  }, [session.data?.user?.id, session.error, session.isPending]);
 
   useEffect(() => {
     // Reset synchronously on every userId change (including sign-in of a
@@ -117,8 +112,15 @@ function useOfflineDataState() {
     activateAccountShell(userId);
     void refresh();
     function handleOnline() { void refresh(); }
+    // Reopening the app is the retry the "online" event alone cannot provide: on iOS
+    // that event never fires when navigator.onLine stayed true through the outage.
+    function handleVisible() { if (document.visibilityState === "visible") void refresh(); }
     window.addEventListener("online", handleOnline);
-    return () => window.removeEventListener("online", handleOnline);
+    document.addEventListener("visibilitychange", handleVisible);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      document.removeEventListener("visibilitychange", handleVisible);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 

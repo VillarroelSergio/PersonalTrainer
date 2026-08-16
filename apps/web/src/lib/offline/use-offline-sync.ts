@@ -5,7 +5,7 @@ import { createIndexedDbOutboxStore } from "./indexeddb-store";
 import { createAccountScopedOutboxStore, flushOutbox, type OutboxOperation, type OutboxStore } from "./outbox";
 import { submitOperation } from "./sync-client";
 import { authClient } from "@/lib/auth-client";
-import { resolveSessionUserId } from "./snapshot-client";
+import { readRememberedOfflineAccount, resolveSessionUserId } from "./snapshot-client";
 import { deriveIdleSyncState } from "./sync-state";
 
 /** Mirrors the prototype's SYNC_LABELS states (App.sync in prototype/js/core.js), minus "· simulado": this is the real state now. */
@@ -17,7 +17,9 @@ export function useOfflineSync() {
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState<OutboxOperation[]>([]);
   const session = authClient.useSession();
-  const userId = resolveSessionUserId(session.data?.user?.id, session.isPending);
+  // Same remembered-account fallback as OfflineDataContext: with an unreachable session
+  // endpoint this used to resolve to null, hiding the account's own queued imports.
+  const userId = resolveSessionUserId(session.data?.user?.id, session.isPending, readRememberedOfflineAccount());
 
   const getStore = useCallback(() => {
     if (!storeRef.current) storeRef.current = createIndexedDbOutboxStore();
@@ -55,11 +57,18 @@ export function useOfflineSync() {
     });
     function handleOnline() { flush(); }
     function handleOffline() { setState("local"); }
+    // The "online" event is not a reliable recovery signal: on iOS navigator.onLine can
+    // stay true through the whole outage, so it never fires and queued work would sit
+    // there forever. Reopening the app retries instead — the flush is a no-op when the
+    // outbox is empty, and a harmless failed attempt when the network is still down.
+    function handleVisible() { if (document.visibilityState === "visible") flush(); }
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    document.addEventListener("visibilitychange", handleVisible);
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      document.removeEventListener("visibilitychange", handleVisible);
     };
   }, [flush, refresh]);
 
