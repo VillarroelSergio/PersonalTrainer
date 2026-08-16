@@ -14,7 +14,10 @@ const NAVIGATION_TIMEOUT_MS = 1800;
 // /login is public HTML, so it is safe in the shared static cache, and it keeps the app
 // reachable offline on a device that has not synced an account yet.
 const PUBLIC_SHELL_URLS = ["/login", "/manifest.webmanifest", "/icons/icon.svg"];
-const STATIC_CACHE_PREFIXES = ["/_next/static/", "/icons/", "/library/"];
+// /_next/image is where next/image actually serves every picture from; without it the
+// library files under /library/ were cached but the URLs the pages request were not, so
+// no image loaded offline.
+const STATIC_CACHE_PREFIXES = ["/_next/static/", "/_next/image", "/icons/", "/library/"];
 const ACTIVE_ACCOUNT_CACHE_URL = "/__trainer_sw/active-account";
 const APP_ENTRY_URL = "/hoy";
 const LOGIN_URL = "/login";
@@ -314,13 +317,22 @@ function isHtmlResponse(response) {
 
 function extractSameOriginStaticUrls(html) {
   const urls = [];
-  const attributePattern = /\b(?:src|href)=["']([^"']+)["']/g;
+  const attributePattern = /\b(?:src|href|srcset|imagesrcset)=["']([^"']+)["']/g;
   let match;
   while ((match = attributePattern.exec(html)) !== null) {
-    const url = new URL(match[1], self.location.origin);
-    if (!isSameOriginNonApi(url)) continue;
-    if (!isStaticUrl(url)) continue;
-    urls.push(url.href);
+    // srcset is a comma-separated list of "<url> <descriptor>"; a plain src is just the
+    // single-entry case of the same shape. next/image only ever appears in srcset, which
+    // is why images were missed while scripts and stylesheets were cached.
+    for (const candidate of match[1].split(",")) {
+      const href = candidate.trim().split(/\s+/)[0];
+      if (!href) continue;
+      // Attributes carry the query escaped as &amp;, and caching that literal stores a URL
+      // the browser will never ask for.
+      const url = new URL(href.replace(/&amp;/g, "&"), self.location.origin);
+      if (!isSameOriginNonApi(url)) continue;
+      if (!isStaticUrl(url)) continue;
+      urls.push(url.href);
+    }
   }
   return urls;
 }

@@ -105,29 +105,61 @@ export function createAccountScopedOutboxStore(store: OutboxStore, userId: strin
   };
 }
 
-export type SubmitResult = { status: "ok" } | { status: "network_error" } | { status: "conflict"; currentVersion: number } | { status: "rejected"; message: string };
+/** `serverId` is set only by operations that create a session (start_workout,
+ * start_recovery_session): it carries the real id the server assigned, which has to
+ * replace the local one every operation queued behind it still points at. */
+export type SubmitResult = { status: "ok"; serverId?: string } | { status: "network_error" } | { status: "conflict"; currentVersion: number } | { status: "rejected"; message: string };
 export type SubmitOperation = (operation: OutboxOperation) => Promise<SubmitResult>;
 
 export type FlushSummary = { synced: number; pending: number; conflicts: OutboxOperation[]; errors: OutboxOperation[]; stoppedForNetwork: boolean };
+
+/** The local id a session-creating operation invented while offline, if any. */
+function locallyCreatedSessionId(operation: OutboxOperation): string | null {
+  if (operation.kind === "start_workout") return operation.workoutSessionId;
+  if (operation.kind === "start_recovery_session") return operation.recoverySessionId;
+  return null;
+}
+
+function withRemappedSessionId(operation: OutboxOperation, localId: string, serverId: string): OutboxOperation {
+  if ("workoutSessionId" in operation && operation.workoutSessionId === localId) return { ...operation, workoutSessionId: serverId };
+  if ("recoverySessionId" in operation && operation.recoverySessionId === localId) return { ...operation, recoverySessionId: serverId };
+  return operation;
+}
 
 /**
  * Flushes queued operations strictly in enqueue order. Stops at the first
  * network failure or conflict so a later operation for the same session
  * (e.g. "finish" after its "record_set" ops) never applies out of order —
  * everything already confirmed before the stop stays confirmed and removed.
+ *
+ * A session started offline exists only under a local id, and every set recorded
+ * against it was queued pointing at that id. Once its start operation reaches the
+ * server the real id replaces the local one in the operations still queued behind
+ * it — without that they all address a session id the server never issued, the first
+ * one is rejected, and the whole queue stops with the workout unsynced.
  */
 export async function flushOutbox(store: OutboxStore, submit: SubmitOperation): Promise<FlushSummary> {
   const operations = await store.all();
   let synced = 0;
   let stoppedForNetwork = false;
 
-  for (const operation of operations) {
+  for (let index = 0; index < operations.length; index += 1) {
+    const operation = operations[index];
     if (operation.status !== "pending") continue;
     const result = await submit(operation);
 
     if (result.status === "ok") {
       await store.remove(operation.id);
       synced += 1;
+      const localId = locallyCreatedSessionId(operation);
+      if (result.serverId && localId && localId !== result.serverId) {
+        for (let queued = index + 1; queued < operations.length; queued += 1) {
+          const remapped = withRemappedSessionId(operations[queued], localId, result.serverId);
+          if (remapped === operations[queued]) continue;
+          operations[queued] = remapped;
+          await store.put(remapped);
+        }
+      }
       continue;
     }
     if (result.status === "network_error") {

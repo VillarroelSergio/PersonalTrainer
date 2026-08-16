@@ -58,6 +58,20 @@ function requestFor(operation: HttpOutboxOperation): { url: string; method: stri
   }
 }
 
+/**
+ * The id the server assigned to a session that was started offline under a local one.
+ * flushOutbox needs it to repoint the sets already queued against the local id; without
+ * it they address a session the server never issued and the queue jams on the first one.
+ * Only read for the two session-creating kinds — every other response body is left alone.
+ */
+async function startedSessionServerId(operation: HttpOutboxOperation, response: Response): Promise<string | undefined> {
+  if (operation.kind !== "start_workout" && operation.kind !== "start_recovery_session") return undefined;
+  const body = await response.json().catch(() => null);
+  const data = body?.data;
+  const id = data?.workoutSession?.id ?? data?.recoverySession?.id ?? data?.id;
+  return typeof id === "string" ? id : undefined;
+}
+
 /** Submits one queued operation over the real network to the same idempotent endpoints the online UI uses. Browser-only (fetch), not unit-tested directly — the retry/conflict/dedupe behaviour it feeds into (flushOutbox) is tested with a fake submit function instead. */
 export async function submitOperation(operation: OutboxOperation, options: { currentUserId?: string } = {}): Promise<SubmitResult> {
   if (operation.kind === "stage_activity_import") {
@@ -78,7 +92,7 @@ export async function submitOperation(operation: OutboxOperation, options: { cur
     return { status: "network_error" };
   }
 
-  if (response.ok) return { status: "ok" };
+  if (response.ok) return { status: "ok", serverId: await startedSessionServerId(operation, response) };
   if (response.status >= 500) return { status: "network_error" };
   if (response.status === 409) {
     const parsed = await response.json().catch(() => null);

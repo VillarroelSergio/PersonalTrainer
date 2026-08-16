@@ -124,10 +124,23 @@ function useOfflineDataState() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  /** Applies a not-yet-synced local change so the UI reflects it immediately; the outbox (use-offline-sync.ts) is what actually reconciles it with the server. */
+  /**
+   * Applies a not-yet-synced local change so the UI reflects it immediately, and writes it
+   * to IndexedDB. Persisting is not optional: leaving the change in React state alone meant
+   * that walking back into the screen re-hydrated from the store and the sets just recorded
+   * had vanished, with the session still showing as not completed. The outbox
+   * (use-offline-sync.ts) is what later reconciles the same change with the server.
+   */
   const applyLocalMutationToSnapshot = useCallback((patch: Partial<OfflineSnapshot["data"]>) => {
-    setSnapshot((current) => (current ? applyLocalMutation(current, patch) : current));
-  }, []);
+    setSnapshot((current) => {
+      if (!current) return current;
+      const next = applyLocalMutation(current, patch);
+      // Writing from inside the updater keeps it reading the freshest snapshot when two
+      // mutations land in one tick; a repeated put of an identical snapshot is a no-op.
+      void getStore().put(next).catch(() => {});
+      return next;
+    });
+  }, [getStore]);
 
   return { snapshot, status, refresh, applyLocalMutation: applyLocalMutationToSnapshot, clear };
 }
