@@ -256,6 +256,19 @@ describe("service worker shell cache", () => {
     expect(await served.text()).toContain("sin conexión");
   });
 
+  it("serves /login offline on a device that never synced an account", async () => {
+    const sw = loadServiceWorker({ "/login": "<!doctype html><main>Entrar</main>" });
+
+    await sw.dispatchInstall();
+    sw.goOffline();
+
+    const request = new Request("https://trainer.test/login", { method: "GET" });
+    Object.defineProperty(request, "mode", { value: "navigate" });
+    const [response] = sw.dispatchFetch(request);
+
+    await expect(response.then((served) => served.text())).resolves.toBe("<!doctype html><main>Entrar</main>");
+  });
+
   it("leaves API requests entirely to the browser instead of intercepting or caching them", () => {
     const sw = loadServiceWorker();
 

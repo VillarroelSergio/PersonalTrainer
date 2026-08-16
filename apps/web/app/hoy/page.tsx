@@ -24,7 +24,7 @@ export default function HoyPage() {
   const router = useRouter();
   const session = authClient.useSession();
   const offlineData = useOfflineData();
-  const routeAccess = describeProtectedSnapshotRouteAccess({ isOnline: typeof navigator === "undefined" ? true : navigator.onLine, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
+  const routeAccess = describeProtectedSnapshotRouteAccess({ sessionFailed: session.error != null, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
 
   useEffect(() => {
     if (routeAccess.redirectToLogin) router.replace("/login");

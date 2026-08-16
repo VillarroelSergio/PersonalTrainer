@@ -7,6 +7,7 @@ import Image from "next/image";
 import { authClient } from "@/lib/auth-client";
 import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
 import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 import { computeEjerciciosView } from "@/features/catalog/domain/ejercicios-view";
 import { EXERCISE_CATALOG, exerciseMediaAlt, exerciseMediaSrc, findVariant, MUSCLE_GROUPS, MUSCLE_GROUP_LABEL, MUSCLE_GROUP_IMAGE, type MuscleGroup, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
 import { FavoriteToggle } from "@/features/catalog/ui/FavoriteToggle";
@@ -56,9 +57,11 @@ function EjerciciosPageInner() {
   const session = authClient.useSession();
   const offlineData = useOfflineData();
 
+  const routeAccess = describeProtectedSnapshotRouteAccess({ sessionFailed: session.error != null, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
+
   useEffect(() => {
-    if (!session.isPending && !session.data?.user && navigator.onLine) router.replace("/login");
-  }, [session.isPending, session.data?.user, router]);
+    if (routeAccess.redirectToLogin) router.replace("/login");
+  }, [routeAccess.redirectToLogin, router]);
 
   return (
     <AppShell title="Trainer">

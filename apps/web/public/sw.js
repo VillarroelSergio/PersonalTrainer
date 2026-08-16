@@ -11,10 +11,13 @@ const ACCOUNT_META_CACHE = "trainer-account-meta-v3";
 const NAVIGATION_CACHE_PREFIX = "trainer-nav-v3-";
 const LEGACY_CACHE_NAMES = ["trainer-shell-v2"];
 const NAVIGATION_TIMEOUT_MS = 1800;
-const PUBLIC_SHELL_URLS = ["/manifest.webmanifest", "/icons/icon.svg"];
+// /login is public HTML, so it is safe in the shared static cache, and it keeps the app
+// reachable offline on a device that has not synced an account yet.
+const PUBLIC_SHELL_URLS = ["/login", "/manifest.webmanifest", "/icons/icon.svg"];
 const STATIC_CACHE_PREFIXES = ["/_next/static/", "/icons/", "/library/"];
 const ACTIVE_ACCOUNT_CACHE_URL = "/__trainer_sw/active-account";
 const APP_ENTRY_URL = "/hoy";
+const LOGIN_URL = "/login";
 const OFFLINE_HTML = '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sin conexión</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#171613;color:#f5f2ec;font:16px/1.5 system-ui,sans-serif;padding:24px;text-align:center}a{color:#e8663a}</style></head><body><div><p>Esta pantalla todavía no está guardada para usarla sin conexión.</p><p><a href="/hoy">Volver a Inicio</a></p></div></body></html>';
 
 let activeNavigationCacheName = null;
@@ -168,28 +171,42 @@ async function networkFirst(request, event) {
 async function offlineNavigationFallback(request) {
   const cacheName = await getActiveNavigationCacheName();
   if (cacheName) {
-    const cache = await caches.open(cacheName);
-    // ignoreVary: Next sends "Vary: RSC, Next-Router-State-Tree, …" and a precached
-    // entry was stored under a plain fetch, so a strict Vary match can miss an entry
-    // that is in fact the right shell for this URL.
-    const exact = await cache.match(request, { ignoreVary: true });
-    if (exact) return exact;
+    const accountShell = await matchNavigationInCache(cacheName, request);
+    if (accountShell) return accountShell;
+  }
+  // The public shell never holds account HTML, so falling through to it cannot leak one
+  // account's screens to another — it only ever answers with /login.
+  const publicShell = await matchNavigationInCache(STATIC_CACHE, request);
+  if (publicShell) return publicShell;
 
-    // Mirrors findSamePathnameCacheUrl in src/lib/offline/cache-fallback.ts.
-    const targetPathname = new URL(request.url).pathname;
-    const keys = await cache.keys();
-    const samePathname = keys.find((key) => new URL(key.url).pathname === targetPathname);
-    if (samePathname) {
-      const cached = await cache.match(samePathname);
-      if (cached) return cached;
-    }
-
-    if (targetPathname === "/") {
-      const entry = await cache.match(new Request(new URL(APP_ENTRY_URL, self.location.origin).href));
-      if (entry) return Response.redirect(new URL(APP_ENTRY_URL, self.location.origin).href, 302);
-    }
+  if (new URL(request.url).pathname === "/") {
+    const redirectTo = cacheName && (await matchNavigationInCache(cacheName, absoluteRequest(APP_ENTRY_URL)))
+      ? APP_ENTRY_URL
+      : (await matchNavigationInCache(STATIC_CACHE, absoluteRequest(LOGIN_URL))) ? LOGIN_URL : null;
+    if (redirectTo) return Response.redirect(new URL(redirectTo, self.location.origin).href, 302);
   }
   return new Response(OFFLINE_HTML, { status: 503, headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
+function absoluteRequest(url) {
+  return new Request(new URL(url, self.location.origin).href);
+}
+
+/** Exact URL, then any cached entry sharing the pathname. Mirrors findSamePathnameCacheUrl
+ * in src/lib/offline/cache-fallback.ts: query strings never change the cached shell, since
+ * every route builds its screen client-side from the local snapshot. */
+async function matchNavigationInCache(cacheName, request) {
+  const cache = await caches.open(cacheName);
+  // ignoreVary: Next sends "Vary: RSC, Next-Router-State-Tree, …" and a precached entry was
+  // stored under a plain fetch, so a strict Vary match can miss the right shell for this URL.
+  const exact = await cache.match(request, { ignoreVary: true });
+  if (exact) return exact;
+
+  const targetPathname = new URL(request.url).pathname;
+  const keys = await cache.keys();
+  const samePathname = keys.find((key) => new URL(key.url).pathname === targetPathname);
+  if (!samePathname) return null;
+  return (await cache.match(samePathname)) || null;
 }
 
 async function cacheFirst(request) {
@@ -264,9 +281,23 @@ async function precachePublicUrl(cache, seen, url) {
   if (seen.has(cacheKey)) return;
   seen.add(cacheKey);
 
-  const response = await fetch(cacheKey);
+  // One unreachable entry must not reject install: a failed install leaves the device with
+  // no service worker at all, which is strictly worse than a shell missing one URL.
+  let response;
+  try {
+    response = await fetch(cacheKey);
+  } catch {
+    return;
+  }
   if (!response.ok) return;
   await cache.put(new Request(cacheKey), response.clone());
+
+  // A cached /login without its chunks renders but never hydrates, so the form stays dead
+  // once the network is back. Non-HTML entries stop here: their bodies have no such refs.
+  if (!isHtmlResponse(response)) return;
+  for (const staticUrl of extractSameOriginStaticUrls(await response.clone().text())) {
+    await precachePublicUrl(cache, seen, staticUrl);
+  }
 }
 
 function isSameOriginNonApi(url) {

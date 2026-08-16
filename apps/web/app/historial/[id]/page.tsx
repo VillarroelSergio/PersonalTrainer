@@ -7,6 +7,7 @@ import Image from "next/image";
 import { authClient } from "@/lib/auth-client";
 import { OfflineRouteBoundary } from "@/features/offline/ui/OfflineRouteBoundary";
 import { useOfflineData } from "@/lib/offline/OfflineDataContext";
+import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 import { getEnduranceActivityDetailView, getSessionDetailView } from "@/features/history/domain/historial-view";
 import type { EnduranceActivityEntry, SessionDetail } from "@/features/history/domain/history-repository";
 import { AppShell } from "@/components/AppShell";
@@ -35,9 +36,11 @@ export default function HistoryEntryDetailPage() {
   const session = authClient.useSession();
   const offlineData = useOfflineData();
 
+  const routeAccess = describeProtectedSnapshotRouteAccess({ sessionFailed: session.error != null, sessionIsPending: session.isPending, sessionUserId: session.data?.user?.id, snapshotUserId: offlineData.snapshot?.userId });
+
   useEffect(() => {
-    if (!session.isPending && !session.data?.user && navigator.onLine) router.replace("/login");
-  }, [session.isPending, session.data?.user, router]);
+    if (routeAccess.redirectToLogin) router.replace("/login");
+  }, [routeAccess.redirectToLogin, router]);
 
   useEffect(() => {
     if (offlineData.snapshot && offlineData.snapshot.data.activePlan == null) router.replace("/onboarding");
