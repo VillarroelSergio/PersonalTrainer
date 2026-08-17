@@ -37,11 +37,13 @@ export function useOfflineSync() {
     return { pendingCount, conflictCount: conflictOperations.length };
   }, [getScopedStore]);
 
+  // Never pre-checks navigator.onLine before attempting: on iOS it can stay stuck reporting
+  // false even after real connectivity returns, and that pre-check silently blocked every
+  // retry — the online event, reopening the app — forever, with the outbox stuck showing
+  // "sin conexión" no matter how long the connection had actually been back. The real network
+  // request is what decides now: it fails fast and harmlessly (network_error → "local") when
+  // truly offline, and succeeds the moment the connection genuinely allows it.
   const flush = useCallback(async () => {
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      setState("local");
-      return;
-    }
     setState("sincronizando");
     const summary = await flushOutbox(getScopedStore(), (operation) => submitOperation(operation, { currentUserId: userId ?? undefined }));
     await refresh();
