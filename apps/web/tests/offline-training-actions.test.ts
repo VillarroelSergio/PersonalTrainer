@@ -30,18 +30,34 @@ function emptySnapshot(): OfflineSnapshot {
 describe("workout offline helpers", () => {
   it("starts strength locally after a network failure", () => {
     const snapshot = emptySnapshot();
-    const result = startWorkoutOffline(snapshot, { planId: "plan-a", sessionIndex: 0 }, createId());
-    expect(result.session).toMatchObject({ id: "local-workout-1", status: "in_progress" });
+    const result = startWorkoutOffline(snapshot, { planId: "plan-a", sessionIndex: 0 }, [], createId());
+    expect(result.session).toMatchObject({ id: "local-workout-1", planId: "plan-a", sessionIndex: 0, status: "in_progress" });
     expect(result.operation).toMatchObject({ kind: "start_workout", workoutSessionId: "local-workout-1", payload: { planId: "plan-a", sessionIndex: 0 } });
     expect((result.snapshot.data.history as { workoutSessions: unknown[] }).workoutSessions).toContainEqual(result.session);
   });
 
-  it("records a set locally and marks it saved", () => {
+  it("resumes an already in-progress session instead of starting a duplicate", () => {
+    // The exact bug reproduced offline in production: reopening /entrenar after leaving the
+    // screen used to call startWorkoutOffline again, creating a second local session and
+    // orphaning the one whose sets were just confirmed.
+    const started = startWorkoutOffline(emptySnapshot(), { planId: "plan-a", sessionIndex: 0 }, [{ variantId: "squat-back", targetSets: 3, targetRepsMin: 8, targetRepsMax: 12 }], createId());
+    const recorded = recordSetOffline(started.snapshot, started.session.id, { sessionExerciseId: started.exercises[0].id, setNumber: 1, loadKg: 40, repetitions: 10, difficulty: "just_right" }, createId());
+
+    const resumed = startWorkoutOffline(recorded.snapshot, { planId: "plan-a", sessionIndex: 0 }, [{ variantId: "squat-back", targetSets: 3, targetRepsMin: 8, targetRepsMax: 12 }], createId());
+
+    expect(resumed.operation).toBeNull();
+    expect(resumed.session).toEqual(started.session);
+    expect((resumed.snapshot.data.history as { workoutSessions: unknown[] }).workoutSessions).toHaveLength(1);
+    expect(resumed.exercises).toHaveLength(1);
+    expect(resumed.exercises[0].sets).toContainEqual({ setNumber: 1, loadKg: 40, repetitions: 10, difficulty: "just_right" });
+  });
+
+  it("records a set locally, keyed like the server's setPerformance rows", () => {
     const snapshot = emptySnapshot();
     const payload = { sessionExerciseId: "se-1", setNumber: 1, loadKg: 40, repetitions: 10, difficulty: "just_right" as const };
     const result = recordSetOffline(snapshot, "local-workout-1", payload, createId());
-    const exercise = (result.snapshot.data.history as { sessionExercises: Array<{ id: string; sets?: unknown[] }> }).sessionExercises.find((item) => item.id === "se-1");
-    expect(exercise?.sets).toContainEqual({ setNumber: 1, loadKg: 40, repetitions: 10, difficulty: "just_right" });
+    const setPerformances = (result.snapshot.data.history as { setPerformances: Array<{ sessionExerciseId: string; setNumber: number; loadKg: number | null; repetitions: number | null; difficulty: string | null }> }).setPerformances;
+    expect(setPerformances).toContainEqual(expect.objectContaining({ sessionExerciseId: "se-1", setNumber: 1, loadKg: 40, repetitions: 10, difficulty: "just_right" }));
     expect(result.operation).toMatchObject({ kind: "record_set", workoutSessionId: "local-workout-1", payload });
   });
 
@@ -49,8 +65,8 @@ describe("workout offline helpers", () => {
     const snapshot = emptySnapshot();
     const recorded = recordSetOffline(snapshot, "local-workout-1", { sessionExerciseId: "se-1", setNumber: 1, loadKg: 40, repetitions: 10, difficulty: null }, createId());
     const result = removeSetOffline(recorded.snapshot, "local-workout-1", { sessionExerciseId: "se-1", setNumber: 1 }, createId());
-    const exercise = (result.snapshot.data.history as { sessionExercises: Array<{ id: string; sets?: unknown[] }> }).sessionExercises.find((item) => item.id === "se-1");
-    expect(exercise?.sets).toEqual([]);
+    const setPerformances = (result.snapshot.data.history as { setPerformances: unknown[] }).setPerformances;
+    expect(setPerformances).toEqual([]);
     expect(result.operation.kind).toBe("remove_set");
   });
 
