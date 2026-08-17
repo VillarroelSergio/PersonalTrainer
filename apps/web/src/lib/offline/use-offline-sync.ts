@@ -17,6 +17,7 @@ export function useOfflineSync() {
   const [state, setState] = useState<SyncState>("sincronizado");
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState<OutboxOperation[]>([]);
+  const [errors, setErrors] = useState<OutboxOperation[]>([]);
   const session = authClient.useSession();
   // Only the stable refresh callback, never the whole context object: that object is a new
   // literal on every OfflineDataProvider render, and depending on it would rebuild flush()
@@ -38,9 +39,11 @@ export function useOfflineSync() {
     const all = await getScopedStore().all();
     const pendingCount = all.filter((operation) => operation.status === "pending").length;
     const conflictOperations = all.filter((operation) => operation.status === "conflict");
+    const errorOperations = all.filter((operation) => operation.status === "error");
     setPending(pendingCount);
     setConflicts(conflictOperations);
-    return { pendingCount, conflictCount: conflictOperations.length };
+    setErrors(errorOperations);
+    return { pendingCount, conflictCount: conflictOperations.length, errorCount: errorOperations.length };
   }, [getScopedStore]);
 
   // Never pre-checks navigator.onLine before attempting: on iOS it can stay stuck reporting
@@ -65,8 +68,12 @@ export function useOfflineSync() {
   }, [getScopedStore, refreshSnapshot, refresh, userId]);
 
   useEffect(() => {
-    void refresh().then(({ pendingCount }) => {
+    void refresh().then(({ pendingCount, errorCount }) => {
       if (pendingCount > 0) void flush();
+      // A failed operation parks in `error`, which flushOutbox skips and a reload preserves.
+      // Without this the pill came back up saying "Sincronizado" over a change that had never
+      // reached the server — the person was told their set was confirmed when it was not.
+      else if (errorCount > 0) setState("error");
     });
     function handleOnline() { flush(); }
     function handleOffline() { setState("local"); }
@@ -91,11 +98,34 @@ export function useOfflineSync() {
     flush();
   }, [getStore, refresh, flush]);
 
+  /**
+   * "Reintentar": puts every failed operation back in the queue and flushes.
+   *
+   * Without it a `rejected` submission was a dead end — flushOutbox only ever looks at
+   * `pending` operations, and nothing in the UI could move one out of `error`, so a recorded
+   * set that hit a transient server rejection stayed on the device forever with no way out.
+   */
+  const retryErrored = useCallback(async () => {
+    const store = getStore();
+    const all = await getScopedStore().all();
+    await Promise.all(all.filter((operation) => operation.status === "error").map((operation) => store.put({ ...operation, status: "pending" })));
+    await refresh();
+    await flush();
+  }, [getScopedStore, getStore, refresh, flush]);
+
+  /** "Descartar": drops a change that cannot be sent, so the queue stops reporting an error the
+   * person can do nothing about. Deliberately explicit — nothing is ever discarded on its own. */
+  const discardErrored = useCallback(async (operationId: string) => {
+    await getStore().remove(operationId);
+    const { conflictCount, errorCount } = await refresh();
+    setState(deriveIdleSyncState({ conflictCount, errorCount, online: typeof navigator === "undefined" ? true : navigator.onLine }));
+  }, [getStore, refresh]);
+
   /** "Conservar la versión del servidor": discard the queued local change. */
   const resolveKeepServer = useCallback(async (operationId: string) => {
     await getStore().remove(operationId);
-    const { conflictCount } = await refresh();
-    setState(deriveIdleSyncState({ conflictCount, online: typeof navigator === "undefined" ? true : navigator.onLine }));
+    const { conflictCount, errorCount } = await refresh();
+    setState(deriveIdleSyncState({ conflictCount, errorCount, online: typeof navigator === "undefined" ? true : navigator.onLine }));
   }, [getStore, refresh]);
 
   /** "Conservar la versión local": reapply the same decision on top of the version the server actually has now. */
@@ -105,10 +135,10 @@ export function useOfflineSync() {
     const operation = all.find((item) => item.id === operationId);
     if (!operation || operation.kind !== "finish_workout" || operation.conflictVersion === undefined) return;
     await store.put({ ...operation, baseVersion: operation.conflictVersion, status: "pending", conflictVersion: undefined });
-    const { conflictCount } = await refresh();
-    setState(deriveIdleSyncState({ conflictCount, online: typeof navigator === "undefined" ? true : navigator.onLine }));
+    const { conflictCount, errorCount } = await refresh();
+    setState(deriveIdleSyncState({ conflictCount, errorCount, online: typeof navigator === "undefined" ? true : navigator.onLine }));
     flush();
   }, [getScopedStore, getStore, refresh, flush]);
 
-  return { state, pending, conflicts, enqueue, flush, resolveKeepServer, resolveKeepLocal };
+  return { state, pending, conflicts, errors, enqueue, flush, retryErrored, discardErrored, resolveKeepServer, resolveKeepLocal };
 }
