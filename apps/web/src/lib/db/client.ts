@@ -15,11 +15,14 @@ export function getSql(): Sql {
   // Vercel functions are short-lived. Keep the pool bounded while allowing
   // independent reads in one render to overlap; prepared statements are
   // incompatible with Supabase transaction pooling.
-  // max stays at 2 deliberately: /api/v1/offline-snapshot issues its 16 independent reads
-  // concurrently, so a wider pool would finish it faster, but 2 keeps the per-instance
-  // footprint predictable against Supabase's connection limits across many warm instances.
-  // Raise it only with a look at the Supabase connection budget first.
-  if (!sql) sql = postgres(connectionString(), { prepare: false, max: 2 });
+  // 8, now that DATABASE_URL points at Supabase's transaction pooler (port 6543) rather than
+  // the session pooler (5432). Under session pooling each client connection held a real
+  // Postgres backend for its whole life, so a wide pool per warm instance ate into the 60
+  // available; transaction pooling hands the backend back between statements, so this mostly
+  // costs pooler client slots. It exists so /api/v1/offline-snapshot's 16 independent reads
+  // actually overlap instead of draining two at a time. prepare:false is required here — the
+  // transaction pooler cannot carry prepared statements across statements.
+  if (!sql) sql = postgres(connectionString(), { prepare: false, max: 8 });
   return sql;
 }
 
