@@ -7,6 +7,7 @@ import { submitOperation } from "./sync-client";
 import { authClient } from "@/lib/auth-client";
 import { readRememberedOfflineAccount, resolveSessionUserId } from "./snapshot-client";
 import { deriveIdleSyncState } from "./sync-state";
+import { useOfflineData } from "./OfflineDataContext";
 
 /** Mirrors the prototype's SYNC_LABELS states (App.sync in prototype/js/core.js), minus "· simulado": this is the real state now. */
 export type SyncState = "local" | "sincronizando" | "sincronizado" | "conflicto" | "error";
@@ -17,6 +18,7 @@ export function useOfflineSync() {
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState<OutboxOperation[]>([]);
   const session = authClient.useSession();
+  const offlineData = useOfflineData();
   // Same remembered-account fallback as OfflineDataContext: with an unreachable session
   // endpoint this used to resolve to null, hiding the account's own queued imports.
   const userId = resolveSessionUserId(session.data?.user?.id, session.isPending, readRememberedOfflineAccount());
@@ -47,11 +49,16 @@ export function useOfflineSync() {
     setState("sincronizando");
     const summary = await flushOutbox(getScopedStore(), (operation) => submitOperation(operation, { currentUserId: userId ?? undefined }));
     await refresh();
+    // Pulls the server's merged copy only now that the outbox has finished pushing:
+    // doing this on its own "online" listener (as OfflineDataContext used to) raced this
+    // flush, and could overwrite a just-recorded set with a server snapshot that hadn't
+    // seen it yet, with nothing left to bring the set back afterwards.
+    if (!summary.stoppedForNetwork) await offlineData.refresh();
     if (summary.conflicts.length > 0) setState("conflicto");
     else if (summary.errors.length > 0) setState("error");
     else if (summary.stoppedForNetwork) setState("local");
     else setState("sincronizado");
-  }, [getScopedStore, refresh, userId]);
+  }, [getScopedStore, offlineData, refresh, userId]);
 
   useEffect(() => {
     void refresh().then(({ pendingCount }) => {
