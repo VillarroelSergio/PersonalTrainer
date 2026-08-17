@@ -12,9 +12,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="es">
       <body>
         <PwaRegister />
-        <OfflineSyncProvider>
-          <OfflineDataProvider>{children}</OfflineDataProvider>
-        </OfflineSyncProvider>
+        <OfflineDataProvider>
+          <OfflineSyncProvider>{children}</OfflineSyncProvider>
+        </OfflineDataProvider>
         <SpeedInsights />
       </body>
     </html>

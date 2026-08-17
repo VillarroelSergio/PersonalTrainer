@@ -111,16 +111,11 @@ function useOfflineDataState() {
     }
     activateAccountShell(userId);
     void refresh();
-    function handleOnline() { void refresh(); }
-    // Reopening the app is the retry the "online" event alone cannot provide: on iOS
-    // that event never fires when navigator.onLine stayed true through the outage.
-    function handleVisible() { if (document.visibilityState === "visible") void refresh(); }
-    window.addEventListener("online", handleOnline);
-    document.addEventListener("visibilitychange", handleVisible);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      document.removeEventListener("visibilitychange", handleVisible);
-    };
+    // No independent "online"/"visibilitychange" refresh here anymore: it used to race
+    // useOfflineSync's own reconnect flush, and refresh() unconditionally overwrites the
+    // whole local snapshot with the server's copy — when that landed before the outbox had
+    // pushed a just-recorded set, the set vanished from the snapshot with nothing to bring
+    // it back. useOfflineSync now calls refresh() itself, after the outbox flush settles.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
