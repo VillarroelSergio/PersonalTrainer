@@ -18,7 +18,11 @@ export function useOfflineSync() {
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState<OutboxOperation[]>([]);
   const session = authClient.useSession();
-  const offlineData = useOfflineData();
+  // Only the stable refresh callback, never the whole context object: that object is a new
+  // literal on every OfflineDataProvider render, and depending on it would rebuild flush()
+  // each render, re-running the mount effect (and its outbox read) every time. It is also
+  // what would turn a provider reorder into an actual render loop.
+  const { refresh: refreshSnapshot } = useOfflineData();
   // Same remembered-account fallback as OfflineDataContext: with an unreachable session
   // endpoint this used to resolve to null, hiding the account's own queued imports.
   const userId = resolveSessionUserId(session.data?.user?.id, session.isPending, readRememberedOfflineAccount());
@@ -53,12 +57,12 @@ export function useOfflineSync() {
     // doing this on its own "online" listener (as OfflineDataContext used to) raced this
     // flush, and could overwrite a just-recorded set with a server snapshot that hadn't
     // seen it yet, with nothing left to bring the set back afterwards.
-    if (!summary.stoppedForNetwork) await offlineData.refresh();
+    if (!summary.stoppedForNetwork) await refreshSnapshot();
     if (summary.conflicts.length > 0) setState("conflicto");
     else if (summary.errors.length > 0) setState("error");
     else if (summary.stoppedForNetwork) setState("local");
     else setState("sincronizado");
-  }, [getScopedStore, offlineData, refresh, userId]);
+  }, [getScopedStore, refreshSnapshot, refresh, userId]);
 
   useEffect(() => {
     void refresh().then(({ pendingCount }) => {
