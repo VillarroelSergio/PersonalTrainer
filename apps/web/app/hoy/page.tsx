@@ -18,7 +18,10 @@ import type { WeeklyLoadWarning } from "@/features/planning/domain/plan-week";
 import { describeProtectedSnapshotRouteAccess } from "@/lib/offline/protected-route-auth";
 
 const DONE_STATUSES = new Set(["completed", "adapted", "partial"]);
-const STATUS_LABEL: Record<string, string> = { completed: "completada", adapted: "adaptada", partial: "parcial", in_progress: "en curso" };
+// moved_here is the only non-executed status that survives visibleOccurrencesForDay (it drops
+// moved_away/removed/skipped), and without a label here the day rail read the raw internal value
+// out loud: "Domingo: Fuerza: piernas, moved_here".
+const STATUS_LABEL: Record<string, string> = { completed: "completada", adapted: "adaptada", partial: "parcial", in_progress: "en curso", moved_here: "movida a este día" };
 
 export default function HoyPage() {
   const router = useRouter();

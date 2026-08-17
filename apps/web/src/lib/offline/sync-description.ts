@@ -82,8 +82,11 @@ export function describeSync(input: { state: SyncState; pending: number; conflic
     // Says plainly that these changes are *not* on the server. The old copy ("reintenta cuando
     // tengas conexión estable") blamed the connection for changes the server had actively
     // rejected, so waiting for better signal did nothing and the state never cleared.
+    const one = errors.length === 1;
     const body = errors.length > 0
-      ? `${errors.length} cambio${errors.length === 1 ? "" : "s"} no se pudo guardar en el servidor y sigue${errors.length === 1 ? "" : "n"} solo en este dispositivo. Puedes reintentarlo o descartarlo.`
+      ? one
+        ? "1 cambio no se pudo guardar en el servidor y sigue solo en este dispositivo. Puedes reintentarlo o descartarlo."
+        : `${errors.length} cambios no se pudieron guardar en el servidor y siguen solo en este dispositivo. Puedes reintentarlos o descartarlos.`
       : pending > 0
         ? `${pending} cambio${pending === 1 ? "" : "s"} sigue${pending === 1 ? "" : "n"} guardado${pending === 1 ? "" : "s"} en este dispositivo. Reintenta cuando tengas conexión estable.`
         : "No se pudo confirmar el último intento. Reintenta cuando tengas conexión estable.";
