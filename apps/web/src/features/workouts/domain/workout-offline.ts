@@ -21,32 +21,84 @@ import type {
 export type CreateId = () => string;
 
 type PersistedSet = { setNumber: number; loadKg: number | null; repetitions: number | null; difficulty: Difficulty | null };
-type SessionExercise = { id: string; variantId: string; position: number; status: string; targetSets: number; targetRepsMin: number; targetRepsMax: number; sets?: PersistedSet[] };
-type WorkoutSession = { id: string; status: string; version: number };
+type SessionExercise = { id: string; workoutSessionId: string; variantId: string; position: number; status: string; targetSets: number; targetRepsMin: number; targetRepsMax: number };
+type SetPerformance = { id: string; sessionExerciseId: string; setNumber: number; loadKg: number | null; repetitions: number | null; difficulty: Difficulty | null };
+type WorkoutSession = { id: string; planId: string; sessionIndex: number; status: string; version: number };
 
-type WorkoutHistory = { workoutSessions: WorkoutSession[]; sessionExercises: SessionExercise[]; setPerformances: unknown[] };
+/** The shape WorkoutRunner renders: each exercise with its already-recorded sets nested,
+ * mirroring what the online start/resume endpoint returns (workout-session-repository.ts). */
+export type ResumedSessionExercise = SessionExercise & { sets: PersistedSet[] };
+export type PreviewExerciseInput = { variantId: string; targetSets: number; targetRepsMin: number; targetRepsMax: number };
+
+type WorkoutHistory = { workoutSessions: WorkoutSession[]; sessionExercises: SessionExercise[]; setPerformances: SetPerformance[] };
 
 function historyOf(snapshot: OfflineSnapshot): WorkoutHistory {
   const history = snapshot.data.history as Partial<WorkoutHistory> | undefined;
   return { workoutSessions: history?.workoutSessions ?? [], sessionExercises: history?.sessionExercises ?? [], setPerformances: history?.setPerformances ?? [] };
 }
 
-/** Starts a strength session locally: creates a "local-workout-N" session id so later
- * reconciliation with the server-assigned id (once `start_workout` flushes) is unambiguous. */
+/** setPerformances is the single source of truth for recorded sets — the same flat,
+ * sessionExerciseId-keyed shape the server ships (offline-snapshot handler) and the one
+ * /historial already reads (historial-view.ts). Nesting sets on the exercise itself was a
+ * WorkoutRunner-only convention that /historial never saw and that a resumed exercise could
+ * never rebuild from, since the account-wide snapshot never carried nested sets to resume from. */
+function exercisesWithSets(history: WorkoutHistory, workoutSessionId: string): ResumedSessionExercise[] {
+  return history.sessionExercises
+    .filter((exercise) => exercise.workoutSessionId === workoutSessionId && exercise.status === "active")
+    .sort((a, b) => a.position - b.position)
+    .map((exercise) => ({
+      ...exercise,
+      sets: history.setPerformances
+        .filter((set) => set.sessionExerciseId === exercise.id)
+        .map(({ setNumber, loadKg, repetitions, difficulty }) => ({ setNumber, loadKg, repetitions, difficulty }))
+        .sort((a, b) => a.setNumber - b.setNumber)
+    }));
+}
+
+/**
+ * Starts a strength session locally, or resumes one already in progress. Mirrors the online
+ * repository's dedup (`runStartOrResume` in workout-session-repository.ts): without it,
+ * reopening /entrenar offline after a network drop started a brand-new session every time,
+ * orphaning the one whose sets the person had just confirmed — they were queued for sync
+ * (never lost) but nothing on screen could show them again until the outbox reached the server.
+ *
+ * `operation` is null on a resume: nothing new needs to reach the server, and the session
+ * already went through `start_workout` (or was never offline-only to begin with).
+ */
 export function startWorkoutOffline(
   snapshot: OfflineSnapshot,
   payload: StartWorkoutPayload,
+  previewExercises: PreviewExerciseInput[] = [],
   createId: CreateId = createClientId
-): { snapshot: OfflineSnapshot; operation: OutboxOperation; session: WorkoutSession } {
-  const sessionId = `local-workout-${createId()}`;
-  const session: WorkoutSession = { id: sessionId, status: "in_progress", version: 0 };
+): { snapshot: OfflineSnapshot; operation: OutboxOperation | null; session: WorkoutSession; exercises: ResumedSessionExercise[] } {
   const history = historyOf(snapshot);
-  const nextSnapshot = applyLocalMutation(snapshot, { history: { ...history, workoutSessions: [...history.workoutSessions, session] } });
+  const existing = history.workoutSessions.find(
+    (session) => session.planId === payload.planId && session.sessionIndex === payload.sessionIndex && session.status === "in_progress"
+  );
+  if (existing) return { snapshot, operation: null, session: existing, exercises: exercisesWithSets(history, existing.id) };
+
+  const sessionId = `local-workout-${createId()}`;
+  const session: WorkoutSession = { id: sessionId, planId: payload.planId, sessionIndex: payload.sessionIndex, status: "in_progress", version: 0 };
+  const exercises: SessionExercise[] = previewExercises.map((exercise, position) => ({
+    id: `local-exercise-${sessionId}-${position + 1}`,
+    workoutSessionId: sessionId,
+    variantId: exercise.variantId,
+    position,
+    status: "active",
+    targetSets: exercise.targetSets,
+    targetRepsMin: exercise.targetRepsMin,
+    targetRepsMax: exercise.targetRepsMax
+  }));
+  const nextSnapshot = applyLocalMutation(snapshot, {
+    history: { ...history, workoutSessions: [...history.workoutSessions, session], sessionExercises: [...history.sessionExercises, ...exercises] }
+  });
   const operation: OutboxOperation = { id: createId(), kind: "start_workout", workoutSessionId: sessionId, payload, createdAt: Date.now(), status: "pending" };
-  return { snapshot: nextSnapshot, operation, session };
+  return { snapshot: nextSnapshot, operation, session, exercises: exercises.map((exercise) => ({ ...exercise, sets: [] })) };
 }
 
-/** Records (or updates) one set locally, marking it saved so the UI reflects the confirm immediately. */
+/** Records (or updates) one set locally, keyed by (sessionExerciseId, setNumber) like the
+ * server's setPerformance table — not nested on the exercise, so a resumed session and
+ * /historial's progression view both see it the same way. */
 export function recordSetOffline(
   snapshot: OfflineSnapshot,
   workoutSessionId: string,
@@ -54,14 +106,9 @@ export function recordSetOffline(
   createId: CreateId = createClientId
 ): { snapshot: OfflineSnapshot; operation: OutboxOperation } {
   const history = historyOf(snapshot);
-  const sessionExercises = history.sessionExercises.map((exercise) => {
-    if (exercise.id !== payload.sessionExerciseId) return exercise;
-    const sets = exercise.sets ?? [];
-    const withoutSet = sets.filter((set) => set.setNumber !== payload.setNumber);
-    const nextSet: PersistedSet = { setNumber: payload.setNumber, loadKg: payload.loadKg, repetitions: payload.repetitions, difficulty: payload.difficulty };
-    return { ...exercise, sets: [...withoutSet, nextSet].sort((a, b) => a.setNumber - b.setNumber) };
-  });
-  const nextSnapshot = applyLocalMutation(snapshot, { history: { ...history, sessionExercises } });
+  const withoutSet = history.setPerformances.filter((set) => !(set.sessionExerciseId === payload.sessionExerciseId && set.setNumber === payload.setNumber));
+  const nextSet: SetPerformance = { id: createId(), sessionExerciseId: payload.sessionExerciseId, setNumber: payload.setNumber, loadKg: payload.loadKg, repetitions: payload.repetitions, difficulty: payload.difficulty };
+  const nextSnapshot = applyLocalMutation(snapshot, { history: { ...history, setPerformances: [...withoutSet, nextSet] } });
   const operation: OutboxOperation = { id: createId(), kind: "record_set", workoutSessionId, payload, createdAt: Date.now(), status: "pending" };
   return { snapshot: nextSnapshot, operation };
 }
@@ -74,11 +121,8 @@ export function removeSetOffline(
   createId: CreateId = createClientId
 ): { snapshot: OfflineSnapshot; operation: OutboxOperation } {
   const history = historyOf(snapshot);
-  const sessionExercises = history.sessionExercises.map((exercise) => {
-    if (exercise.id !== payload.sessionExerciseId) return exercise;
-    return { ...exercise, sets: (exercise.sets ?? []).filter((set) => set.setNumber !== payload.setNumber) };
-  });
-  const nextSnapshot = applyLocalMutation(snapshot, { history: { ...history, sessionExercises } });
+  const setPerformances = history.setPerformances.filter((set) => !(set.sessionExerciseId === payload.sessionExerciseId && set.setNumber === payload.setNumber));
+  const nextSnapshot = applyLocalMutation(snapshot, { history: { ...history, setPerformances } });
   const operation: OutboxOperation = { id: createId(), kind: "remove_set", workoutSessionId, payload, createdAt: Date.now(), status: "pending" };
   return { snapshot: nextSnapshot, operation };
 }

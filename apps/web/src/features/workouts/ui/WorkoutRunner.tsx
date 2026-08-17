@@ -124,22 +124,18 @@ export function WorkoutRunner({
       setExercises(body.data.sessionExercises);
     } catch (cause) {
       if (offlineData.snapshot) {
-        // No coverage: no network — start the session locally from the preview so the
-        // person can keep training; the outbox reconciles it with a real server id later.
-        const previewSessionExercises: SessionExercise[] = previewExercises.map((exercise, index) => ({
-          id: `local-exercise-${index + 1}`,
-          variantId: exercise.variantId,
-          position: index,
-          status: "pending",
-          targetSets: exercise.targetSets,
-          targetRepsMin: exercise.targetRepsMin,
-          targetRepsMax: exercise.targetRepsMax
-        }));
-        const started = startWorkoutOffline(offlineData.snapshot, { planId, sessionIndex }, createClientId);
-        offlineData.applyLocalMutation(started.snapshot.data);
-        await sync.enqueue(started.operation);
+        // No network: start the session locally from the preview, or resume the one already
+        // in progress for this plan+session (mirrors the online repository's dedup — without
+        // it, reopening this screen offline created a new session every time and orphaned
+        // whatever sets were already confirmed). `operation` is null on a resume: nothing new
+        // needs to reach the server.
+        const started = startWorkoutOffline(offlineData.snapshot, { planId, sessionIndex }, previewExercises, createClientId);
+        if (started.operation) {
+          offlineData.applyLocalMutation(started.snapshot.data);
+          await sync.enqueue(started.operation);
+        }
         setWorkout(started.session);
-        setExercises(previewSessionExercises);
+        setExercises(started.exercises);
       } else {
         setError(cause instanceof Error ? cause.message : "No pudimos iniciar la sesión.");
       }
