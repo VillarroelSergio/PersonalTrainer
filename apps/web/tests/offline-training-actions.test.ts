@@ -3,6 +3,7 @@ import type { OfflineSnapshot } from "@/lib/offline/snapshot";
 import {
   finishWorkoutOffline,
   recordSetOffline,
+  rememberStartedWorkout,
   removeSetOffline,
   startWorkoutOffline,
   substituteVariantOffline
@@ -50,6 +51,45 @@ describe("workout offline helpers", () => {
     expect((resumed.snapshot.data.history as { workoutSessions: unknown[] }).workoutSessions).toHaveLength(1);
     expect(resumed.exercises).toHaveLength(1);
     expect(resumed.exercises[0].sets).toContainEqual({ setNumber: 1, loadKg: 40, repetitions: 10, difficulty: "just_right" });
+  });
+
+  it("remembers a server-started session so finishing it offline still updates its status", () => {
+    // Reported from a real device: fill in a whole session offline, press "Terminar sesión",
+    // and the status never changed. The session had been started online, and the online start
+    // path wrote only React state — the snapshot had no row to mark as finished, so the close
+    // silently mapped over nothing while still queueing the change for the server.
+    const session = { id: "server-ws-1", planId: "plan-a", sessionIndex: 0, status: "in_progress", version: 0 };
+    const exercises = [{ id: "server-se-1", workoutSessionId: "server-ws-1", variantId: "squat-back", position: 0, status: "active", targetSets: 3, targetRepsMin: 8, targetRepsMax: 12 }];
+
+    const remembered = rememberStartedWorkout(emptySnapshot(), session, exercises);
+    const finished = finishWorkoutOffline(remembered, "server-ws-1", 0, { status: "completed", globalEffort: 7, comment: null, discomfort: null }, createId());
+
+    const sessions = (finished.snapshot.data.history as { workoutSessions: Array<{ id: string; status: string }> }).workoutSessions;
+    expect(sessions).toContainEqual(expect.objectContaining({ id: "server-ws-1", status: "completed" }));
+  });
+
+  it("resumes a server-started session offline instead of starting an empty duplicate", () => {
+    const session = { id: "server-ws-1", planId: "plan-a", sessionIndex: 0, status: "in_progress", version: 0 };
+    const exercises = [{ id: "server-se-1", workoutSessionId: "server-ws-1", variantId: "squat-back", position: 0, status: "active", targetSets: 3, targetRepsMin: 8, targetRepsMax: 12 }];
+    const remembered = rememberStartedWorkout(emptySnapshot(), session, exercises);
+    const recorded = recordSetOffline(remembered, "server-ws-1", { sessionExerciseId: "server-se-1", setNumber: 1, loadKg: 40, repetitions: 10, difficulty: "just_right" }, createId());
+
+    const resumed = startWorkoutOffline(recorded.snapshot, { planId: "plan-a", sessionIndex: 0 }, [{ variantId: "squat-back", targetSets: 3, targetRepsMin: 8, targetRepsMax: 12 }], createId());
+
+    expect(resumed.operation).toBeNull();
+    expect(resumed.session.id).toBe("server-ws-1");
+    expect(resumed.exercises[0].sets).toContainEqual({ setNumber: 1, loadKg: 40, repetitions: 10, difficulty: "just_right" });
+  });
+
+  it("does not duplicate rows when the same session is remembered twice", () => {
+    const session = { id: "server-ws-1", planId: "plan-a", sessionIndex: 0, status: "in_progress", version: 0 };
+    const exercises = [{ id: "server-se-1", workoutSessionId: "server-ws-1", variantId: "squat-back", position: 0, status: "active", targetSets: 3, targetRepsMin: 8, targetRepsMax: 12 }];
+    const once = rememberStartedWorkout(emptySnapshot(), session, exercises);
+    const twice = rememberStartedWorkout(once, session, exercises);
+
+    const history = twice.data.history as { workoutSessions: unknown[]; sessionExercises: unknown[] };
+    expect(history.workoutSessions).toHaveLength(1);
+    expect(history.sessionExercises.filter((row) => (row as { id: string }).id === "server-se-1")).toHaveLength(1);
   });
 
   it("records a set locally, keyed like the server's setPerformance rows", () => {
