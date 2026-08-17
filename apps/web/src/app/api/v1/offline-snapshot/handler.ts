@@ -1,6 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { EXERCISE_CATALOG } from "@/features/catalog/data/exercise-catalog";
 import { listPlansForOwner } from "@/features/planning/domain/training-plan-repository";
 import type * as schema from "@/lib/db/schema";
 import {
@@ -32,6 +31,11 @@ type Db = PostgresJsDatabase<typeof schema>;
  * Read model for local-first offline rendering (Fase 5, Task 2). Every query is scoped to
  * `user.id` only — never selects the `account`/`session` tables (credentials, tokens) and
  * never selects `import_file.storage_key` or any signed/upload URL, per the plan's invariants.
+ *
+ * Carries only per-account rows. EXERCISE_CATALOG used to ride along under `catalog`, but it
+ * is a static module every client screen already imports directly (WorkoutRunner,
+ * PlanSessionEditor, /ejercicios), so nothing ever read it back off the snapshot: measured at
+ * 45.1 KB of the 75.5 KB response, re-sent on every app open and after every outbox flush.
  */
 export async function createOfflineSnapshotResponse(request: Request, user_: SessionUser, database: Db): Promise<Response> {
   if (!user_) return Response.json({ error: { code: "UNAUTHENTICATED", message: "Necesitas iniciar sesión.", details: {} } }, { status: 401 });
@@ -127,8 +131,7 @@ export async function createOfflineSnapshotResponse(request: Request, user_: Ses
       activityMetrics,
       performanceBaselines,
       enduranceDesigns,
-      shareLinks,
-      catalog: EXERCISE_CATALOG
+      shareLinks
     }
   };
 
