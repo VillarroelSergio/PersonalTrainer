@@ -43,6 +43,23 @@ export type PlanTemplate = {
 };
 
 /**
+ * Versiones de plantilla que caben en la disponibilidad declarada. Menos sesiones que días
+ * encaja (sobran días de descanso; `personalizeTemplate` las reparte sobre los días
+ * elegidos); más sesiones que días no, porque dos caerían el mismo día. "Gimnasio básico"
+ * ve también las de gimnasio completo: la compatibilidad real la decide el equipamiento
+ * declarado, vía `templateCompatibility`.
+ */
+export function templatesForSelection(templates: PlanTemplate[], environmentKind: EnvironmentKind | undefined, strengthDays: number): PlanTemplateVersion[] {
+  const kind = environmentKind ?? "full_gym";
+  return templates
+    .flatMap((template) => template.versions)
+    .filter((version) => (
+      (version.environmentKind === kind || (kind === "basic_gym" && version.environmentKind === "full_gym"))
+      && version.content.blockBlueprints.length <= strengthDays
+    ));
+}
+
+/**
  * Copia ya resuelta y aislada de una plantilla (o de un plan guiado) para una
  * persona concreta. El plan activo de una persona nunca cambia por publicar
  * contenido editorial nuevo: `content` no comparte identidad de referencia
