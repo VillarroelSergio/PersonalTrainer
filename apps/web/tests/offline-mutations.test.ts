@@ -112,4 +112,21 @@ describe("submitOperation maps each new kind to its real endpoint", () => {
     const result = await submitOperation(NEW_KINDS[8]);
     expect(result).toEqual({ status: "rejected", message: "no válido" });
   });
+
+  it("keeps an operation retryable when the session expired instead of rejecting it", async () => {
+    // A 401 mid-workout means "no valid session right now", not "this set is invalid".
+    // Rejecting marked it `error`, which flushOutbox skips forever and no UI action can
+    // revive: the recorded set was dropped silently while the pill said "Sincronizado".
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { message: "Necesitas iniciar sesión." } }), { status: 401 })));
+    const recordSet: OutboxOperation = {
+      id: "set-401", kind: "record_set", workoutSessionId: "ws-1", createdAt: 1, status: "pending",
+      payload: { sessionExerciseId: "se-1", setNumber: 1, loadKg: 40, repetitions: 10, difficulty: null }
+    };
+    expect(await submitOperation(recordSet)).toEqual({ status: "network_error" });
+
+    const store = createMemoryOutboxStore([recordSet]);
+    const summary = await flushOutbox(store, submitOperation);
+    expect(summary.stoppedForNetwork).toBe(true);
+    expect(await store.all()).toEqual([recordSet]);
+  });
 });

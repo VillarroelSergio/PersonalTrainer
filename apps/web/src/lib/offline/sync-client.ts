@@ -94,6 +94,13 @@ export async function submitOperation(operation: OutboxOperation, options: { cur
 
   if (response.ok) return { status: "ok", serverId: await startedSessionServerId(operation, response) };
   if (response.status >= 500) return { status: "network_error" };
+  // 401 is "no valid session right now", never "this change is invalid" — a mobile session
+  // expiring mid-workout is the ordinary case. Rejecting here marked the operation `error`,
+  // which flushOutbox skips forever and no UI action can revive, so a recorded set was
+  // silently dropped while the pill went back to claiming "Sincronizado". Retryable instead:
+  // it stays queued (and stops the queue, since nothing else will authenticate either) until
+  // the session is valid again.
+  if (response.status === 401) return { status: "network_error" };
   if (response.status === 409) {
     const parsed = await response.json().catch(() => null);
     const currentVersion = parsed?.error?.details?.currentVersion;
