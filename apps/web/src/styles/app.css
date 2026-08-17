@@ -83,6 +83,9 @@
 * { box-sizing: border-box; }
 
 html, body { margin: 0; padding: 0; overflow-x: hidden; }
+/* Reserva el hueco de la barra de scroll: al bloquear el scroll con una hoja
+   abierta, la página ya no se desplaza 15px hacia el lado. */
+html { scrollbar-gutter: stable; }
 
 body {
   background: var(--bg);
@@ -1298,10 +1301,22 @@ textarea {
    Hojas modales
    ===================================================================== */
 
+/* Con una hoja abierta, la página de debajo conservaba su propio scroll: dos
+   scrolls a la vez y la vista movida al cerrar el modal. Se bloquea desde CSS
+   (una sola regla para todas las hojas de la app) en vez de repetir un bloqueo
+   en JS en cada componente que monta .sheet-overlay. */
+/* Sobre html además de body: html ya lleva overflow-x hidden, así que el overflow
+   del body no se propaga al viewport y el que scrollea de verdad es html. */
+html:has(.sheet-overlay), body:has(.sheet-overlay) { overflow: hidden; }
+
 .sheet-overlay {
   position: fixed; inset: 0; z-index: 50;
   background: rgba(0,0,0,0.55);
   display: flex; align-items: flex-end; justify-content: center;
+  /* Corta el encadenado del scroll táctil hacia la página: iOS Safari no
+     respeta del todo el overflow:hidden del body. */
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .sheet {
@@ -1336,6 +1351,7 @@ textarea {
 .sheet__body {
   flex: 1 1 auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-bottom: 10px;
 }
 

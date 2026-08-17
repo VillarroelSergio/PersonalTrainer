@@ -102,7 +102,7 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
 
   return (
     <div className={`${tokens.root} ${shell.shell}`}>
-      <ProgressHeader currentIndex={state.stepIndex} totalSteps={steps.length} stepLabel={STEP_LABELS[step]} />
+      <ProgressHeader currentIndex={state.stepIndex} totalSteps={form.creationMode === null ? null : steps.length} stepLabel={STEP_LABELS[step]} />
 
       {state.submitError && (
         <p role="alert" style={{ margin: "0 20px", color: "var(--warn)" }}>
@@ -191,6 +191,7 @@ export function OnboardingFlow({ dataSource = defaultDataSource, onActivate }: O
           strengthDays={form.strengthAvailability.length}
           selectedTemplateId={form.selectedTemplateId}
           onSelect={(templateId) => dispatch({ type: "SELECT_TEMPLATE", templateId })}
+          onUseGuided={() => dispatch({ type: "SET_MODE", mode: "guided" })}
         />
       )}
       {step === "focus" && (

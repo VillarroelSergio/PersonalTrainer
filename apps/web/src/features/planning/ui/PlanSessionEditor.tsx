@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import type { PlanProposal } from "@/contracts/onboarding";
 import { EQUIPMENT_CAPABILITIES } from "@/features/catalog/data/equipment-capabilities";
-import { EXERCISE_CATALOG, exerciseMediaAlt, exerciseMediaSrc, findVariant, type ExerciseVariant } from "@/features/catalog/data/exercise-catalog";
+import { EXERCISE_CATALOG, exerciseMediaAlt, exerciseMediaSrc, findVariant, MUSCLE_GROUPS, MUSCLE_GROUP_IMAGE, MUSCLE_GROUP_LABEL, type ExerciseVariant, type MuscleGroup } from "@/features/catalog/data/exercise-catalog";
 import { allEditableSessionBlocks, findSessionBlock, sessionBlockLabel } from "@/features/catalog/data/session-blocks";
 import { findMobilityExercise, MOBILITY_EXERCISES } from "@/features/catalog/data/mobility-catalog";
 import type { TrainingBlock } from "@/features/catalog/domain/training-block";
@@ -46,6 +46,7 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
   const [sheetOpen, setSheetOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<PickerMode | null>(null);
   const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerGroup, setPickerGroup] = useState<MuscleGroup | null>(null);
   const [draft, setDraft] = useState<ExerciseDraft[]>(session.exercises ?? []);
   const [blockDraft, setBlockDraft] = useState<TrainingBlock[]>(session.blocks ?? []);
   const [customizingBlockId, setCustomizingBlockId] = useState<string | null>(null);
@@ -61,8 +62,7 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
     function handleKey(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       if (pickerMode) {
-        setPickerMode(null);
-        setPickerQuery("");
+        closePicker();
       } else {
         setSheetOpen(false);
         setError(null);
@@ -81,6 +81,7 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
     setError(null);
     setPickerMode(null);
     setPickerQuery("");
+    setPickerGroup(null);
     setTrigger(event.currentTarget);
     setSheetOpen(true);
   }
@@ -89,6 +90,7 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
     setSheetOpen(false);
     setPickerMode(null);
     setPickerQuery("");
+    setPickerGroup(null);
     setError(null);
     trigger?.focus();
   }
@@ -96,12 +98,14 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
   function openPicker(mode: PickerMode, event: MouseEvent<HTMLButtonElement>) {
     setTrigger(event.currentTarget);
     setPickerQuery("");
+    setPickerGroup(null);
     setPickerMode(mode);
   }
 
   function closePicker() {
     setPickerMode(null);
     setPickerQuery("");
+    setPickerGroup(null);
   }
 
   function replaceExercise(exerciseIndex: number, variantId: string) {
@@ -208,9 +212,19 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
     : [];
   const normalizedQuery = pickerQuery.trim().toLocaleLowerCase("es");
   const visiblePickerOptions = pickerOptions.filter((variant) => (
-    !normalizedQuery
-    || `${variant.exerciseName} ${variant.variantName} ${equipmentLabel(variant)}`.toLocaleLowerCase("es").includes(normalizedQuery)
+    (!pickerGroup || variant.primaryMuscleGroup === pickerGroup)
+    && (
+      !normalizedQuery
+      || `${variant.exerciseName} ${variant.variantName} ${equipmentLabel(variant)}`.toLocaleLowerCase("es").includes(normalizedQuery)
+    )
   ));
+  // Igual que /ejercicios: primero los grupos musculares, la lista de variantes solo
+  // cuando ya hay un grupo elegido o una búsqueda escrita. Solo se ofrecen los grupos
+  // que tienen alguna opción válida aquí (al cambiar, el patrón de movimiento manda).
+  const pickerGroupCounts = MUSCLE_GROUPS
+    .map((group) => ({ group, count: pickerOptions.filter((variant) => variant.primaryMuscleGroup === group).length }))
+    .filter((entry) => entry.count > 0);
+  const showGroupGrid = !pickerGroup && !normalizedQuery && pickerGroupCounts.length > 1;
   const visibleMobilityOptions = MOBILITY_EXERCISES.filter((exercise) => !mobilityQuery.trim() || `${exercise.exerciseName} ${exercise.variantName}`.toLocaleLowerCase("es").includes(mobilityQuery.trim().toLocaleLowerCase("es")));
 
   if (session.kind !== "strength") return null;
@@ -323,6 +337,27 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
                 <div className="sheet__body">
                   <label className={styles.searchLabel} htmlFor={`planExerciseSearch-${sessionIndex}`}>Buscar por nombre o equipamiento</label>
                   <input id={`planExerciseSearch-${sessionIndex}`} className={styles.searchInput} type="search" value={pickerQuery} onChange={(event) => setPickerQuery(event.target.value)} placeholder="Ej.: mancuernas, polea, máquina…" autoFocus />
+                  {showGroupGrid ? (
+                    <div className="musclegrid" role="group" aria-label="Grupos musculares disponibles">
+                      {pickerGroupCounts.map(({ group, count }) => (
+                        <button key={group} type="button" className="musclecard" onClick={() => setPickerGroup(group)}>
+                          <span className="musclecard__media">
+                            <Image className="musclecard__img" src={`/library/groups/${MUSCLE_GROUP_IMAGE[group]}`} alt="" aria-hidden="true" width={240} height={300} />
+                          </span>
+                          <span className="musclecard__body">
+                            <span className="musclecard__name">{MUSCLE_GROUP_LABEL[group]}</span>
+                            <span className="musclecard__meta">{count} {count === 1 ? "ejercicio" : "ejercicios"}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {pickerGroup ? (
+                    <div className="dayrow__actions" style={{ marginBottom: 10 }}>
+                      <button type="button" className="chip chip--compact" aria-pressed="true" onClick={() => setPickerGroup(null)}>{MUSCLE_GROUP_LABEL[pickerGroup]} ✕</button>
+                    </div>
+                  ) : null}
+                  {showGroupGrid ? null : (
                   <div className={styles.pickerList} aria-label="Ejercicios disponibles">
                     {visiblePickerOptions.map((variant) => (
                       <button key={variant.id} type="button" className={styles.pickerOption} onClick={() => pickerMode.kind === "add" ? addExercise(variant.id) : replaceExercise(pickerMode.exerciseIndex, variant.id)}>
@@ -337,6 +372,7 @@ export default function PlanSessionEditor({ planId, weekStart, sessionIndex, ses
                     ))}
                     {visiblePickerOptions.length === 0 ? <p className={styles.emptyPicker}>No hay ejercicios que coincidan con la búsqueda.</p> : null}
                   </div>
+                  )}
                 </div>
               </section>
             </div>

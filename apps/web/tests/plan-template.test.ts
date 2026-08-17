@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { templateCompatibility, templatePreviewExercises } from "@/features/planning/domain/plan-template";
+import { templateCompatibility, templatePreviewExercises, templatesForSelection } from "@/features/planning/domain/plan-template";
 import { PLAN_TEMPLATES } from "@/features/planning/data/plan-templates";
 
 function templateVersion(templateId: string) {
@@ -7,6 +7,26 @@ function templateVersion(templateId: string) {
   if (!template) throw new Error(`template not found: ${templateId}`);
   return template.versions[0];
 }
+
+describe("templatesForSelection", () => {
+  it("ofrece rutinas más cortas que los días disponibles y nunca más largas", () => {
+    const withFourDays = templatesForSelection(PLAN_TEMPLATES, "full_gym", 4);
+
+    expect(withFourDays.some((version) => version.content.blockBlueprints.length === 3)).toBe(true);
+    expect(withFourDays.some((version) => version.content.blockBlueprints.length === 4)).toBe(true);
+    expect(withFourDays.every((version) => version.content.blockBlueprints.length <= 4)).toBe(true);
+  });
+
+  it("deja el catálogo vacío por debajo de tres días: ahí la pantalla ofrece la propuesta guiada", () => {
+    expect(templatesForSelection(PLAN_TEMPLATES, "full_gym", 2)).toHaveLength(0);
+    expect(templatesForSelection(PLAN_TEMPLATES, "basic_gym", 2)).toHaveLength(0);
+  });
+
+  it("muestra las rutinas de gimnasio completo también en gimnasio básico", () => {
+    expect(templatesForSelection(PLAN_TEMPLATES, "basic_gym", 5).length)
+      .toBe(templatesForSelection(PLAN_TEMPLATES, "full_gym", 5).length);
+  });
+});
 
 describe("templateCompatibility", () => {
   it("publishes twenty templates with a broad full-gym frequency distribution", () => {

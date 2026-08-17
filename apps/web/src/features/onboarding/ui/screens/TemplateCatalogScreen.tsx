@@ -7,7 +7,7 @@ import type { EquipmentCapability } from "@/features/catalog/domain/editorial-co
 import { exerciseMediaAlt, exerciseMediaSrc } from "@/features/catalog/data/exercise-catalog";
 import { capabilitiesForEnvironment } from "@/features/catalog/domain/inventory";
 import { PLAN_TEMPLATES } from "@/features/planning/data/plan-templates";
-import { templateCompatibility, templatePreviewExercises } from "@/features/planning/domain/plan-template";
+import { templateCompatibility, templatePreviewExercises, templatesForSelection } from "@/features/planning/domain/plan-template";
 import type { CreationMode, Environment } from "../../presentation/types";
 import styles from "./TemplateCatalogScreen.module.css";
 
@@ -17,6 +17,9 @@ type Props = {
   strengthDays: number;
   selectedTemplateId: string | null;
   onSelect: (templateId: string) => void;
+  /** Salida del callejón sin salida: si no hay ninguna rutina para este entorno y número de
+   * días, pasar a modo guiado quita este paso y el flujo sigue en "Foco muscular". */
+  onUseGuided: () => void;
 };
 
 const CAPABILITY_LABELS: Partial<Record<EquipmentCapability, string>> = {
@@ -31,20 +34,12 @@ const CAPABILITY_LABELS: Partial<Record<EquipmentCapability, string>> = {
   resistance_bands: "bandas elásticas"
 };
 
-export function TemplateCatalogScreen({ creationMode, environment, strengthDays, selectedTemplateId, onSelect }: Props) {
+export function TemplateCatalogScreen({ creationMode, environment, strengthDays, selectedTemplateId, onSelect, onUseGuided }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (creationMode === "guided") return null;
 
-  const selectedEnvironmentKind = environment?.kind;
-  const templates = PLAN_TEMPLATES.flatMap((template) => template.versions)
-    .filter((version) => {
-      const environmentMatches = selectedEnvironmentKind
-        ? version.environmentKind === selectedEnvironmentKind
-          || (selectedEnvironmentKind === "basic_gym" && version.environmentKind === "full_gym")
-        : version.environmentKind === "full_gym";
-      return environmentMatches && version.content.blockBlueprints.length === strengthDays;
-    });
+  const templates = templatesForSelection(PLAN_TEMPLATES, environment?.kind, strengthDays);
   const capabilities = environment ? capabilitiesForEnvironment(environment) : [];
 
   return (
@@ -115,9 +110,14 @@ export function TemplateCatalogScreen({ creationMode, environment, strengthDays,
           );
         })}
         {templates.length === 0 && (
-          <p className={styles.empty}>
-            Todavía no hay una rutina de catálogo para este entorno y número de días. Puedes volver atrás y elegir otro entorno, o usar la propuesta guiada.
-          </p>
+          <>
+            <p className={styles.empty}>
+              Todavía no hay una rutina de catálogo para este entorno y {strengthDays === 1 ? "un día" : `${strengthDays} días`}. Puedes volver atrás y cambiar el entorno o los días, o dejar que te propongamos un plan.
+            </p>
+            <button type="button" className={styles.useGuided} onClick={onUseGuided}>
+              Usar la propuesta guiada
+            </button>
+          </>
         )}
       </div>
     </ScreenLayout>
