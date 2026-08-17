@@ -92,7 +92,7 @@ function SyncIndicator() {
   const offlineData = useOfflineData();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const description = describeSync({ state: sync.state, pending: sync.pending, conflicts: sync.conflicts, snapshotStatus: offlineData.status });
+  const description = describeSync({ state: sync.state, pending: sync.pending, conflicts: sync.conflicts, errors: sync.errors, snapshotStatus: offlineData.status });
 
   useEffect(() => {
     if (!open) return;
@@ -134,6 +134,24 @@ function SyncIndicator() {
                       <button type="button" className="btn btn--ghost btn--block" onClick={() => sync.resolveKeepServer(conflict.id)}>{conflict.keepServerLabel}</button>
                     </div>
                   ))}
+                </>
+              ) : null}
+
+              {description.errors.length > 0 ? (
+                <>
+                  <p className="notice notice--warn" role="alert">Estos cambios no están en el servidor. Nada se descarta hasta que lo pidas.</p>
+                  {description.errors.map((failed) => (
+                    <div key={failed.id} className="sync-conflict">
+                      <p className="sync-conflict__copy">
+                        <strong>{failed.entity}</strong>
+                        <span>{failed.detail}</span>
+                      </p>
+                      <button type="button" className="btn btn--ghost btn--block" onClick={() => sync.discardErrored(failed.id)}>Descartar este cambio</button>
+                    </div>
+                  ))}
+                  <button type="button" className="btn btn--primary btn--block" onClick={() => sync.retryErrored()}>
+                    {description.errors.length === 1 ? "Reintentar el envío" : "Reintentar todos"}
+                  </button>
                 </>
               ) : null}
 

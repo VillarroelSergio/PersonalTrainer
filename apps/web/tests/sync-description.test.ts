@@ -65,6 +65,30 @@ describe("describeSync", () => {
     expect(description.dotState).toBe("ok");
   });
 
+  it("offers a way out of a rejected change instead of blaming the connection", () => {
+    // Two record_set operations sat in `error` on a real device for hours: flushOutbox skips
+    // them, no button could revive them, and the pill said "Reintenta cuando tengas conexión
+    // estable" — advice that could never work, because the server had rejected them.
+    const failed = [
+      { id: "op-1", kind: "record_set" as const, workoutSessionId: "ws-1", createdAt: 1, status: "error" as const, payload: { sessionExerciseId: "se-1", setNumber: 1, loadKg: 40, repetitions: 10, difficulty: null } }
+    ];
+    const description = describeSync({ state: "error", pending: 0, conflicts: [], errors: failed, snapshotStatus: "synced" });
+
+    expect(description.errors).toEqual([{ id: "op-1", entity: "Serie registrada", detail: expect.any(String) }]);
+    expect(description.body).toContain("no se pudo guardar en el servidor");
+    expect(description.body).not.toContain("conexión estable");
+  });
+
+  it("surfaces a rejected change even when the raw state came back synchronized", () => {
+    const failed = [
+      { id: "op-2", kind: "finish_workout" as const, workoutSessionId: "ws-1", baseVersion: 0, createdAt: 1, status: "error" as const, payload: { status: "completed" as const, globalEffort: 7, comment: null, discomfort: null } }
+    ];
+    const description = describeSync({ state: "sincronizado", pending: 0, conflicts: [], errors: failed, snapshotStatus: "synced" });
+
+    expect(description.title).toBe("No se pudo sincronizar");
+    expect(description.errors[0].entity).toBe("Cierre de sesión");
+  });
+
   it("uses a non-green dot for initial sync even if the raw sync state still says synchronized", () => {
     const description = describeSync({ state: "sincronizado", pending: 0, conflicts: [], snapshotStatus: "needs-initial-sync" });
 
