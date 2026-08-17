@@ -7,7 +7,7 @@ import { EXERCISE_CATALOG, exerciseMediaAlt, exerciseMediaSrc, findVariant, MUSC
 import { createClientId } from "@/lib/client-id";
 import { useOfflineData } from "@/lib/offline/OfflineDataContext";
 import { useOfflineSyncContext } from "@/lib/offline/OfflineSyncContext";
-import { finishWorkoutOffline, recordSetOffline, removeSetOffline, startWorkoutOffline, substituteVariantOffline } from "@/features/workouts/domain/workout-offline";
+import { finishWorkoutOffline, recordSetOffline, rememberStartedWorkout, removeSetOffline, startWorkoutOffline, substituteVariantOffline } from "@/features/workouts/domain/workout-offline";
 import { DISCOMFORT_ZONE_OPTIONS } from "@/features/onboarding/presentation/constants";
 import type { DiscomfortZone } from "@/features/onboarding/presentation/types";
 import { MOLESTIA_OPTIONS, type MolestiaLevel } from "@/features/training-engine/domain/checkin-discomfort";
@@ -122,6 +122,15 @@ export function WorkoutRunner({
       if (!response.ok) throw new Error(body?.error?.message ?? "No pudimos iniciar la sesión.");
       setWorkout(body.data.workoutSession);
       setExercises(body.data.sessionExercises);
+      // The snapshot has to learn about the session too, not just React state: losing the
+      // connection mid-session used to leave the local copy with no row for it, so finishing
+      // matched nothing and the status silently stayed "pendiente", and reopening the screen
+      // offline started an empty session instead of resuming this one.
+      if (offlineData.snapshot) {
+        offlineData.applyLocalMutation(
+          rememberStartedWorkout(offlineData.snapshot, body.data.workoutSession, body.data.sessionExercises ?? []).data
+        );
+      }
     } catch (cause) {
       if (offlineData.snapshot) {
         // No network: start the session locally from the preview, or resume the one already

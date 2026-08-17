@@ -55,6 +55,39 @@ function exercisesWithSets(history: WorkoutHistory, workoutSessionId: string): R
     }));
 }
 
+function upsertById<T extends { id: string }>(rows: T[], row: T): T[] {
+  const index = rows.findIndex((item) => item.id === row.id);
+  if (index === -1) return [...rows, row];
+  const next = rows.slice();
+  next[index] = row;
+  return next;
+}
+
+/**
+ * Mirrors a session the server just started (or resumed) into the local snapshot.
+ *
+ * The online start path only ever set React state, so the snapshot held no row for the session.
+ * Losing the connection mid-session then broke two things at once: finishing it matched no row,
+ * so `finishWorkoutOffline` silently left the status untouched while still queueing the change
+ * (the session stayed "pendiente" on /hoy with nothing to explain why), and reopening the screen
+ * found nothing in progress to resume, so it started a brand-new empty session and the confirmed
+ * sets vanished from view.
+ */
+export function rememberStartedWorkout(
+  snapshot: OfflineSnapshot,
+  session: WorkoutSession,
+  exercises: SessionExercise[]
+): OfflineSnapshot {
+  const history = historyOf(snapshot);
+  return applyLocalMutation(snapshot, {
+    history: {
+      ...history,
+      workoutSessions: upsertById(history.workoutSessions, session),
+      sessionExercises: exercises.reduce(upsertById, history.sessionExercises)
+    }
+  });
+}
+
 /**
  * Starts a strength session locally, or resumes one already in progress. Mirrors the online
  * repository's dedup (`runStartOrResume` in workout-session-repository.ts): without it,
