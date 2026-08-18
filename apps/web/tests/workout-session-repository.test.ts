@@ -74,6 +74,18 @@ describe("workout session repository", () => {
     await cleanup(db, ownerA, ownerB);
   });
 
+  it("persists a decimal load (e.g. 62.5kg plate math) without truncation", async () => {
+    const { db, ownerA, ownerB, planA } = await fixture();
+    const repo = createWorkoutSessionRepository(db);
+    const started = await repo.startOrResumeWorkout(ownerA, planA, 0);
+
+    await repo.recordSet(ownerA, started.workoutSession.id, started.sessionExercises[0].id, 1, 62.5, 10, "just_right");
+    const sets = await db.select({ loadKg: setPerformance.loadKg, repetitions: setPerformance.repetitions }).from(setPerformance).where(eq(setPerformance.sessionExerciseId, started.sessionExercises[0].id));
+    expect(sets).toEqual([{ loadKg: 62.5, repetitions: 10 }]);
+
+    await cleanup(db, ownerA, ownerB);
+  });
+
   it("removes a recorded set so resuming the workout does not mark it as completed", async () => {
     const { db, ownerA, ownerB, planA } = await fixture();
     const repo = createWorkoutSessionRepository(db);

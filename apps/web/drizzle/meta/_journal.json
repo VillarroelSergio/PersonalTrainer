@@ -15,6 +15,13 @@
       "when": 1786740039000,
       "tag": "0002_bizarre_mandroid",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787056883091,
+      "tag": "0002_rainy_ultimo",
+      "breakpoints": true
     }
   ]
 }
