@@ -1,5 +1,5 @@
 /**
- * Pure local-first helpers for PlanSessionActions/PlanSessionEditor (Fase 5, Task 6). No React,
+ * Pure local-first helpers for PlanSessionActions/PlanSessionEditPage (Fase 5, Task 6). No React,
  * no fetch. Both write to the same snapshot fields their real endpoints ultimately persist to:
  * `applySessionEditOffline` mirrors `plan-edit-repository.ts`'s `runEdit` (writes a
  * `sessionAdjustment`-shaped row, the same table `/hoy`'s `checkin-offline.ts` already writes
