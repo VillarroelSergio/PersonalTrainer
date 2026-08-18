@@ -1029,13 +1029,13 @@ a.chip:active:not(:focus-visible) {
 }
 .restlane__edit { display: inline-flex; align-items: center; gap: 3px; margin-top: 2px; }
 .restlane__edit input {
-  width: 44px;
+  width: 50px;
   background: none;
   border: none;
   border-bottom: 1.5px solid var(--rule);
   color: var(--ink);
   font: inherit;
-  font-size: 0.85rem; font-weight: 600;
+  font-size: 16px; font-weight: 600;
   padding: 4px 0;
   min-height: 34px;
   border-radius: 0;
@@ -1236,7 +1236,7 @@ textarea {
   color: var(--ink);
   border-radius: var(--r-md);
   padding: 10px 12px;
-  font: inherit; font-size: 0.92rem;
+  font: inherit; font-size: 16px;
   resize: vertical;
   min-height: 72px;
 }
@@ -1383,7 +1383,7 @@ html:has(.sheet-overlay), body:has(.sheet-overlay) { overflow: hidden; }
 .opt--compact { padding: 9px 2px; min-height: 42px; }
 .opt--compact .opt__name { font-size: 0.88rem; }
 .field--compact { margin: 0 0 12px; }
-.field--compact select { padding: 9px 12px; min-height: 40px; font-size: 0.88rem; }
+.field--compact select { padding: 9px 12px; min-height: 40px; font-size: 16px; }
 
 /* Ficha de ejercicio (catalogo-visual-ejercicios-004): ilustración real
    (4:5, ancho reservado) o estado "Ilustración próximamente" explícito.
@@ -1474,7 +1474,7 @@ html:has(.sheet-overlay), body:has(.sheet-overlay) { overflow: hidden; }
   border: 1.5px solid var(--rule);
   border-radius: var(--r-md);
   color: var(--ink);
-  font: inherit; font-size: 0.95rem;
+  font: inherit; font-size: 16px;
   padding: 12px 14px;
   min-height: 48px;
   appearance: none;
@@ -1508,7 +1508,7 @@ textarea {
   background: var(--paper);
   color: var(--ink);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 16px;
   padding: 9px 11px;
 }
 input:not(.sr-only):not([type="checkbox"]):not([type="radio"]):focus-visible,
@@ -1619,7 +1619,7 @@ textarea:focus-visible { border-color: var(--accent); }
 .planrow__meta { color: var(--ink-3); font-size: 0.8rem; margin-top: 3px; }
 .planrow__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .planmanage__edit { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; margin-top: 10px; align-items: center; }
-.planmanage__edit input { min-width: 0; min-height: 38px; padding: 7px 10px; font-size: .9rem; }
+.planmanage__edit input { min-width: 0; min-height: 38px; padding: 7px 10px; font-size: 16px; }
 .btn--danger { color: var(--danger, #a63316); border-color: color-mix(in srgb, var(--danger, #a63316) 38%, var(--rule)); }
 .btn--danger:hover { background: color-mix(in srgb, var(--danger, #a63316) 8%, transparent); }
 @media (max-width: 370px) { .planmanage__edit { grid-template-columns: 1fr 1fr; } .planmanage__edit input { grid-column: 1 / -1; } }
@@ -1652,7 +1652,7 @@ textarea:focus-visible { border-color: var(--accent); }
   border: 1.5px solid var(--rule);
   border-radius: var(--r-md);
   color: var(--ink);
-  font: inherit; font-size: 0.92rem;
+  font: inherit; font-size: 16px;
   padding: 12px 14px;
   min-height: 48px;
 }
@@ -1677,7 +1677,7 @@ textarea:focus-visible { border-color: var(--accent); }
   border: 1.5px solid var(--rule);
   border-radius: 999px;
   color: var(--ink);
-  font: inherit; font-size: 0.9rem;
+  font: inherit; font-size: 16px;
   padding: 11px 40px 11px 38px;
   min-height: 44px;
   appearance: none; -webkit-appearance: none;
