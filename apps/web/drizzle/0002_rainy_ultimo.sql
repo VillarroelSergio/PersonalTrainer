@@ -1,0 +1,1 @@
+ALTER TABLE "set_performance" ALTER COLUMN "load_kg" SET DATA TYPE real;

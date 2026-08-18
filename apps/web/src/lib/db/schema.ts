@@ -78,7 +78,7 @@ export const setPerformance = pgTable("set_performance", {
   id: text("id").primaryKey(),
   sessionExerciseId: text("session_exercise_id").notNull().references(() => sessionExercise.id, { onDelete: "cascade" }),
   setNumber: integer("set_number").notNull(),
-  loadKg: integer("load_kg"),
+  loadKg: real("load_kg"),
   repetitions: integer("repetitions"),
   difficulty: text("difficulty"),
   completedAt: timestamp("completed_at", { withTimezone: true }).notNull()

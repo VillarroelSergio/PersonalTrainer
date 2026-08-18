@@ -1,6 +1,6 @@
 {
-  "id": "a9af22ca-d39c-4bb2-beda-19f099ac40cf",
-  "prevId": "7e7b7560-4263-4280-b80e-9391670f6ca6",
+  "id": "802055d7-a82a-4e4b-a26c-77aff6ebce95",
+  "prevId": "a9af22ca-d39c-4bb2-beda-19f099ac40cf",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2001,7 +2001,7 @@
         },
         "load_kg": {
           "name": "load_kg",
-          "type": "integer",
+          "type": "real",
           "primaryKey": false,
           "notNull": false
         },
