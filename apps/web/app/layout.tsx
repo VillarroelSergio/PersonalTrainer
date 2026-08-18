@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "@/styles/app.css";
 import { OfflineSyncProvider } from "@/lib/offline/OfflineSyncContext";
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <OfflineSyncProvider>{children}</OfflineSyncProvider>
         </OfflineDataProvider>
         <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
