@@ -862,13 +862,13 @@ a.chip:active:not(:focus-visible) {
 }
 .restlane__edit { display: inline-flex; align-items: center; gap: 3px; margin-top: 2px; }
 .restlane__edit input {
-  width: 44px;
+  width: 50px;
   background: none;
   border: none;
   border-bottom: 1.5px solid var(--rule);
   color: var(--ink);
   font: inherit;
-  font-size: 0.85rem; font-weight: 600;
+  font-size: 16px; font-weight: 600;
   padding: 4px 0;
   min-height: 34px;
   border-radius: 0;
@@ -1066,7 +1066,7 @@ textarea {
   color: var(--ink);
   border-radius: var(--r-md);
   padding: 10px 12px;
-  font: inherit; font-size: 0.92rem;
+  font: inherit; font-size: 16px;
   resize: vertical;
   min-height: 72px;
 }
@@ -1276,7 +1276,7 @@ textarea {
   border: 1.5px solid var(--rule);
   border-radius: var(--r-md);
   color: var(--ink);
-  font: inherit; font-size: 0.95rem;
+  font: inherit; font-size: 16px;
   padding: 12px 14px;
   min-height: 48px;
 }
@@ -1345,7 +1345,7 @@ textarea {
   border: 1.5px solid var(--rule);
   border-radius: var(--r-md);
   color: var(--ink);
-  font: inherit; font-size: 0.92rem;
+  font: inherit; font-size: 16px;
   padding: 12px 14px;
   min-height: 48px;
 }
@@ -1586,7 +1586,7 @@ textarea {
 .sessionbar__restedit input {
   width: 56px;
   background: var(--paper); border: 1.5px solid var(--rule); border-radius: var(--r-sm);
-  color: var(--ink); font: inherit; font-size: 0.85rem; padding: 6px 8px; min-height: 36px;
+  color: var(--ink); font: inherit; font-size: 16px; padding: 6px 8px; min-height: 36px;
 }
 
 /* De 640px en adelante la bottomnav flota (ver Lote 1): la barra de sesión
