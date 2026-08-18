@@ -536,6 +536,19 @@
   }
 
   /* =====================================================================
+   * Haptics — vibración corta al pulsar botones (solo en dispositivos que
+   * soportan la Vibration API; delegado en document para cubrir también
+   * los botones que las vistas crean dinámicamente).
+   * ================================================================== */
+
+  function wireHaptics() {
+    if (!("vibrate" in navigator)) return;
+    document.addEventListener("click", function (e) {
+      if (e.target.closest("button, .btn, [role=\"button\"]")) navigator.vibrate(10);
+    });
+  }
+
+  /* =====================================================================
    * Navegación principal (bottomnav) + arranque
    * ================================================================== */
 
@@ -567,6 +580,7 @@
     wireNav();
     wireBack();
     wireTheme();
+    wireHaptics();
     App.load();
     App.sync.set(App.sync.get());
 

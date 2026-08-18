@@ -19,9 +19,12 @@ export default async function ExerciseVariantPage({ params }: { params: Promise<
   const variant = findVariant(id);
   if (!variant) notFound();
 
-  const favoriteIds = new Set(await listOwnedFavoriteVariantIds(getDb(), session.user.id));
   const workoutRepo = createWorkoutSessionRepository(getDb());
-  const baseline = await workoutRepo.getBaseline(session.user.id, id);
+  const [favoriteIdList, baseline] = await Promise.all([
+    listOwnedFavoriteVariantIds(getDb(), session.user.id),
+    workoutRepo.getBaseline(session.user.id, id),
+  ]);
+  const favoriteIds = new Set(favoriteIdList);
 
   const summary = baseline?.summaryJson ? JSON.parse(baseline.summaryJson) as { lastLoadKg: number | null; lastRepetitions: number | null } : null;
 

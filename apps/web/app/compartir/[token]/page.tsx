@@ -7,11 +7,13 @@ import { CopySharedRoutineButton } from "@/features/planning/ui/CopySharedRoutin
 
 export default async function SharedRoutinePreviewPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const session = await auth.api.getSession({ headers: await headers() });
 
-  let preview;
+  let session, preview;
   try {
-    preview = await previewSharedRoutine(getDb(), token);
+    [session, preview] = await Promise.all([
+      auth.api.getSession({ headers: await headers() }),
+      previewSharedRoutine(getDb(), token),
+    ]);
   } catch (cause) {
     if (cause instanceof ShareLinkNotFoundError) {
       return (
