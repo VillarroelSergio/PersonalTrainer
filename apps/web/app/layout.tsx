@@ -6,6 +6,7 @@ import { OfflineSyncProvider } from "@/lib/offline/OfflineSyncContext";
 import { OfflineDataProvider } from "@/lib/offline/OfflineDataContext";
 import { PwaRegister } from "@/lib/offline/PwaRegister";
 import { HapticsRegister } from "@/components/HapticsRegister";
+import { ClientErrorReporter } from "@/components/ClientErrorReporter";
 
 export const metadata: Metadata = { title: "Trainer", description: "Fundación privada de Trainer", manifest: "/manifest.webmanifest", appleWebApp: { capable: true, title: "Trainer", statusBarStyle: "black-translucent" } };
 export const viewport: Viewport = { themeColor: "#171613" };
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="es">
       <body>
+        <ClientErrorReporter />
         <PwaRegister />
         <HapticsRegister />
         <OfflineDataProvider>
