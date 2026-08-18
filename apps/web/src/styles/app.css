@@ -879,7 +879,8 @@ a.chip:active:not(:focus-visible) {
   text-decoration: none;
 }
 .chip[aria-disabled="true"] { color: var(--ink-3); opacity: 0.6; }
-.chip--compact { min-height: 36px; padding: 6px 10px; font-size: 0.76rem; }
+/* fix: 36px por debajo del objetivo táctil de 44px */
+.chip--compact { min-height: 44px; padding: 6px 10px; font-size: 0.76rem; }
 /* Plan: la acción primaria de una sesión (Iniciar/Ver sesión/Continuar) va
    rellena de acento para distinguirla del icon-btn "⋯" (acciones secundarias). */
 .chip--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); min-height: 40px; padding: 8px 14px; }

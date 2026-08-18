@@ -493,7 +493,7 @@ function ExerciseCard({
       <p className="section-title">Series</p>
       <ul className="lanes">
         {sets.map((set) => (
-          <SetRow key={set.setNumber} set={set} showLoad={showLoadInput(trackingMode)} onChange={(patch) => updateSet(set.setNumber, patch)} onConfirm={() => confirmSet(set.setNumber)} onUnconfirm={() => unconfirmSet(set.setNumber)} />
+          <SetRow key={set.setNumber} set={set} exerciseId={exercise.id} showLoad={showLoadInput(trackingMode)} onChange={(patch) => updateSet(set.setNumber, patch)} onConfirm={() => confirmSet(set.setNumber)} onUnconfirm={() => unconfirmSet(set.setNumber)} />
         ))}
       </ul>
 
@@ -511,21 +511,21 @@ function ExerciseCard({
   );
 }
 
-function SetRow({ set, showLoad, onChange, onConfirm, onUnconfirm }: { set: SetRowState; showLoad: boolean; onChange: (patch: Partial<SetRowState>) => void; onConfirm: () => void; onUnconfirm: () => void }) {
+function SetRow({ set, exerciseId, showLoad, onChange, onConfirm, onUnconfirm }: { set: SetRowState; exerciseId: string; showLoad: boolean; onChange: (patch: Partial<SetRowState>) => void; onConfirm: () => void; onUnconfirm: () => void }) {
   return (
     <li className="lane__error-row">
       <div className={"lane lane--set" + (set.saved ? " is-done" : "")}>
         <span className="lane__num">{set.setNumber}</span>
         {showLoad ? (
           <span className="lane__field">
-            <label htmlFor={`load-${set.setNumber}`} className="sr-only">Carga en kg</label>
-            <input id={`load-${set.setNumber}`} type="number" min={0} max={500} value={set.loadKg} disabled={set.saved} onChange={(event) => onChange({ loadKg: event.target.value })} />
+            <label htmlFor={`load-${exerciseId}-${set.setNumber}`} className="sr-only">Carga en kg</label>
+            <input id={`load-${exerciseId}-${set.setNumber}`} type="number" min={0} max={500} value={set.loadKg} disabled={set.saved} onChange={(event) => onChange({ loadKg: event.target.value })} />
             <span className="lane__unit">kg</span>
           </span>
         ) : null}
         <span className="lane__field">
-          <label htmlFor={`reps-${set.setNumber}`} className="sr-only">Repeticiones</label>
-          <input id={`reps-${set.setNumber}`} type="number" min={0} max={100} value={set.reps} disabled={set.saved} onChange={(event) => onChange({ reps: event.target.value })} />
+          <label htmlFor={`reps-${exerciseId}-${set.setNumber}`} className="sr-only">Repeticiones</label>
+          <input id={`reps-${exerciseId}-${set.setNumber}`} type="number" min={0} max={100} value={set.reps} disabled={set.saved} onChange={(event) => onChange({ reps: event.target.value })} />
           <span className="lane__unit">reps</span>
         </span>
         <span className="lane__state">
