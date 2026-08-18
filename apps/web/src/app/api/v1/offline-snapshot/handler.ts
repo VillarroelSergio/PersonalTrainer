@@ -34,7 +34,7 @@ type Db = PostgresJsDatabase<typeof schema>;
  *
  * Carries only per-account rows. EXERCISE_CATALOG used to ride along under `catalog`, but it
  * is a static module every client screen already imports directly (WorkoutRunner,
- * PlanSessionEditor, /ejercicios), so nothing ever read it back off the snapshot: measured at
+ * PlanSessionEditPage, /ejercicios), so nothing ever read it back off the snapshot: measured at
  * 45.1 KB of the 75.5 KB response, re-sent on every app open and after every outbox flush.
  */
 export async function createOfflineSnapshotResponse(request: Request, user_: SessionUser, database: Db): Promise<Response> {

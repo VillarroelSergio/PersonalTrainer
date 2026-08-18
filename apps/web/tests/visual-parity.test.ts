@@ -48,16 +48,19 @@ describe("Exercise visuals across planning and history", () => {
 });
 
 describe("Plan session editor", () => {
-  it("exposes a visual editor for changing, removing and adding planned exercises", () => {
+  it("exposes a dedicated page (not a modal) for changing, removing and adding planned exercises", () => {
     const planPage = readFileSync(join(__dirname, "..", "app", "plan", "page.tsx"), "utf8");
-    const editor = readFileSync(join(__dirname, "..", "src", "features", "planning", "ui", "PlanSessionEditor.tsx"), "utf8");
-    expect(planPage).toContain("PlanSessionEditor");
+    const route = readFileSync(join(__dirname, "..", "app", "plan", "sesion", "page.tsx"), "utf8");
+    const editor = readFileSync(join(__dirname, "..", "src", "features", "planning", "ui", "PlanSessionEditPage.tsx"), "utf8");
+    expect(planPage).toContain("/plan/sesion");
+    expect(route).toContain("PlanSessionEditPage");
     expect(editor).toContain("Editar sesión");
     expect(editor).toContain("Añadir ejercicio");
     expect(editor).toContain("Cambiar");
     expect(editor).toContain("Eliminar");
     expect(editor).toContain("session-content");
     expect(editor).toContain("exerciseMediaSrc");
+    expect(editor).not.toContain("sheet-overlay");
   });
 });
 

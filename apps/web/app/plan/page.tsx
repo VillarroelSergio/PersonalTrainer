@@ -12,7 +12,6 @@ import { computePlanView, TABS, type PlanProgress, type PlanRow } from "@/featur
 import { occurrenceRenderKey, sessionAction, type BlockProgress, type WeekOccurrence } from "@/features/planning/domain/plan-week";
 import { AppShell } from "@/components/AppShell";
 import PlanSessionActions from "@/features/planning/ui/PlanSessionActions";
-import PlanSessionEditor from "@/features/planning/ui/PlanSessionEditor";
 import PlanManagementActions from "@/features/planning/ui/PlanManagementActions";
 import { WEEKDAY_LABEL, WEEKDAYS, type Weekday } from "@/lib/weekdays";
 import type { PlanProposal } from "@/contracts/onboarding";
@@ -203,12 +202,13 @@ function DayRow({ day, occurrences, proposal, planId, weekStart }: { day: Weekda
                   return action ? <Link href={action.href} className="chip chip--primary">{action.label}</Link> : null;
                 })()}
                 {occurrence.kind === "strength" && (occurrence.status === "planned" || occurrence.status === "moved_here") ? (
-                  <PlanSessionEditor
-                    planId={planId}
-                    weekStart={weekStart}
-                    sessionIndex={occurrence.sessionIndex}
-                    session={proposal.week.sessions[occurrence.sessionIndex]}
-                  />
+                  <Link
+                    href={`/plan/sesion?plan=${planId}&semana=${weekStart}&session=${occurrence.sessionIndex}`}
+                    className="btn btn--ghost btn--sm"
+                    aria-label={`Editar sesión de ${proposal.week.sessions[occurrence.sessionIndex].title}`}
+                  >
+                    Editar sesión
+                  </Link>
                 ) : null}
                 <PlanSessionActions planId={planId} weekStart={weekStart} sessionIndex={occurrence.sessionIndex} status={occurrence.status} currentDay={day} />
               </div>
